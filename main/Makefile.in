@@ -1,0 +1,440 @@
+# Makefile.in generated automatically by automake 1.5 from Makefile.am.
+
+# Copyright 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001
+# Free Software Foundation, Inc.
+# This Makefile.in is free software; the Free Software Foundation
+# gives unlimited permission to copy and/or distribute it,
+# with or without modifications, as long as this notice is preserved.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY, to the extent permitted by law; without
+# even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+# PARTICULAR PURPOSE.
+
+@SET_MAKE@
+
+SHELL = @SHELL@
+
+srcdir = @srcdir@
+top_srcdir = @top_srcdir@
+VPATH = @srcdir@
+prefix = @prefix@
+exec_prefix = @exec_prefix@
+
+bindir = @bindir@
+sbindir = @sbindir@
+libexecdir = @libexecdir@
+datadir = @datadir@
+sysconfdir = @sysconfdir@
+sharedstatedir = @sharedstatedir@
+localstatedir = @localstatedir@
+libdir = @libdir@
+infodir = @infodir@
+mandir = @mandir@
+includedir = @includedir@
+oldincludedir = /usr/include
+pkgdatadir = $(datadir)/@PACKAGE@
+pkglibdir = $(libdir)/@PACKAGE@
+pkgincludedir = $(includedir)/@PACKAGE@
+top_builddir = ..
+
+ACLOCAL = @ACLOCAL@
+AUTOCONF = @AUTOCONF@
+AUTOMAKE = @AUTOMAKE@
+AUTOHEADER = @AUTOHEADER@
+
+INSTALL = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA = @INSTALL_DATA@
+INSTALL_SCRIPT = @INSTALL_SCRIPT@
+INSTALL_HEADER = $(INSTALL_DATA)
+transform = @program_transform_name@
+NORMAL_INSTALL = :
+PRE_INSTALL = :
+POST_INSTALL = :
+NORMAL_UNINSTALL = :
+PRE_UNINSTALL = :
+POST_UNINSTALL = :
+build_alias = @build_alias@
+build_triplet = @build@
+host_alias = @host_alias@
+host_triplet = @host@
+target_alias = @target_alias@
+target_triplet = @target@
+AMTAR = @AMTAR@
+ASMOUTPUT = @ASMOUTPUT@
+AWK = @AWK@
+CC = @CC@
+DEPDIR = @DEPDIR@
+EXEEXT = @EXEEXT@
+GTK_CFLAGS = @GTK_CFLAGS@
+GTK_CONFIG = @GTK_CONFIG@
+GTK_LIBS = @GTK_LIBS@
+INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
+MY_DIST_SUBDIRS = @MY_DIST_SUBDIRS@
+MY_LIBS = @MY_LIBS@
+MY_SUBDIRS = @MY_SUBDIRS@
+OBJEXT = @OBJEXT@
+PACKAGE = @PACKAGE@
+PROGRAM = @PROGRAM@
+RANLIB = @RANLIB@
+SDL_CFLAGS = @SDL_CFLAGS@
+SDL_CONFIG = @SDL_CONFIG@
+SDL_LIBS = @SDL_LIBS@
+UNDERSCORE = @UNDERSCORE@
+VERSION = @VERSION@
+am__include = @am__include@
+am__quote = @am__quote@
+install_sh = @install_sh@
+
+INCLUDES = -I../hdr -I. -I../cpu68k -I../ym2612 -I../raze -I../cmz80 \
+           -I../sn76496 -I../gtkopts \
+           -DFNAME_TCLSCRIPT=\"${datadir}/generator/gen.tcl\" \
+           @GTK_CFLAGS@ @SDL_CFLAGS@
+
+bin_PROGRAMS = @PROGRAM@
+EXTRA_PROGRAMS = generator-svgalib generator-tcltk generator-allegro \
+                 generator-gtk
+
+LDADD = ../cpu68k/lib68k.a ../ym2612/libym2612.a @MY_LIBS@ \
+        ../sn76496/libsn76496.a
+
+
+generator_svgalib_SOURCES = cpu68k.c mem68k.c reg68k.c event.c \
+    logo.c font.c generator.c state.c cpuz80.c vdp.c gensound.c \
+    memz80.c snprintf.c \
+    ui-console.c uip-svgalib.c uiplot.c gensoundp-unix.c
+
+generator_svgalib_LDADD = ${LDADD} -lvga
+
+generator_tcltk_SOURCES = cpu68k.c mem68k.c reg68k.c event.c \
+    generator.c state.c cpuz80.c vdp.c gensound.c memz80.c snprintf.c \
+    ui-tcltk.c diss68k.c gensoundp-unix.c
+
+generator_tcltk_LDADD = ${LDADD} -ltk -ltcl ../cpu68k/tab68k.o
+
+generator_allegro_SOURCES = cpu68k.c mem68k.c reg68k.c event.c \
+    logo.c font.c generator.c state.c cpuz80.c vdp.c gensound.c \
+    memz80.c snprintf.c \
+    ui-console.c uip-allegro.c uiplot.c gensoundp-allegro.c
+
+generator_allegro_LDADD = ${LDADD} -lalleg
+
+generator_gtk_SOURCES = cpu68k.c mem68k.c reg68k.c event.c \
+    generator.c state.c cpuz80.c vdp.c gensound.c memz80.c snprintf.c \
+    ui-gtk.c uiplot.c gensoundp-unix.c initcart.c patch.c \
+    dib.c avi.c diss68k.c
+
+generator_gtk_LDADD = ${LDADD} @GTK_LIBS@ @SDL_LIBS@ ../glade/libglade.a ../gtkopts/libgtkopts.a ../cpu68k/tab68k.o
+subdir = main
+mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
+CONFIG_HEADER = $(top_builddir)/config.h
+CONFIG_CLEAN_FILES =
+EXTRA_PROGRAMS = generator-svgalib$(EXEEXT) generator-tcltk$(EXEEXT) \
+	generator-allegro$(EXEEXT) generator-gtk$(EXEEXT)
+bin_PROGRAMS = @PROGRAM@
+PROGRAMS = $(bin_PROGRAMS)
+
+am_generator_allegro_OBJECTS = cpu68k.$(OBJEXT) mem68k.$(OBJEXT) \
+	reg68k.$(OBJEXT) event.$(OBJEXT) logo.$(OBJEXT) font.$(OBJEXT) \
+	generator.$(OBJEXT) state.$(OBJEXT) cpuz80.$(OBJEXT) \
+	vdp.$(OBJEXT) gensound.$(OBJEXT) memz80.$(OBJEXT) \
+	snprintf.$(OBJEXT) ui-console.$(OBJEXT) uip-allegro.$(OBJEXT) \
+	uiplot.$(OBJEXT) gensoundp-allegro.$(OBJEXT)
+generator_allegro_OBJECTS = $(am_generator_allegro_OBJECTS)
+generator_allegro_DEPENDENCIES = ../cpu68k/lib68k.a \
+	../ym2612/libym2612.a ../sn76496/libsn76496.a
+generator_allegro_LDFLAGS =
+am_generator_gtk_OBJECTS = cpu68k.$(OBJEXT) mem68k.$(OBJEXT) \
+	reg68k.$(OBJEXT) event.$(OBJEXT) generator.$(OBJEXT) \
+	state.$(OBJEXT) cpuz80.$(OBJEXT) vdp.$(OBJEXT) \
+	gensound.$(OBJEXT) memz80.$(OBJEXT) snprintf.$(OBJEXT) \
+	ui-gtk.$(OBJEXT) uiplot.$(OBJEXT) gensoundp-unix.$(OBJEXT) \
+	initcart.$(OBJEXT) patch.$(OBJEXT) dib.$(OBJEXT) avi.$(OBJEXT) \
+	diss68k.$(OBJEXT)
+generator_gtk_OBJECTS = $(am_generator_gtk_OBJECTS)
+generator_gtk_DEPENDENCIES = ../cpu68k/lib68k.a ../ym2612/libym2612.a \
+	../sn76496/libsn76496.a ../glade/libglade.a \
+	../gtkopts/libgtkopts.a ../cpu68k/tab68k.o
+generator_gtk_LDFLAGS =
+am_generator_svgalib_OBJECTS = cpu68k.$(OBJEXT) mem68k.$(OBJEXT) \
+	reg68k.$(OBJEXT) event.$(OBJEXT) logo.$(OBJEXT) font.$(OBJEXT) \
+	generator.$(OBJEXT) state.$(OBJEXT) cpuz80.$(OBJEXT) \
+	vdp.$(OBJEXT) gensound.$(OBJEXT) memz80.$(OBJEXT) \
+	snprintf.$(OBJEXT) ui-console.$(OBJEXT) uip-svgalib.$(OBJEXT) \
+	uiplot.$(OBJEXT) gensoundp-unix.$(OBJEXT)
+generator_svgalib_OBJECTS = $(am_generator_svgalib_OBJECTS)
+generator_svgalib_DEPENDENCIES = ../cpu68k/lib68k.a \
+	../ym2612/libym2612.a ../sn76496/libsn76496.a
+generator_svgalib_LDFLAGS =
+am_generator_tcltk_OBJECTS = cpu68k.$(OBJEXT) mem68k.$(OBJEXT) \
+	reg68k.$(OBJEXT) event.$(OBJEXT) generator.$(OBJEXT) \
+	state.$(OBJEXT) cpuz80.$(OBJEXT) vdp.$(OBJEXT) \
+	gensound.$(OBJEXT) memz80.$(OBJEXT) snprintf.$(OBJEXT) \
+	ui-tcltk.$(OBJEXT) diss68k.$(OBJEXT) gensoundp-unix.$(OBJEXT)
+generator_tcltk_OBJECTS = $(am_generator_tcltk_OBJECTS)
+generator_tcltk_DEPENDENCIES = ../cpu68k/lib68k.a ../ym2612/libym2612.a \
+	../sn76496/libsn76496.a ../cpu68k/tab68k.o
+generator_tcltk_LDFLAGS =
+
+DEFS = @DEFS@
+DEFAULT_INCLUDES =  -I. -I$(srcdir) -I$(top_builddir)
+CPPFLAGS = @CPPFLAGS@
+LDFLAGS = @LDFLAGS@
+LIBS = @LIBS@
+depcomp = $(SHELL) $(top_srcdir)/depcomp
+@AMDEP_TRUE@DEP_FILES = $(DEPDIR)/avi.Po $(DEPDIR)/cpu68k.Po \
+@AMDEP_TRUE@	$(DEPDIR)/cpuz80.Po $(DEPDIR)/dib.Po \
+@AMDEP_TRUE@	$(DEPDIR)/diss68k.Po $(DEPDIR)/event.Po \
+@AMDEP_TRUE@	$(DEPDIR)/font.Po $(DEPDIR)/generator.Po \
+@AMDEP_TRUE@	$(DEPDIR)/gensound.Po \
+@AMDEP_TRUE@	$(DEPDIR)/gensoundp-allegro.Po \
+@AMDEP_TRUE@	$(DEPDIR)/gensoundp-unix.Po $(DEPDIR)/initcart.Po \
+@AMDEP_TRUE@	$(DEPDIR)/logo.Po $(DEPDIR)/mem68k.Po \
+@AMDEP_TRUE@	$(DEPDIR)/memz80.Po $(DEPDIR)/patch.Po \
+@AMDEP_TRUE@	$(DEPDIR)/reg68k.Po $(DEPDIR)/snprintf.Po \
+@AMDEP_TRUE@	$(DEPDIR)/state.Po $(DEPDIR)/ui-console.Po \
+@AMDEP_TRUE@	$(DEPDIR)/ui-gtk.Po $(DEPDIR)/ui-tcltk.Po \
+@AMDEP_TRUE@	$(DEPDIR)/uip-allegro.Po $(DEPDIR)/uip-svgalib.Po \
+@AMDEP_TRUE@	$(DEPDIR)/uiplot.Po $(DEPDIR)/vdp.Po
+COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
+	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
+CCLD = $(CC)
+LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
+CFLAGS = @CFLAGS@
+DIST_SOURCES = $(generator_allegro_SOURCES) $(generator_gtk_SOURCES) \
+	$(generator_svgalib_SOURCES) $(generator_tcltk_SOURCES)
+DIST_COMMON = Makefile.am Makefile.in
+SOURCES = $(generator_allegro_SOURCES) $(generator_gtk_SOURCES) $(generator_svgalib_SOURCES) $(generator_tcltk_SOURCES)
+
+all: all-am
+
+.SUFFIXES:
+.SUFFIXES: .c .o .obj
+$(srcdir)/Makefile.in:  Makefile.am  $(top_srcdir)/configure.ac $(ACLOCAL_M4)
+	cd $(top_srcdir) && \
+	  $(AUTOMAKE) --gnu  main/Makefile
+Makefile:  $(srcdir)/Makefile.in  $(top_builddir)/config.status
+	cd $(top_builddir) && \
+	  CONFIG_HEADERS= CONFIG_LINKS= \
+	  CONFIG_FILES=$(subdir)/$@ $(SHELL) ./config.status
+install-binPROGRAMS: $(bin_PROGRAMS)
+	@$(NORMAL_INSTALL)
+	$(mkinstalldirs) $(DESTDIR)$(bindir)
+	@list='$(bin_PROGRAMS)'; for p in $$list; do \
+	  p1=`echo $$p|sed 's/$(EXEEXT)$$//'`; \
+	  if test -f $$p \
+	  ; then \
+	    f=`echo $$p1|sed '$(transform);s/$$/$(EXEEXT)/'`; \
+	   echo " $(INSTALL_PROGRAM_ENV) $(INSTALL_PROGRAM) $$p $(DESTDIR)$(bindir)/$$f"; \
+	   $(INSTALL_PROGRAM_ENV) $(INSTALL_PROGRAM) $$p $(DESTDIR)$(bindir)/$$f; \
+	  else :; fi; \
+	done
+
+uninstall-binPROGRAMS:
+	@$(NORMAL_UNINSTALL)
+	@list='$(bin_PROGRAMS)'; for p in $$list; do \
+	  f=`echo $$p|sed 's/$(EXEEXT)$$//;$(transform);s/$$/$(EXEEXT)/'`; \
+	  echo " rm -f $(DESTDIR)$(bindir)/$$f"; \
+	  rm -f $(DESTDIR)$(bindir)/$$f; \
+	done
+
+clean-binPROGRAMS:
+	-test -z "$(bin_PROGRAMS)" || rm -f $(bin_PROGRAMS)
+generator-allegro$(EXEEXT): $(generator_allegro_OBJECTS) $(generator_allegro_DEPENDENCIES) 
+	@rm -f generator-allegro$(EXEEXT)
+	$(LINK) $(generator_allegro_LDFLAGS) $(generator_allegro_OBJECTS) $(generator_allegro_LDADD) $(LIBS)
+generator-gtk$(EXEEXT): $(generator_gtk_OBJECTS) $(generator_gtk_DEPENDENCIES) 
+	@rm -f generator-gtk$(EXEEXT)
+	$(LINK) $(generator_gtk_LDFLAGS) $(generator_gtk_OBJECTS) $(generator_gtk_LDADD) $(LIBS)
+generator-svgalib$(EXEEXT): $(generator_svgalib_OBJECTS) $(generator_svgalib_DEPENDENCIES) 
+	@rm -f generator-svgalib$(EXEEXT)
+	$(LINK) $(generator_svgalib_LDFLAGS) $(generator_svgalib_OBJECTS) $(generator_svgalib_LDADD) $(LIBS)
+generator-tcltk$(EXEEXT): $(generator_tcltk_OBJECTS) $(generator_tcltk_DEPENDENCIES) 
+	@rm -f generator-tcltk$(EXEEXT)
+	$(LINK) $(generator_tcltk_LDFLAGS) $(generator_tcltk_OBJECTS) $(generator_tcltk_LDADD) $(LIBS)
+
+mostlyclean-compile:
+	-rm -f *.$(OBJEXT) core *.core
+
+distclean-compile:
+	-rm -f *.tab.c
+
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/avi.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/cpu68k.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/cpuz80.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/dib.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/diss68k.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/event.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/font.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/generator.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/gensound.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/gensoundp-allegro.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/gensoundp-unix.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/initcart.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/logo.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/mem68k.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/memz80.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/patch.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/reg68k.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/snprintf.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/state.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/ui-console.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/ui-gtk.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/ui-tcltk.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/uip-allegro.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/uip-svgalib.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/uiplot.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@$(DEPDIR)/vdp.Po@am__quote@
+
+distclean-depend:
+	-rm -rf $(DEPDIR)
+
+.c.o:
+@AMDEP_TRUE@	source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/$*.Po' tmpdepfile='$(DEPDIR)/$*.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(COMPILE) -c `test -f $< || echo '$(srcdir)/'`$<
+
+.c.obj:
+@AMDEP_TRUE@	source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@	depfile='$(DEPDIR)/$*.Po' tmpdepfile='$(DEPDIR)/$*.TPo' @AMDEPBACKSLASH@
+@AMDEP_TRUE@	$(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+	$(COMPILE) -c `cygpath -w $<`
+CCDEPMODE = @CCDEPMODE@
+uninstall-info-am:
+
+tags: TAGS
+
+ID: $(HEADERS) $(SOURCES) $(LISP) $(TAGS_FILES)
+	list='$(SOURCES) $(HEADERS) $(TAGS_FILES)'; \
+	unique=`for i in $$list; do \
+	    if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
+	  done | \
+	  $(AWK) '    { files[$$0] = 1; } \
+	       END { for (i in files) print i; }'`; \
+	mkid -fID $$unique $(LISP)
+
+TAGS:  $(HEADERS) $(SOURCES)  $(TAGS_DEPENDENCIES) \
+		$(TAGS_FILES) $(LISP)
+	tags=; \
+	here=`pwd`; \
+	list='$(SOURCES) $(HEADERS) $(TAGS_FILES)'; \
+	unique=`for i in $$list; do \
+	    if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
+	  done | \
+	  $(AWK) '    { files[$$0] = 1; } \
+	       END { for (i in files) print i; }'`; \
+	test -z "$(ETAGS_ARGS)$$unique$(LISP)$$tags" \
+	  || etags $(ETAGS_ARGS) $$tags  $$unique $(LISP)
+
+GTAGS:
+	here=`CDPATH=: && cd $(top_builddir) && pwd` \
+	  && cd $(top_srcdir) \
+	  && gtags -i $(GTAGS_ARGS) $$here
+
+distclean-tags:
+	-rm -f TAGS ID GTAGS GRTAGS GSYMS GPATH
+
+DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
+
+top_distdir = ..
+distdir = $(top_distdir)/$(PACKAGE)-$(VERSION)
+
+distdir: $(DISTFILES)
+	@for file in $(DISTFILES); do \
+	  if test -f $$file; then d=.; else d=$(srcdir); fi; \
+	  dir=`echo "$$file" | sed -e 's,/[^/]*$$,,'`; \
+	  if test "$$dir" != "$$file" && test "$$dir" != "."; then \
+	    $(mkinstalldirs) "$(distdir)/$$dir"; \
+	  fi; \
+	  if test -d $$d/$$file; then \
+	    cp -pR $$d/$$file $(distdir) \
+	    || exit 1; \
+	  else \
+	    test -f $(distdir)/$$file \
+	    || cp -p $$d/$$file $(distdir)/$$file \
+	    || exit 1; \
+	  fi; \
+	done
+check-am: all-am
+check: check-am
+all-am: Makefile $(PROGRAMS)
+
+installdirs:
+	$(mkinstalldirs) $(DESTDIR)$(bindir)
+
+install: install-am
+install-exec: install-exec-am
+install-data: install-data-am
+uninstall: uninstall-am
+
+install-am: all-am
+	@$(MAKE) $(AM_MAKEFLAGS) install-exec-am install-data-am
+
+installcheck: installcheck-am
+install-strip:
+	$(MAKE) $(AM_MAKEFLAGS) INSTALL_PROGRAM="$(INSTALL_STRIP_PROGRAM)" \
+	  `test -z '$(STRIP)' || \
+	    echo "INSTALL_PROGRAM_ENV=STRIPPROG='$(STRIP)'"` install
+mostlyclean-generic:
+
+clean-generic:
+
+distclean-generic:
+	-rm -f Makefile $(CONFIG_CLEAN_FILES) stamp-h stamp-h[0-9]*
+
+maintainer-clean-generic:
+	@echo "This command is intended for maintainers to use"
+	@echo "it deletes files that may require special tools to rebuild."
+clean: clean-am
+
+clean-am: clean-binPROGRAMS clean-generic mostlyclean-am
+
+distclean: distclean-am
+
+distclean-am: clean-am distclean-compile distclean-depend \
+	distclean-generic distclean-tags
+
+dvi: dvi-am
+
+dvi-am:
+
+info: info-am
+
+info-am:
+
+install-data-am:
+
+install-exec-am: install-binPROGRAMS
+
+install-info: install-info-am
+
+install-man:
+
+installcheck-am:
+
+maintainer-clean: maintainer-clean-am
+
+maintainer-clean-am: distclean-am maintainer-clean-generic
+
+mostlyclean: mostlyclean-am
+
+mostlyclean-am: mostlyclean-compile mostlyclean-generic
+
+uninstall-am: uninstall-binPROGRAMS uninstall-info-am
+
+.PHONY: GTAGS all all-am check check-am clean clean-binPROGRAMS \
+	clean-generic distclean distclean-compile distclean-depend \
+	distclean-generic distclean-tags distdir dvi dvi-am info \
+	info-am install install-am install-binPROGRAMS install-data \
+	install-data-am install-exec install-exec-am install-info \
+	install-info-am install-man install-strip installcheck \
+	installcheck-am installdirs maintainer-clean \
+	maintainer-clean-generic mostlyclean mostlyclean-compile \
+	mostlyclean-generic tags uninstall uninstall-am \
+	uninstall-binPROGRAMS uninstall-info-am
+
+# Tell versions [3.59,3.63) of GNU make to not export all variables.
+# Otherwise a system limit (for SysV at least) may be exceeded.
+.NOEXPORT:
