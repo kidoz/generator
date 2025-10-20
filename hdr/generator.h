@@ -1,4 +1,4 @@
-#include "../config.h"
+/* #include "config.h" */ /* Meson passes all config via compiler flags */
 #include "machine.h"
 
 /* VERSION set by autoconf */
@@ -218,14 +218,14 @@ typedef struct {
 #  define LOG_CRITICAL(x) /* */
 #  define LOG_REQUEST(x)  /* */
 #else
-#  define LOG_DEBUG3(x)   /* ui_log_debug3 ## x */
-#  define LOG_DEBUG2(x)   /* ui_log_debug2 ## x */
-#  define LOG_DEBUG1(x)   /* ui_log_debug1 ## x */
-#  define LOG_USER(x)     ui_log_user ## x
-#  define LOG_VERBOSE(x)  ui_log_verbose ## x
-#  define LOG_NORMAL(x)   ui_log_normal ## x
-#  define LOG_CRITICAL(x) ui_log_critical ## x
-#  define LOG_REQUEST(x)  ui_log_request ## x
+#  define LOG_DEBUG3(x)   /* ui_log_debug3 x */
+#  define LOG_DEBUG2(x)   /* ui_log_debug2 x */
+#  define LOG_DEBUG1(x)   /* ui_log_debug1 x */
+#  define LOG_USER(x)     ui_log_user x
+#  define LOG_VERBOSE(x)  ui_log_verbose x
+#  define LOG_NORMAL(x)   ui_log_normal x
+#  define LOG_CRITICAL(x) ui_log_critical x
+#  define LOG_REQUEST(x)  ui_log_request x
 #endif
 
 typedef struct {

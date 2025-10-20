@@ -1,3 +1,9 @@
+#ifndef _STATE_H
+#define _STATE_H
+
+#include <time.h>
+#include "machine.h"
+
 time_t state_date(const int slot);
 int state_load(const int slot);
 int state_save(const int slot);
@@ -10,3 +16,12 @@ void state_write16(const char *mod, const char *name, uint8 instance,
                                      uint16 *data, uint32 size);
 void state_write32(const char *mod, const char *name, uint8 instance,
                                      uint32 *data, uint32 size);
+
+void state_transfer8(const char *mod, const char *name, uint8 instance,
+                     uint8 *data, uint32 size);
+void state_transfer16(const char *mod, const char *name, uint8 instance,
+                      uint16 *data, uint32 size);
+void state_transfer32(const char *mod, const char *name, uint8 instance,
+                      uint32 *data, uint32 size);
+
+#endif /* _STATE_H */

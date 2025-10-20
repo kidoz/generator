@@ -633,7 +633,7 @@ void mz80SetContext( void *sender ) {
 #endif
 }
 
-/* inline */ static BYTE Inc(BYTE bArg)
+/* inline */ BYTE Inc(BYTE bArg)
 {
 #ifdef ARITH_TABLES
 	bArg++;
@@ -646,7 +646,7 @@ void mz80SetContext( void *sender ) {
 #endif
 }
 
-/* inline */ static BYTE Dec(BYTE bArg)
+/* inline */ BYTE Dec(BYTE bArg)
 {
 #ifdef ARITH_TABLES
 	m_regF = (m_regF & C_FLAG) | rgfDec[bArg--];

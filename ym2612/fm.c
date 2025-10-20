@@ -483,7 +483,7 @@ INLINE void FM_STATUS_RESET(FM_ST *ST,int flag)
 }
 
 /* IRQ mask set */
-INLINE void FM_IRQMASK_SET(FM_ST *ST,int flag)
+static void FM_IRQMASK_SET(FM_ST *ST,int flag)
 {
 	ST->irqmask = flag;
 	/* IRQ handling check */
@@ -1157,7 +1157,7 @@ INLINE void FMSetMode( FM_ST *ST ,int n,int v )
 }
 
 /* Timer A Overflow */
-INLINE void TimerAOver(FM_ST *ST)
+static void TimerAOver(FM_ST *ST)
 {
 	/* set status (if enabled) */
 	if(ST->mode & 0x04) FM_STATUS_SET(ST,0x01);
@@ -1171,7 +1171,7 @@ INLINE void TimerAOver(FM_ST *ST)
 	else ST->TAC = 0;
 }
 /* Timer B Overflow */
-INLINE void TimerBOver(FM_ST *ST)
+static void TimerBOver(FM_ST *ST)
 {
 	/* set status (if enabled) */
 	if(ST->mode & 0x08) FM_STATUS_SET(ST,0x02);
@@ -1185,7 +1185,7 @@ INLINE void TimerBOver(FM_ST *ST)
 	else ST->TBC = 0;
 }
 /* CSM Key Controll */
-INLINE void CSMKeyControll(FM_CH *CH)
+static void CSMKeyControll(FM_CH *CH)
 {
 	/* all key off */
 	/* FM_KEYOFF(CH,SLOT1); */

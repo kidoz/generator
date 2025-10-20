@@ -1,6 +1,7 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "generator.h"
 
@@ -38,7 +39,7 @@ void generate_bits(FILE *o, t_iib *iib);
 
 /* defines */
 
-#define HEADER "/*****************************************************************************/\n/*     Generator - Sega Genesis emulation - (c) James Ponder 1997-2001       */\n/*****************************************************************************/\n/*                                                                           */\n/* cpu68k-%x.c                                                                */\n/*                                                                           */\n/*****************************************************************************/\n\n"
+#define HEADER "/*****************************************************************************/\n/*     Generator - Sega Genesis emulation - (c) James Ponder 1997-2001       */\n/*****************************************************************************/\n/*                                                                           */\n/* cpu68k-%x.c                                                                */\n/*                                                                           */\n/*****************************************************************************/\n\n#include <stdlib.h>\n\n"
 
 #define OUT(x) fputs(x,output);
 #define FNAME_GEN68K_CPU_OUT "cpu68k-%x.c"

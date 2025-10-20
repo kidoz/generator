@@ -18,36 +18,36 @@
 %define zAF ax
 %define zHL bx
 %define zBC cx
-%define zDE word [z80_DE]
+%define zDE word [_z80_DE]
 %define zPC si
-%define zSP word [z80_SP]
-%define zIX word [z80_IX]
-%define zIY word [z80_IY]
+%define zSP word [_z80_SP]
+%define zIX word [_z80_IX]
+%define zIY word [_z80_IY]
 
 ; 16-bit registers, zero-extended to 32-bit
 ; for when a dword transfer is better
 %define ezAF eax
 %define ezHL ebx
 %define ezBC ecx
-%define ezDE dword [z80_DE]
+%define ezDE dword [_z80_DE]
 %define ezPC esi
-%define ezSP dword [z80_SP]
-%define ezIX dword [z80_IX]
-%define ezIY dword [z80_IY]
+%define ezSP dword [_z80_SP]
+%define ezIX dword [_z80_IX]
+%define ezIY dword [_z80_IY]
 
 ; 8-bit registers
 %define zF ah
 %define zA al
 %define zB ch
 %define zC cl
-%define zD byte [z80_DE+1]
-%define zE byte [z80_DE]
+%define zD byte [_z80_DE+1]
+%define zE byte [_z80_DE]
 %define zH bh
 %define zL bl
-%define zIXh byte [z80_IX+1]
-%define zIXl byte [z80_IX]
-%define zIYh byte [z80_IY+1]
-%define zIYl byte [z80_IY]
+%define zIXh byte [_z80_IX+1]
+%define zIXl byte [_z80_IX]
+%define zIYh byte [_z80_IY+1]
+%define zIYl byte [_z80_IY]
 
 ; 8-bit registers, (accessible by 16-bit registers with l or h)
 %define hzAF zA
@@ -62,24 +62,24 @@
 %define lzIX zIXl
 %define hzIY zIYh
 %define lzIY zIYl
-%define hzSP byte [z80_SP+1]
-%define lzSP byte [z80_SP]
+%define hzSP byte [_z80_SP+1]
+%define lzSP byte [_z80_SP]
 
 ; 16-bit registers (prime)
-%define zAF2 word [z80_AF2]
-%define zHL2 word [z80_HL2]
-%define zBC2 word [z80_BC2]
-%define zDE2 word [z80_DE2]
+%define zAF2 word [_z80_AF2]
+%define zHL2 word [_z80_HL2]
+%define zBC2 word [_z80_BC2]
+%define zDE2 word [_z80_DE2]
 
 ; 16-bit registers (prime), zero-extended to 32-bit
 ; for when a dword transfer is better
-%define ezAF2 dword [z80_AF2]
-%define ezHL2 dword [z80_HL2]
-%define ezBC2 dword [z80_BC2]
-%define ezDE2 dword [z80_DE2]
+%define ezAF2 dword [_z80_AF2]
+%define ezHL2 dword [_z80_HL2]
+%define ezBC2 dword [_z80_BC2]
+%define ezDE2 dword [_z80_DE2]
 
 ; Misc
-%define zI byte [z80_I]
+%define zI byte [_z80_I]
 %define zR ebp
 
 ; get/set reg values

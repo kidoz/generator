@@ -1,6 +1,6 @@
 /* Generator fm.c support file */
 
-#include "config.h"
+/* #include "config.h" */ /* Meson passes all config via compiler flags */
 
 #define errorlog 0
 #define INLINE inline

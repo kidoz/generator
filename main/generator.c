@@ -14,6 +14,11 @@
 #include "generator.h"
 #include "snprintf.h"
 
+/* Signal handler return type (typically void on POSIX systems) */
+#ifndef RETSIGTYPE
+#define RETSIGTYPE void
+#endif
+
 #include "ui.h"
 #include "memz80.h"
 #include "cpu68k.h"

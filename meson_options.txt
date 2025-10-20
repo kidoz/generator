@@ -1,0 +1,31 @@
+# Meson Build Options for Generator
+
+# UI Backend (required - choose one)
+option('ui-backend',
+  type: 'combo',
+  choices: ['gtk4', 'svgalib', 'allegro', 'tcltk'],
+  value: 'gtk4',
+  description: 'User interface backend to build'
+)
+
+# Z80 Emulator (required - choose one)
+option('z80-backend',
+  type: 'combo',
+  choices: ['cmz80', 'raze'],
+  value: 'cmz80',
+  description: 'Z80 emulator implementation (cmz80=portable C, raze=x86 assembly, requires nasm)'
+)
+
+# Optional features
+option('logging',
+  type: 'boolean',
+  value: true,
+  description: 'Enable logging output'
+)
+
+option('gcc-version',
+  type: 'combo',
+  choices: ['2', '3', 'auto', 'no'],
+  value: 'auto',
+  description: 'GCC optimization version (auto=detect, no=disable optimizations)'
+)

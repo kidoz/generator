@@ -1,6 +1,7 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 
 #include <stdlib.h>
+#include <string.h>
 
 #include "generator.h"
 #include "gensound.h"

@@ -1318,7 +1318,7 @@ void procline(char *line, int lineno, FILE *outiibs, FILE *outfuncs,
   } /* block */
 }
 
-int clocks_movetable[] = {
+static int clocks_movetable[] = {
    4,   4,  8,  8,  8, 12, 14, 12, 16,
    4,   4,  8,  8,  8, 12, 14, 12, 16,
    8,   8, 12, 12, 12, 16, 18, 16, 20,

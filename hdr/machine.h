@@ -6,7 +6,7 @@
 /*                                                                           */
 /*****************************************************************************/
 
-#include "config.h"
+/* #include "config.h" */ /* Meson passes all config via compiler flags */
 
 /* get correct sizes for uint8, uint16 and uint32 */
 

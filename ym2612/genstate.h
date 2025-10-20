@@ -1,3 +1,6 @@
+/* Forward declarations for state functions */
+#include "state.h"
+
 #define state_save_register_UINT8(mod, ins, name, val, size) \
   state_transfer8(mod, name, ins, val, size);
 #define state_save_register_UINT16(mod, ins, name, val, size) \
