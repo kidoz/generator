@@ -225,20 +225,27 @@ uint32 mem68k_fetch_bad_long(uint32 addr)
 
 void mem68k_store_bad_byte(uint32 addr, uint8 data)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory store (byte) 0x%X = %X", regs.pc,
-                addr, data));
+  /* Note: Don't log here - invalid memory accesses can happen frequently in some ROMs.
+     Logging in memory access path causes severe performance issues and audio freezing.
+     If debugging is needed, use a conditional compile flag or rate-limited logging. */
+  // LOG_CRITICAL(("%08X [MEM] Invalid memory store (byte) 0x%X = %X", regs.pc,
+  //               addr, data));
 }
 
 void mem68k_store_bad_word(uint32 addr, uint16 data)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory store (word) 0x%X = %X", regs.pc,
-                addr, data));
+  /* Note: Don't log here - invalid memory accesses can happen frequently in some ROMs.
+     Logging in memory access path causes severe performance issues and audio freezing. */
+  // LOG_CRITICAL(("%08X [MEM] Invalid memory store (word) 0x%X = %X", regs.pc,
+  //               addr, data));
 }
 
 void mem68k_store_bad_long(uint32 addr, uint32 data)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory store (long) 0x%X = %X", regs.pc,
-                addr, data));
+  /* Note: Don't log here - invalid memory accesses can happen frequently in some ROMs.
+     Logging in memory access path causes severe performance issues and audio freezing. */
+  // LOG_CRITICAL(("%08X [MEM] Invalid memory store (long) 0x%X = %X", regs.pc,
+  //               addr, data));
 }
 
 
@@ -293,20 +300,26 @@ uint32 mem68k_fetch_rom_long(uint32 addr)
 
 void mem68k_store_rom_byte(uint32 addr, uint8 data)
 {
-  LOG_CRITICAL(("%08X [ROM] Invalid memory store (byte) 0x%X = %X", regs.pc,
-                addr, data));
+  /* Note: Don't log here - ROM writes can happen frequently (some ROMs try to write to ROM area).
+     Logging in memory access path causes severe performance issues and audio freezing. */
+  // LOG_CRITICAL(("%08X [ROM] Invalid memory store (byte) 0x%X = %X", regs.pc,
+  //               addr, data));
 }
 
 void mem68k_store_rom_word(uint32 addr, uint16 data)
 {
-  LOG_CRITICAL(("%08X [ROM] Invalid memory store (word) 0x%X = %X", regs.pc,
-                addr, data));
+  /* Note: Don't log here - ROM writes can happen frequently.
+     Logging in memory access path causes severe performance issues and audio freezing. */
+  // LOG_CRITICAL(("%08X [ROM] Invalid memory store (word) 0x%X = %X", regs.pc,
+  //               addr, data));
 }
 
 void mem68k_store_rom_long(uint32 addr, uint32 data)
 {
-  LOG_CRITICAL(("%08X [ROM] Invalid memory store (long) 0x%X = %X", regs.pc,
-                addr, data));
+  /* Note: Don't log here - ROM writes can happen frequently.
+     Logging in memory access path causes severe performance issues and audio freezing. */
+  // LOG_CRITICAL(("%08X [ROM] Invalid memory store (long) 0x%X = %X", regs.pc,
+  //               addr, data));
 }
 
 

@@ -17,7 +17,7 @@ static SDL_AudioDeviceID soundp_dev = 0;
 static SDL_AudioSpec soundp_spec;
 
 /* Ring buffer for audio samples */
-#define RING_BUFFER_SIZE (SOUND_MAXRATE * 2)  /* 2 seconds of buffering */
+#define RING_BUFFER_SIZE (SOUND_MAXRATE * 4)  /* 4 seconds of buffering */
 static int16_t soundp_ring_buffer[RING_BUFFER_SIZE * 2]; /* stereo */
 static volatile unsigned int soundp_write_pos = 0;
 static volatile unsigned int soundp_read_pos = 0;
@@ -89,7 +89,9 @@ int soundp_start(void)
   desired.freq = sound_speed;
   desired.format = AUDIO_S16SYS; /* 16-bit signed, system byte order */
   desired.channels = 2; /* stereo */
-  desired.samples = 512; /* buffer size in samples */
+  /* Buffer size scales with sample rate: 4096 samples = ~93ms @ 44.1kHz, ~186ms @ 22.05kHz
+     Larger buffer reduces stuttering but increases audio latency */
+  desired.samples = 4096;
   desired.callback = soundp_audio_callback;
   desired.userdata = NULL;
 
@@ -147,7 +149,7 @@ int soundp_start(void)
 
   LOG_VERBOSE(("SDL2 Audio opened: %d Hz, %d channels, %d samples buffer",
                soundp_spec.freq, soundp_spec.channels, soundp_spec.samples));
-  LOG_VERBOSE(("Theshold = %d bytes (%d fields of sound === %dms latency)",
+  LOG_VERBOSE(("Threshold = %d bytes (%d fields of sound === %dms latency)",
                sound_threshold * 4, sound_minfields,
                (int)(1000 * (float)sound_minfields / (float)vdp_framerate)));
 
@@ -212,8 +214,8 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 
   /* Clamp samples to available space */
   if (samples > space_available) {
-    LOG_VERBOSE(("Warning: Ring buffer overflow, dropping %d samples",
-                 samples - space_available));
+    /* Note: Don't log here - this is in the hot audio path and logging can block/freeze audio.
+       The backpressure mechanism in ui_tick_callback should prevent this from happening. */
     samples = space_available;
   }
 

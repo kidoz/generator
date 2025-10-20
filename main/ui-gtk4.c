@@ -25,6 +25,7 @@
 #include "gtkopts.h"
 #include "vdp.h"
 #include "gensound.h"
+#include "gensoundp.h"
 #include "cpu68k.h"
 #include "mem68k.h"
 #include "cpuz80.h"
@@ -260,7 +261,7 @@ static void ui_setup_actions(GtkApplication *app)
     { "save-state", ui_action_save_state, NULL, NULL, NULL },
     { "reset", ui_action_reset, NULL, NULL, NULL },
     { "soft-reset", ui_action_soft_reset, NULL, NULL, NULL },
-    { "pause", ui_action_pause, "b", "false", NULL },
+    { "pause", ui_action_pause, NULL, "false", NULL },
     { "preferences", ui_action_preferences, NULL, NULL, NULL },
     { "about", ui_action_about, NULL, NULL, NULL },
     { "quit", ui_action_quit, NULL, NULL, NULL }
@@ -289,52 +290,72 @@ static void ui_setup_actions(GtkApplication *app)
 
 static void ui_create_main_window(GtkApplication *app)
 {
-  GtkWidget *box, *menu_button;
-  GMenu *menu, *rom_menu, *state_menu, *debug_menu;
+  GtkWidget *toolbar_view, *content_box, *menu_button, *open_button, *pause_button;
+  GMenu *primary_menu;
   GtkEventController *key_controller;
 
   /* Create main window */
   gen_ui->window = ADW_APPLICATION_WINDOW(adw_application_window_new(GTK_APPLICATION(app)));
-  gtk_window_set_title(GTK_WINDOW(gen_ui->window), "Generator " VERSION);
+  gtk_window_set_title(GTK_WINDOW(gen_ui->window), "Generator");
   gtk_window_set_default_size(GTK_WINDOW(gen_ui->window), 640, 480);
+
+  /* Create toolbar view (HIG recommended pattern for header bars) */
+  toolbar_view = adw_toolbar_view_new();
 
   /* Create header bar */
   gen_ui->header_bar = adw_header_bar_new();
+  adw_header_bar_set_show_back_button(ADW_HEADER_BAR(gen_ui->header_bar), FALSE);
+  adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar_view), gen_ui->header_bar);
 
-  /* Create main menu */
-  menu = g_menu_new();
+  /* Add primary action button (Open ROM) to header bar start */
+  open_button = gtk_button_new_with_label("Open ROM");
+  gtk_actionable_set_action_name(GTK_ACTIONABLE(open_button), "app.open-rom");
+  gtk_widget_add_css_class(open_button, "suggested-action");
+  adw_header_bar_pack_start(ADW_HEADER_BAR(gen_ui->header_bar), open_button);
 
-  /* ROM submenu */
-  rom_menu = g_menu_new();
-  g_menu_append(rom_menu, "Open ROM...", "app.open-rom");
-  g_menu_append(rom_menu, "Save ROM...", "app.save-rom");
-  g_menu_append_submenu(menu, "ROM", G_MENU_MODEL(rom_menu));
+  /* Add pause/resume toggle button */
+  pause_button = gtk_toggle_button_new();
+  gtk_button_set_icon_name(GTK_BUTTON(pause_button), "media-playback-pause-symbolic");
+  gtk_actionable_set_action_name(GTK_ACTIONABLE(pause_button), "app.pause");
+  gtk_widget_set_tooltip_text(pause_button, "Pause (Space)");
+  adw_header_bar_pack_start(ADW_HEADER_BAR(gen_ui->header_bar), pause_button);
 
-  /* State submenu */
-  state_menu = g_menu_new();
-  g_menu_append(state_menu, "Load State...", "app.load-state");
-  g_menu_append(state_menu, "Save State...", "app.save-state");
-  g_menu_append_submenu(menu, "State", G_MENU_MODEL(state_menu));
+  /* Create primary menu (HIG pattern: contains app-wide actions) */
+  primary_menu = g_menu_new();
 
-  /* Emulation menu */
-  g_menu_append(menu, "Reset", "app.reset");
-  g_menu_append(menu, "Soft Reset", "app.soft-reset");
-  g_menu_append(menu, "Pause", "app.pause");
+  /* File operations section */
+  GMenu *file_section = g_menu_new();
+  g_menu_append(file_section, "_Save ROM As…", "app.save-rom");
+  g_menu_append_section(primary_menu, NULL, G_MENU_MODEL(file_section));
 
-  /* Preferences and About */
-  g_menu_append(menu, "Preferences", "app.preferences");
-  g_menu_append(menu, "About", "app.about");
-  g_menu_append(menu, "Quit", "app.quit");
+  /* State management section */
+  GMenu *state_section = g_menu_new();
+  g_menu_append(state_section, "_Load State…", "app.load-state");
+  g_menu_append(state_section, "_Save State…", "app.save-state");
+  g_menu_append_section(primary_menu, "Save States", G_MENU_MODEL(state_section));
 
-  /* Add menu button to header bar */
+  /* Emulation control section */
+  GMenu *emulation_section = g_menu_new();
+  g_menu_append(emulation_section, "_Reset", "app.reset");
+  g_menu_append(emulation_section, "_Soft Reset", "app.soft-reset");
+  g_menu_append_section(primary_menu, "Emulation", G_MENU_MODEL(emulation_section));
+
+  /* App section (preferences, about, quit) */
+  GMenu *app_section = g_menu_new();
+  g_menu_append(app_section, "_Preferences", "app.preferences");
+  g_menu_append(app_section, "_About Generator", "app.about");
+  g_menu_append_section(primary_menu, NULL, G_MENU_MODEL(app_section));
+
+  /* Add primary menu button to header bar end */
   menu_button = gtk_menu_button_new();
   gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(menu_button), "open-menu-symbolic");
-  gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu_button), G_MENU_MODEL(menu));
+  gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu_button), G_MENU_MODEL(primary_menu));
+  gtk_menu_button_set_primary(GTK_MENU_BUTTON(menu_button), TRUE);
+  gtk_widget_set_tooltip_text(menu_button, "Main Menu");
   adw_header_bar_pack_end(ADW_HEADER_BAR(gen_ui->header_bar), menu_button);
 
-  /* Create main box */
-  box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-  gtk_box_append(GTK_BOX(box), gen_ui->header_bar);
+  /* Create content box for emulation display and status */
+  content_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
   /* Create drawing area for emulation display */
   gen_ui->drawing_area = gtk_drawing_area_new();
@@ -343,18 +364,29 @@ static void ui_create_main_window(GtkApplication *app)
   gtk_widget_set_size_request(gen_ui->drawing_area, 320, 224);
   gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(gen_ui->drawing_area),
                                    ui_draw_callback, NULL, NULL);
-  gtk_box_append(GTK_BOX(box), gen_ui->drawing_area);
+  gtk_box_append(GTK_BOX(content_box), gen_ui->drawing_area);
 
-  /* Create status label */
+  /* Create status bar using AdwActionRow for better styling */
+  GtkWidget *status_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_add_css_class(status_box, "toolbar");
+  gtk_widget_set_margin_start(status_box, 6);
+  gtk_widget_set_margin_end(status_box, 6);
+  gtk_widget_set_margin_top(status_box, 6);
+  gtk_widget_set_margin_bottom(status_box, 6);
+
   gen_ui->status_label = gtk_label_new("Ready");
-  gtk_widget_set_margin_start(gen_ui->status_label, 6);
-  gtk_widget_set_margin_end(gen_ui->status_label, 6);
-  gtk_widget_set_margin_top(gen_ui->status_label, 3);
-  gtk_widget_set_margin_bottom(gen_ui->status_label, 3);
-  gtk_box_append(GTK_BOX(box), gen_ui->status_label);
+  gtk_label_set_ellipsize(GTK_LABEL(gen_ui->status_label), PANGO_ELLIPSIZE_END);
+  gtk_widget_set_halign(gen_ui->status_label, GTK_ALIGN_START);
+  gtk_widget_set_hexpand(gen_ui->status_label, TRUE);
+  gtk_box_append(GTK_BOX(status_box), gen_ui->status_label);
+
+  gtk_box_append(GTK_BOX(content_box), status_box);
+
+  /* Set content in toolbar view */
+  adw_toolbar_view_set_content(ADW_TOOLBAR_VIEW(toolbar_view), content_box);
 
   /* Set window content */
-  adw_application_window_set_content(gen_ui->window, box);
+  adw_application_window_set_content(gen_ui->window, toolbar_view);
 
   /* Setup keyboard input */
   key_controller = gtk_event_controller_key_new();
@@ -580,12 +612,58 @@ static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval,
 
 static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data)
 {
-  if (gen_ui->running && !gen_quit) {
+  static gint64 last_frame_time = 0;
+  gint64 current_time;
+  gint64 elapsed_us;
+  gint64 frame_duration_us;
+  int pending_samples;
+
+  if (!gen_ui->running || gen_quit)
+    return G_SOURCE_CONTINUE;
+
+  /* Get current time in microseconds
+     Note: GdkFrameClock provides VSync-aware timing automatically.
+     This callback is invoked in sync with the display refresh rate. */
+  current_time = g_get_monotonic_time();
+
+  if (last_frame_time == 0) {
+    last_frame_time = current_time;
+  }
+
+  /* Calculate frame duration based on Genesis timing
+     NTSC: 60Hz = 16666.67 microseconds per frame
+     PAL:  50Hz = 20000 microseconds per frame */
+  frame_duration_us = vdp_pal ? 20000 : 16667;
+
+  elapsed_us = current_time - last_frame_time;
+
+  /* Check sound buffer status to prevent overflow */
+  pending_samples = soundp_samplesbuffered();
+
+  /* If sound buffer is too full (more than 2x threshold), skip this frame
+     to let audio catch up and prevent buffer overflow.
+     This provides backpressure to maintain audio/video sync. */
+  if (pending_samples > (int)(sound_threshold * 2)) {
+    return G_SOURCE_CONTINUE;
+  }
+
+  /* Only execute frame if enough time has elapsed.
+     With GdkFrameClock's VSync-aware callbacks, this provides smooth rendering
+     without tearing while maintaining correct emulation speed. */
+  if (elapsed_us >= frame_duration_us) {
     ui_sdl_events();
     ui_newframe();
     event_doframe();
     gtk_widget_queue_draw(gen_ui->drawing_area);
+
+    /* Update last frame time
+       Note: We use current_time rather than += frame_duration_us
+       to avoid accumulating timing errors over long sessions */
+    last_frame_time = current_time;
   }
+
+  /* Callback will run again on next display refresh, but will skip execution
+     if not enough time has elapsed for proper emulation timing */
   return G_SOURCE_CONTINUE;
 }
 

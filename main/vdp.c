@@ -90,8 +90,9 @@ void vdp_describe(void);
 void vdp_eventinit(void);
 void vdp_layer_simple(unsigned int layer, unsigned int priority,
                       uint8 *fielddata, unsigned int lineoffset);
-inline void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags,
-                         uint8 *cellloc, unsigned int lineoffset);
+/* C17 migration: removed 'inline' to provide external linkage */
+void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags,
+                  uint8 *cellloc, unsigned int lineoffset);
 void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata);
 int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
                       unsigned int lineoffset, unsigned int number,
@@ -422,8 +423,11 @@ void vdp_storedata(uint16 data)
   uint16 sdata;
 
   if (vdp_ctrlflag) {
-    LOG_NORMAL(("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
-                vdp_first, vdp_second));
+    /* Note: Don't log here - vdp_storedata() is called thousands of times per frame
+       during VDP writes. Logging causes severe performance issues and audio freezing.
+       This condition indicates an "unterminated control write" but is not critical. */
+    // LOG_NORMAL(("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
+    //             vdp_first, vdp_second));
     vdp_storectrl(vdp_second);
   }
 #ifdef DEBUG_VDPDATA
@@ -473,8 +477,10 @@ uint16 vdp_fetchdata(void)
   uint16 data;
 
   if (vdp_ctrlflag) {
-    LOG_NORMAL(("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
-                vdp_first, vdp_second));
+    /* Note: Don't log here - vdp_fetchdata() is called thousands of times per frame
+       during VDP reads. Logging causes severe performance issues and audio freezing. */
+    // LOG_NORMAL(("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
+    //             vdp_first, vdp_second));
     vdp_storectrl(vdp_second);
   }
 
@@ -1705,8 +1711,9 @@ void vdp_endfield(void)
      vdp_event_endline); */
 }
 
-inline void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags,
-                         uint8 *cellloc, unsigned int lineoffset)
+/* C17 migration: removed 'inline' to provide external linkage */
+void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags,
+                  uint8 *cellloc, unsigned int lineoffset)
 {
   int y, x;
   uint8 value;

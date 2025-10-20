@@ -6,6 +6,13 @@
 
 #define GEN_RAMLENGTH 64*1024
 
+/* C11: Verify Genesis RAM size at compile time */
+#ifndef GENERATOR_BUILD_TOOL
+  #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+    static_assert(GEN_RAMLENGTH == 65536, "Genesis RAM must be 64KB");
+  #endif
+#endif
+
 #define LEN_IPCLISTTABLE 16*1024
 
 char *gen_loadimage(const char *filename);

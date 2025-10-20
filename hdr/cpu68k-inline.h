@@ -24,7 +24,7 @@
 #define VFLAG (reg68k_sr.sr_struct.v)
 #define CFLAG (reg68k_sr.sr_struct.c)
 
-static __inline__ sint32 idxval_dst(t_ipc *ipc) {
+static inline sint32 idxval_dst(t_ipc *ipc) {
   switch( ((ipc->dst>>27) & 1) | ((ipc->dst>>30) & 2) ) {
   case 0: /* data, word */
     return ((sint16)DATAREG((ipc->dst>>28)&7))+((((sint32)(ipc->dst<<8)))>>8);
@@ -38,7 +38,7 @@ static __inline__ sint32 idxval_dst(t_ipc *ipc) {
   return 0;
 }
 
-static __inline__ sint32 idxval_src(t_ipc *ipc) {
+static inline sint32 idxval_src(t_ipc *ipc) {
   switch( ((ipc->src>>27) & 1) | ((ipc->src>>30) & 2) ) {
   case 0: /* data, word */
     return ((sint16)DATAREG((ipc->src>>28)&7))+((((sint32)(ipc->src<<8)))>>8);

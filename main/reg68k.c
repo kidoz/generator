@@ -214,10 +214,14 @@ void reg68k_internal_autovector(int avno)
     reg68k_sr.sr_int |= avno << 8;
     tmpaddr = reg68k_pc;
     reg68k_pc = fetchlong((V_AUTO + avno - 1) * 4);
-    LOG_USER(("AUTOVECTOR %d: %X -> %X", avno, tmpaddr, reg68k_pc));
+    /* Note: Don't log here - autovectors happen 60+ times per second (VBlank)
+       or up to 262 times per second (HBlank). Logging in hot path causes
+       severe performance issues and audio freezing. */
+    // LOG_USER(("AUTOVECTOR %d: %X -> %X", avno, tmpaddr, reg68k_pc));
     regs.pending = 0;
   } else {
-    LOG_USER(("%08X autovector %d pending", reg68k_pc, avno));
+    /* Note: Don't log here - this is in the interrupt hot path. */
+    // LOG_USER(("%08X autovector %d pending", reg68k_pc, avno));
     // if (!regs.pending || regs.pending < avno) - not sure about this
     regs.pending = avno;
   }

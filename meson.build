@@ -7,7 +7,7 @@ project('generator', 'c',
   version: '0.35',
   license: 'GPL-2.0-or-later',
   default_options: [
-    'c_std=gnu99',  # Use GNU99 for inline semantics compatibility
+    'c_std=c17',  # Use pure C17 standard (ISO/IEC 9899:2018) without GNU extensions
     'warning_level=1',
   ],
   meson_version: '>=0.60.0'
@@ -58,8 +58,8 @@ endif
 
 add_project_arguments('-DALIGNLONGS=@0@'.format(alignlongs), language: 'c')
 
-# GNU89 inline semantics for compatibility with old inline code
-add_project_arguments('-fgnu89-inline', language: 'c')
+# C17 Migration: Removed -fgnu89-inline flag
+# Now using standard C99/C17 inline semantics with 'static inline'
 
 # GCC optimization flags
 if enable_debug

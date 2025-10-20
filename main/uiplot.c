@@ -32,6 +32,8 @@ void uiplot_checkpalcache(int flag)
 {
   unsigned int col;
   uint8 *p;
+  uint8 r, g, b;
+  uint8 r8, g8, b8;
 
   /* this code requires that there be at least 4 bits per colour, that
      is, three bits that come from the console's palette, and one more bit
@@ -45,20 +47,35 @@ void uiplot_checkpalcache(int flag)
       continue;
     vdp_cramf[col] = 0;
     p = (uint8 *)vdp_cram + 2 * col;    /* point p to the two-byte CRAM entry */
-    uiplot_palcache[col] =          /* normal */
-      (p[0] & 0xE) << (uiplot_blueshift + 1) |
-      (p[1] & 0xE) << (uiplot_redshift + 1) |
-      ((p[1] & 0xE0) >> 4) << (uiplot_greenshift + 1);
-    uiplot_palcache[col + 64] =     /* hilight */
-      (p[0] & 0xE) << uiplot_blueshift |
-      (p[1] & 0xE) << uiplot_redshift |
-      ((p[1] & 0xE0) >> 4) << uiplot_greenshift |
-      (16 << uiplot_blueshift) | (16 << uiplot_redshift) |
-      (16 << uiplot_greenshift);
-    uiplot_palcache[col + 128] =    /* shadow */
-      (p[0] & 0xE) << uiplot_blueshift |
-      (p[1] & 0xE) << uiplot_redshift |
-      ((p[1] & 0xE0) >> 4) << uiplot_greenshift;
+
+    /* Extract 3-bit Genesis colors (values 0-14) */
+    b = (p[0] & 0xE);         /* Blue:  bits 1-3 */
+    r = (p[1] & 0xE);         /* Red:   bits 1-3 */
+    g = (p[1] & 0xE0) >> 4;   /* Green: bits 5-7 */
+
+    /* Expand 3-bit to 8-bit: (value << 4) | (value >> 1)
+       Maps: 0→0, 2→36, 4→73, 6→109, 8→146, 10→182, 12→219, 14→255 */
+    b8 = (b << 4) | (b >> 1);
+    r8 = (r << 4) | (r >> 1);
+    g8 = (g << 4) | (g >> 1);
+
+    /* Normal brightness */
+    uiplot_palcache[col] =
+      (b8 << uiplot_blueshift) |
+      (r8 << uiplot_redshift) |
+      (g8 << uiplot_greenshift);
+
+    /* Highlight (add 16 to each component, saturated) */
+    uiplot_palcache[col + 64] =
+      ((b8 + 16 > 255 ? 255 : b8 + 16) << uiplot_blueshift) |
+      ((r8 + 16 > 255 ? 255 : r8 + 16) << uiplot_redshift) |
+      ((g8 + 16 > 255 ? 255 : g8 + 16) << uiplot_greenshift);
+
+    /* Shadow (divide by 2) */
+    uiplot_palcache[col + 128] =
+      ((b8 >> 1) << uiplot_blueshift) |
+      ((r8 >> 1) << uiplot_redshift) |
+      ((g8 >> 1) << uiplot_greenshift);
   }
 }
 

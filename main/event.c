@@ -14,9 +14,11 @@
    cycle (reg68k_external_execute -> instruction -> vdp write -> dma ->
    event_freeze -> event_nextevent).  Be careful */
 
-/* time for next event - update vdp_event - return when to call again */
+/* time for next event - update vdp_event - return when to call again
+   Note: C17 migration - removed 'inline' keyword to provide external linkage.
+   In C99/C17, plain 'inline' without 'extern' may not emit external definition. */
 
-inline void event_nextevent(void)
+void event_nextevent(void)
 {
   /* call this when it *is* time for the next event as dictated by vdp_event,
      so we switch on it and update vdp_event at the same time */

@@ -4,7 +4,13 @@
 #endif
 
 #define SOUND_MAXRATE 44100
-#define SOUND_SAMPLERATE 22050
+#define SOUND_SAMPLERATE 44100  /* Increased from 22050 Hz for better audio quality */
+
+/* C11: Verify audio configuration at compile time */
+static_assert(SOUND_SAMPLERATE <= SOUND_MAXRATE,
+              "SOUND_SAMPLERATE must not exceed SOUND_MAXRATE");
+static_assert(SOUND_SAMPLERATE == 44100,
+              "SOUND_SAMPLERATE must be 44100 Hz for CD-quality audio");
 
 extern int sound_debug;
 extern int sound_feedback;

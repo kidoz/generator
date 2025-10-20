@@ -4,9 +4,12 @@
 # Stage 2: gen68k generates 16 C files covering the 68k instruction space
 
 # Stage 1: Build def68k tool and generate headers
+# Note: Build tools use C17 and set GENERATOR_BUILD_TOOL to skip static assertions
 def68k_exe = executable('def68k',
   sources: ['def68k.c', 'tab68k.c'],
   include_directories: include_directories('../hdr', '.'),
+  c_args: ['-DGENERATOR_BUILD_TOOL=1'],
+  override_options: ['c_std=c17'],
   native: true
 )
 
@@ -20,10 +23,13 @@ def68k_headers = custom_target('def68k_headers',
 )
 
 # Stage 2: Build gen68k tool
+# Note: Build tools use C17 and set GENERATOR_BUILD_TOOL to skip static assertions
 gen68k_exe = executable('gen68k',
   sources: ['gen68k.c', 'tab68k.c'],
   include_directories: include_directories('../hdr', '.'),
   dependencies: declare_dependency(sources: def68k_headers),
+  c_args: ['-DGENERATOR_BUILD_TOOL=1'],
+  override_options: ['c_std=c17'],
   native: true
 )
 

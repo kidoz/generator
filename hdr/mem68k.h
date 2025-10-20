@@ -50,7 +50,7 @@ extern void (*mem68k_store_long[0x1000])(uint32 addr, uint32 data);
 
 /* chances are a store is to RAM - optimise for this case */
 
-static __inline__ void storebyte(uint32 addr, uint8 data)
+static inline void storebyte(uint32 addr, uint8 data)
 {
   if ((addr & 0xE00000) == 0xE00000) {
     addr&= 0xffff;
@@ -60,7 +60,7 @@ static __inline__ void storebyte(uint32 addr, uint8 data)
   }
 }
 
-static __inline__ void storeword(uint32 addr, uint16 data)
+static inline void storeword(uint32 addr, uint16 data)
 {
   /* in an ideal world we'd check bit 0 of addr, but speed is everything */
   if ((addr & 0xE00000) == 0xE00000) {
@@ -71,7 +71,7 @@ static __inline__ void storeword(uint32 addr, uint16 data)
   }
 }
 
-static __inline__ void storelong(uint32 addr, uint32 data)
+static inline void storelong(uint32 addr, uint32 data)
 {
   /* in an ideal world we'd check bit 0 of addr, but speed is everything */
   if ((addr & 0xE00000) == 0xE00000) {

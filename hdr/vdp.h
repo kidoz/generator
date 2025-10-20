@@ -71,6 +71,15 @@ uint8 vdp_gethpos(void);
 #define LEN_VSRAM 80
 #define LEN_VRAM 64*1024
 
+/* C11: Verify VDP memory sizes at compile time */
+#ifndef GENERATOR_BUILD_TOOL
+  #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+    static_assert(LEN_CRAM == 128, "Genesis CRAM must be 128 bytes");
+    static_assert(LEN_VSRAM == 80, "Genesis VSRAM must be 80 bytes");
+    static_assert(LEN_VRAM == 65536, "Genesis VRAM must be 64KB");
+  #endif
+#endif
+
 /* an estimate of the total cell width including HBLANK, for calculations */
 #define TOTAL_CELLWIDTH 64
 
