@@ -46,6 +46,18 @@ if ui_backend == 'gtk4'
   )
   build_deps += [ui_deps, gtkopts_dep, declare_dependency(link_with: tab68k_lib)]
 
+elif ui_backend == 'console'
+  program_name = 'generator-console'
+  main_sources = common_sources + files(
+    'logo.c',
+    'font.c',
+    'ui-console.c',
+    'uip-sdl2.c',
+    'uiplot.c',
+    'gensoundp-sdl2.c'
+  )
+  build_deps += ui_deps
+
 elif ui_backend == 'svgalib'
   program_name = 'generator-svgalib'
   main_sources = common_sources + files(

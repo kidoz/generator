@@ -168,11 +168,13 @@ int ui_init(int argc, char *argv[])
   gen_ui->whichbank = 0;
   gen_ui->musicfile_fd = -1;
 
-  /* Set up color conversion for Cairo CAIRO_FORMAT_RGB24 (0xBBGGRRAA on little-endian) */
-  uiplot_setshifts(0, 8, 16);  /* red=0, green=8, blue=16 */
+  /* Set up color conversion for Cairo CAIRO_FORMAT_RGB24
+     Format: 32-bit value 0xXXRRGGBB (XX=unused, RR=red, GG=green, BB=blue)
+     Red in bits 16-23, Green in bits 8-15, Blue in bits 0-7 */
+  uiplot_setshifts(16, 8, 0);  /* red=16, green=8, blue=0 */
 
-  /* Create GTK application */
-  gen_ui->app = adw_application_new("net.squish.generator", G_APPLICATION_DEFAULT_FLAGS);
+  /* Create GTK application with NON_UNIQUE flag to allow multiple instances */
+  gen_ui->app = adw_application_new("net.squish.generator", G_APPLICATION_NON_UNIQUE);
   g_signal_connect(gen_ui->app, "activate", G_CALLBACK(ui_activate), NULL);
   g_signal_connect(gen_ui->app, "startup", G_CALLBACK(ui_startup), NULL);
   g_signal_connect(gen_ui->app, "shutdown", G_CALLBACK(ui_shutdown), NULL);
@@ -681,9 +683,25 @@ static void ui_newframe(void)
   if (frameplots_i > vdp_framerate)
     frameplots_i = 0;
 
-  if (((vdp_reg[12] >> 1) & 3) && vdp_oddframe) {
-    /* Interlace mode handling */
+  /* Check interlace mode from VDP register 12 bits 1-2:
+     0 = normal (no interlace)
+     1 = interlace mode 1 (doubled - even/odd fields identical)
+     2 = invalid (treat as doubled)
+     3 = interlace mode 2 (double resolution - even/odd fields different) */
+  unsigned int interlace_mode = (vdp_reg[12] >> 1) & 3;
+
+  if (interlace_mode && vdp_oddframe) {
+    /* In interlace mode on odd field */
+    if (interlace_mode == 3) {
+      /* Mode 3 (double resolution): Keep plotfield from even field
+         so we render both fields as a pair with different data */
+    } else {
+      /* Modes 1 & 2 (doubled/invalid): Skip odd fields because they're
+         identical to even fields (both render with oddframe=0) */
+      gen_ui->plotfield = FALSE;
+    }
   } else {
+    /* Not in interlace mode, or in interlace mode on even field */
     gen_ui->plotfield = FALSE;
     if (gen_ui->frameskip == 0) {
       /* Dynamic frameskip: always plot unless sound is way ahead
@@ -760,9 +778,42 @@ void ui_line(int line)
 void ui_endfield(void)
 {
   static int counter = 0;
+  static uint64_t last_frame_time = 0;
+  static uint64_t frame_count = 0;
+  uint64_t current_time;
+  uint64_t elapsed_time;
+  uint32_t target_frame_time_ms;
+  uint32_t delay_needed;
 
   if (gen_ui->plotfield) {
     ui_rendertoscreen();        /* plot newscreen to screen */
+
+    /* Frame rate limiting - ensure we don't run faster than target framerate
+       Genesis timing: NTSC = 60 Hz (16.67ms), PAL = 50 Hz (20ms) */
+    frame_count++;
+    current_time = g_get_monotonic_time() / 1000;  /* Convert microseconds to milliseconds */
+
+    if (last_frame_time == 0) {
+      last_frame_time = current_time;
+    } else {
+      /* Calculate target frame time in milliseconds
+         vdp_framerate is set in vdp.c: 60 for NTSC, 50 for PAL */
+      target_frame_time_ms = 1000 / vdp_framerate;  /* 16ms for NTSC, 20ms for PAL */
+
+      elapsed_time = current_time - last_frame_time;
+
+      /* If we're running too fast, delay to maintain proper frame rate */
+      if (elapsed_time < target_frame_time_ms) {
+        delay_needed = target_frame_time_ms - elapsed_time;
+        /* Cap delay at 2x target time to avoid hanging if timing goes wrong */
+        if (delay_needed > 0 && delay_needed < target_frame_time_ms * 2) {
+          g_usleep(delay_needed * 1000);  /* g_usleep takes microseconds */
+          current_time = g_get_monotonic_time() / 1000;
+        }
+      }
+
+      last_frame_time = current_time;
+    }
   }
 
   if (gen_ui->frameskip == 0) {

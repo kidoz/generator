@@ -136,6 +136,13 @@ if ui_backend == 'gtk4'
   ui_deps = [gtk4_dep, adwaita_dep, sdl2_dep]
   ui_sources = files('main/ui-gtk4.c', 'main/uiplot.c', 'main/gensoundp-sdl2.c')
 
+elif ui_backend == 'console'
+  sdl2_dep = dependency('sdl2', version: '>=2.0.0')
+  ui_deps = [sdl2_dep]
+  ui_sources = files('main/ui-console.c', 'main/uip-sdl2.c',
+                     'main/uiplot.c', 'main/gensoundp-sdl2.c',
+                     'main/logo.c', 'main/font.c')
+
 elif ui_backend == 'svgalib'
   vga_dep = cc.find_library('vga')
   ui_deps = [vga_dep]

@@ -48,10 +48,12 @@ void uiplot_checkpalcache(int flag)
     vdp_cramf[col] = 0;
     p = (uint8 *)vdp_cram + 2 * col;    /* point p to the two-byte CRAM entry */
 
-    /* Extract 3-bit Genesis colors (values 0-14) */
-    b = (p[0] & 0xE);         /* Blue:  bits 1-3 */
-    r = (p[1] & 0xE);         /* Red:   bits 1-3 */
-    g = (p[1] & 0xE0) >> 4;   /* Green: bits 5-7 */
+    /* Extract 3-bit Genesis colors (values 0-14)
+       Genesis CRAM format (big-endian word): 0xBGR0 = 0000_BBB0_GGG0_RRR0
+       In little-endian bytes: p[0]=low byte=GGG0_RRR0, p[1]=high byte=0000_BBB0 */
+    r = (p[0] & 0xE);         /* Red:   bits 3-1 of p[0] */
+    g = (p[0] & 0xE0) >> 4;   /* Green: bits 7-5 of p[0], shifted to bits 3-1 */
+    b = (p[1] & 0xE);         /* Blue:  bits 3-1 of p[1] */
 
     /* Expand 3-bit to 8-bit: (value << 4) | (value >> 1)
        Maps: 0→0, 2→36, 4→73, 6→109, 8→146, 10→182, 12→219, 14→255 */
@@ -59,23 +61,51 @@ void uiplot_checkpalcache(int flag)
     r8 = (r << 4) | (r >> 1);
     g8 = (g << 4) | (g >> 1);
 
-    /* Normal brightness */
-    uiplot_palcache[col] =
-      (b8 << uiplot_blueshift) |
-      (r8 << uiplot_redshift) |
-      (g8 << uiplot_greenshift);
+    /* Normal brightness
+       For RGB565: need 5 bits for R/B (shift 8-bit down by 3), 6 bits for G (shift down by 2)
+       For RGB888: all stay at 8 bits (no shift needed)
+       We detect the bit depth by checking shift values - if they're typical RGB565 (11,5,0)
+       we scale, otherwise we assume higher bit depth format */
+    int is_16bit = (uiplot_redshift == 11 && uiplot_greenshift == 5 && uiplot_blueshift == 0) ||
+                   (uiplot_redshift == 10 && uiplot_greenshift == 5 && uiplot_blueshift == 0);
 
-    /* Highlight (add 16 to each component, saturated) */
-    uiplot_palcache[col + 64] =
-      ((b8 + 16 > 255 ? 255 : b8 + 16) << uiplot_blueshift) |
-      ((r8 + 16 > 255 ? 255 : r8 + 16) << uiplot_redshift) |
-      ((g8 + 16 > 255 ? 255 : g8 + 16) << uiplot_greenshift);
+    if (is_16bit) {
+      /* RGB565 or RGB555 - scale 8-bit colors down to 5/6 bits */
+      uiplot_palcache[col] =
+        ((b8 >> 3) << uiplot_blueshift) |   /* 8-bit to 5-bit blue */
+        ((r8 >> 3) << uiplot_redshift) |    /* 8-bit to 5-bit red */
+        ((g8 >> 2) << uiplot_greenshift);   /* 8-bit to 6-bit green */
 
-    /* Shadow (divide by 2) */
-    uiplot_palcache[col + 128] =
-      ((b8 >> 1) << uiplot_blueshift) |
-      ((r8 >> 1) << uiplot_redshift) |
-      ((g8 >> 1) << uiplot_greenshift);
+      /* Highlight (add 16 to each 8-bit component, then scale down, saturated) */
+      uiplot_palcache[col + 64] =
+        (((b8 + 16 > 255 ? 255 : b8 + 16) >> 3) << uiplot_blueshift) |
+        (((r8 + 16 > 255 ? 255 : r8 + 16) >> 3) << uiplot_redshift) |
+        (((g8 + 16 > 255 ? 255 : g8 + 16) >> 2) << uiplot_greenshift);
+
+      /* Shadow (divide by 2, then scale down) */
+      uiplot_palcache[col + 128] =
+        (((b8 >> 1) >> 3) << uiplot_blueshift) |
+        (((r8 >> 1) >> 3) << uiplot_redshift) |
+        (((g8 >> 1) >> 2) << uiplot_greenshift);
+    } else {
+      /* Higher bit depth (24/32-bit) - use full 8-bit values */
+      uiplot_palcache[col] =
+        (b8 << uiplot_blueshift) |
+        (r8 << uiplot_redshift) |
+        (g8 << uiplot_greenshift);
+
+      /* Highlight (add 16 to each component, saturated) */
+      uiplot_palcache[col + 64] =
+        ((b8 + 16 > 255 ? 255 : b8 + 16) << uiplot_blueshift) |
+        ((r8 + 16 > 255 ? 255 : r8 + 16) << uiplot_redshift) |
+        ((g8 + 16 > 255 ? 255 : g8 + 16) << uiplot_greenshift);
+
+      /* Shadow (divide by 2) */
+      uiplot_palcache[col + 128] =
+        ((b8 >> 1) << uiplot_blueshift) |
+        ((r8 >> 1) << uiplot_redshift) |
+        ((g8 >> 1) << uiplot_greenshift);
+    }
   }
 }
 

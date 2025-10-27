@@ -190,6 +190,12 @@ int soundp_samplesbuffered(void)
 
   SDL_UnlockMutex(soundp_mutex);
 
+  /* Account for SDL's internal audio buffer - samples that have been pulled
+     from our ring buffer by the audio callback but are still queued in SDL's
+     hardware buffer waiting to be played. This ensures accurate timing for
+     frame rate synchronization. */
+  samples_buffered += soundp_spec.samples;
+
   return samples_buffered;
 }
 

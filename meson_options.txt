@@ -3,7 +3,7 @@
 # UI Backend (required - choose one)
 option('ui-backend',
   type: 'combo',
-  choices: ['gtk4', 'svgalib', 'allegro', 'tcltk'],
+  choices: ['gtk4', 'console', 'svgalib', 'allegro', 'tcltk'],
   value: 'gtk4',
   description: 'User interface backend to build'
 )
