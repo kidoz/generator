@@ -1,6 +1,7 @@
 extern uint32 uiplot_palcache[192];
 
 void uiplot_setshifts(int redshift, int greenshift, int blueshift);
+void uiplot_setmasks(uint32 redmask, uint32 greenmask, uint32 bluemask);
 void uiplot_checkpalcache(int flag);
 void uiplot_convertdata16(uint8 *indata, uint16 *outdata, unsigned int pixels);
 void uiplot_convertdata32(uint8 *indata, uint32 *outdata, unsigned int pixels);

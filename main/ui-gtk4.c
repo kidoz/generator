@@ -172,6 +172,7 @@ int ui_init(int argc, char *argv[])
      Format: 32-bit value 0xXXRRGGBB (XX=unused, RR=red, GG=green, BB=blue)
      Red in bits 16-23, Green in bits 8-15, Blue in bits 0-7 */
   uiplot_setshifts(16, 8, 0);  /* red=16, green=8, blue=0 */
+  uiplot_setmasks(0x00FF0000, 0x0000FF00, 0x000000FF);  /* 8-bit per channel */
 
   /* Create GTK application with NON_UNIQUE flag to allow multiple instances */
   gen_ui->app = adw_application_new("net.squish.generator", G_APPLICATION_NON_UNIQUE);
@@ -567,11 +568,13 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int h
   unsigned int xoffset = (vdp_reg[12] & 1) ? 0 : 32;
   unsigned int yoffset = (vdp_reg[1] & (1 << 3)) ? 0 : 8;
 
-  if (!gen_ui || !gen_ui->screen0)
+  if (!gen_ui || !gen_ui->screen0 || !gen_ui->screen1)
     return;
 
-  /* Always display screen0 */
-  screen_data = gen_ui->screen0;
+  /* Double buffering: display the buffer indicated by whichbank
+   * whichbank is updated atomically by ui_rendertoscreen() after each frame
+   * completes, so we're always reading from a stable, complete frame. */
+  screen_data = (gen_ui->whichbank == 0) ? gen_ui->screen0 : gen_ui->screen1;
 
   /* Create Cairo image surface from emulator buffer
      Format: CAIRO_FORMAT_RGB24 which is 32-bit with unused alpha */
@@ -836,28 +839,41 @@ static void ui_rendertoscreen(void)
   unsigned int yoffset = (vdp_reg[1] & (1 << 3)) ? 0 : 8;
   unsigned int xoffset = (vdp_reg[12] & 1) ? 0 : 32;
   uint8 *screen;
+  uint8 *write_buffer;          /* buffer to write to (opposite of display) */
+  uint8 *display_buffer;        /* buffer currently being displayed */
   uint32 *evenscreen;           /* interlace: lines 0,2,etc. */
   uint32 *oddscreen;            /*            lines 1,3,etc. */
 
-  /* Always render to screen0 for display */
+  /* Double buffering: write to the buffer NOT currently being displayed
+   * whichbank indicates which buffer is being displayed:
+   *   0 = screen0 is displayed, write to screen1
+   *   1 = screen1 is displayed, write to screen0 */
+  if (gen_ui->whichbank == 0) {
+    display_buffer = gen_ui->screen0;
+    write_buffer = gen_ui->screen1;
+  } else {
+    display_buffer = gen_ui->screen1;
+    write_buffer = gen_ui->screen0;
+  }
+
   /* Render based on interlace mode */
   switch ((vdp_reg[12] >> 1) & 3) {
   case 0:                    /* normal */
   case 1:                    /* interlace simply doubled up */
   case 2:                    /* invalid */
-    /* Simple rendering - just copy newscreen to the display buffer */
+    /* Simple rendering - copy newscreen to the write buffer */
     for (line = 0; line < vdp_vislines; line++) {
       newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
-      screen = gen_ui->screen0 + ((line + yoffset) * 384 + xoffset) * 4;
+      screen = write_buffer + ((line + yoffset) * 384 + xoffset) * 4;
       memcpy(screen, newlinedata, nominalwidth * 4);
     }
     break;
 
   case 3:                    /* interlace with double resolution */
-    /* Handle interlaced display */
+    /* Handle interlaced display - need data from display buffer for interlacing */
     for (line = 0; line < vdp_vislines; line++) {
       newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
-      oldlinedata = (uint32 *)(gen_ui->screen0 + ((line + yoffset) * 384 + xoffset) * 4);
+      oldlinedata = (uint32 *)(display_buffer + ((line + yoffset) * 384 + xoffset) * 4);
 
       if (vdp_oddframe) {
         oddscreen = newlinedata;
@@ -867,7 +883,7 @@ static void ui_rendertoscreen(void)
         oddscreen = oldlinedata;
       }
 
-      screen = gen_ui->screen0 + ((line + yoffset) * 384 + xoffset) * 4;
+      screen = write_buffer + ((line + yoffset) * 384 + xoffset) * 4;
 
       /* Apply interlace filter */
       switch (ui_interlace) {
@@ -883,6 +899,11 @@ static void ui_rendertoscreen(void)
     }
     break;
   }
+
+  /* Swap buffers: the buffer we just wrote to becomes the display buffer
+   * This ensures Cairo reads from a complete, stable frame while we render
+   * the next frame to the other buffer. This eliminates tearing and stuttering. */
+  gen_ui->whichbank = (gen_ui->whichbank == 0) ? 1 : 0;
 }
 
 static void ui_simpleplot(void)

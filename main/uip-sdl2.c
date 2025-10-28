@@ -16,6 +16,7 @@
 #include "vdp.h"
 #include "cpu68k.h"
 #include "mem68k.h"
+#include "gensoundp.h"
 
 #define SCREEN_WIDTH 640
 #define SCREEN_HEIGHT 480
@@ -171,7 +172,25 @@ int uip_vgamode(void)
     memset(uip_screenmem[i], 0, BANKSIZE);
   }
 
-  /* Get pixel format details */
+  /* Query actual texture format created by SDL
+   * IMPORTANT: SDL may create a different format than requested, especially on Wayland!
+   * For example, we request RGB565 but SDL may create BGR565 on Wayland/Mesa systems.
+   */
+  Uint32 actual_format;
+  int access, w, h;
+  if (SDL_QueryTexture(uip_texture[0], &actual_format, &access, &w, &h) != 0) {
+    LOG_CRITICAL(("Failed to query SDL texture format: %s", SDL_GetError()));
+    uip_textmode();
+    return 1;
+  }
+
+  if (actual_format != pixel_format) {
+    LOG_NORMAL(("SDL created texture with format 0x%08X instead of requested 0x%08X",
+                actual_format, pixel_format));
+    pixel_format = actual_format;
+  }
+
+  /* Get pixel format details from the ACTUAL format SDL created */
   format = SDL_AllocFormat(pixel_format);
   if (!format) {
     LOG_CRITICAL(("Failed to allocate pixel format: %s", SDL_GetError()));
@@ -185,29 +204,40 @@ int uip_vgamode(void)
   uip_uipinfo->screenmem1 = uip_screenmem[1];
   uip_uipinfo->screenmem_w = uip_screenmem[0]; /* start writing to bank 0 */
 
-  /* Determine color shifts for RGB565 format
-   * RGB565: RRRR RGGG GGGB BBBB
-   * Red: 5 bits at position 11
-   * Green: 6 bits at position 5
-   * Blue: 5 bits at position 0
+  /* Get color shifts and masks from SDL's actual pixel format
+   * This works for any format: RGB565, BGR565, RGB555, BGR555, etc.
+   * Common formats:
+   *   RGB565 (X11):     R=11, G=5, B=0, Rmask=0xF800, Gmask=0x07E0, Bmask=0x001F
+   *   BGR565 (Wayland): R=0,  G=5, B=11, Rmask=0x001F, Gmask=0x07E0, Bmask=0xF800
+   *   RGB555:           R=10, G=5, B=0, Rmask=0x7C00, Gmask=0x03E0, Bmask=0x001F
+   *   BGR555:           R=0,  G=5, B=10, Rmask=0x001F, Gmask=0x03E0, Bmask=0x7C00
    */
   if (uip_forceredshift >= 0) {
     uip_uipinfo->redshift = uip_forceredshift;
   } else {
-    uip_uipinfo->redshift = 11; /* R at bit 11 */
+    uip_uipinfo->redshift = format->Rshift;
   }
 
   if (uip_forcegreenshift >= 0) {
     uip_uipinfo->greenshift = uip_forcegreenshift;
   } else {
-    uip_uipinfo->greenshift = 5; /* G at bit 5 */
+    uip_uipinfo->greenshift = format->Gshift;
   }
 
   if (uip_forceblueshift >= 0) {
     uip_uipinfo->blueshift = uip_forceblueshift;
   } else {
-    uip_uipinfo->blueshift = 0; /* B at bit 0 */
+    uip_uipinfo->blueshift = format->Bshift;
   }
+
+  /* Store the color masks for format detection */
+  uip_uipinfo->redmask = format->Rmask;
+  uip_uipinfo->greenmask = format->Gmask;
+  uip_uipinfo->bluemask = format->Bmask;
+
+  LOG_VERBOSE(("SDL texture format: %s (0x%08X)", SDL_GetPixelFormatName(actual_format), actual_format));
+  LOG_VERBOSE(("Pixel format masks: R=0x%04X G=0x%04X B=0x%04X",
+               format->Rmask, format->Gmask, format->Bmask));
 
   SDL_FreeFormat(format);
 
@@ -220,8 +250,7 @@ int uip_vgamode(void)
 
 void uip_displaybank(int bank)
 {
-  void *pixels;
-  int pitch;
+  int pitch = SCREEN_WIDTH * 2; /* 2 bytes per pixel (RGB565) */
 
   /* Handle bank toggle: -1 means switch to the other bank */
   if (bank == -1)
@@ -230,13 +259,17 @@ void uip_displaybank(int bank)
   if (!uip_renderer || !uip_texture[bank])
     return;
 
-  /* Update texture with current screen memory */
-  if (SDL_LockTexture(uip_texture[bank], NULL, &pixels, &pitch) == 0) {
-    memcpy(pixels, uip_screenmem[bank], BANKSIZE);
-    SDL_UnlockTexture(uip_texture[bank]);
+  /* Update texture with current screen memory
+   * SDL_UpdateTexture is faster and more synchronized than Lock/memcpy/Unlock
+   * for streaming textures. It handles proper synchronization with the GPU. */
+  if (SDL_UpdateTexture(uip_texture[bank], NULL, uip_screenmem[bank], pitch) != 0) {
+    LOG_CRITICAL(("Failed to update texture: %s", SDL_GetError()));
+    return;
   }
 
-  /* Render to screen */
+  /* Render to screen
+   * The renderer was created with SDL_RENDERER_PRESENTVSYNC, so
+   * SDL_RenderPresent will wait for vblank to avoid tearing. */
   SDL_RenderClear(uip_renderer);
   SDL_RenderCopy(uip_renderer, uip_texture[bank], NULL, NULL);
   SDL_RenderPresent(uip_renderer);
@@ -301,6 +334,17 @@ int uip_checkkeyboard(void)
 
       case SDL_KEYUP:
         uip_keyboardhandler(event.key.keysym.scancode, 0);
+        break;
+
+      case SDL_WINDOWEVENT:
+        /* Handle window focus changes to pause/resume audio */
+        if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+          soundp_pause();
+          LOG_VERBOSE(("Window focus lost - audio paused"));
+        } else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+          soundp_resume();
+          LOG_VERBOSE(("Window focus gained - audio resumed"));
+        }
         break;
     }
   }

@@ -170,6 +170,24 @@ void soundp_stop(void)
   }
 }
 
+/*** soundp_pause - pause audio playback ***/
+
+void soundp_pause(void)
+{
+  if (soundp_dev) {
+    SDL_PauseAudioDevice(soundp_dev, 1);
+  }
+}
+
+/*** soundp_resume - resume audio playback ***/
+
+void soundp_resume(void)
+{
+  if (soundp_dev) {
+    SDL_PauseAudioDevice(soundp_dev, 0);
+  }
+}
+
 /*** soundp_samplesbuffered - how many samples are currently buffered? ***/
 
 int soundp_samplesbuffered(void)

@@ -2,6 +2,7 @@
 
 /* plotter routines for user interfaces - used by console and gtk */
 
+#include <stdio.h>
 #include "generator.h"
 #include "vdp.h"
 
@@ -12,12 +13,22 @@ uint32 uiplot_palcache[192];
 static int uiplot_redshift;
 static int uiplot_greenshift;
 static int uiplot_blueshift;
+static uint32 uiplot_redmask;
+static uint32 uiplot_greenmask;
+static uint32 uiplot_bluemask;
 
 void uiplot_setshifts(int redshift, int greenshift, int blueshift)
 {
   uiplot_redshift = redshift;
   uiplot_greenshift = greenshift;
   uiplot_blueshift = blueshift;
+}
+
+void uiplot_setmasks(uint32 redmask, uint32 greenmask, uint32 bluemask)
+{
+  uiplot_redmask = redmask;
+  uiplot_greenmask = greenmask;
+  uiplot_bluemask = bluemask;
 }
 
 /* uiplot_checkpalcache goes through the CRAM memory in the Genesis and 
@@ -49,11 +60,21 @@ void uiplot_checkpalcache(int flag)
     p = (uint8 *)vdp_cram + 2 * col;    /* point p to the two-byte CRAM entry */
 
     /* Extract 3-bit Genesis colors (values 0-14)
-       Genesis CRAM format (big-endian word): 0xBGR0 = 0000_BBB0_GGG0_RRR0
-       In little-endian bytes: p[0]=low byte=GGG0_RRR0, p[1]=high byte=0000_BBB0 */
-    r = (p[0] & 0xE);         /* Red:   bits 3-1 of p[0] */
-    g = (p[0] & 0xE0) >> 4;   /* Green: bits 7-5 of p[0], shifted to bits 3-1 */
-    b = (p[1] & 0xE);         /* Blue:  bits 3-1 of p[1] */
+       Genesis CRAM format (16-bit big-endian word): 0000_BBB0_GGG0_RRR0
+       Bit layout: [15-12: 0000] [11-9: Blue] [8: 0] [7-5: Green] [4: 0] [3-1: Red] [0: 0]
+
+       IMPORTANT: vdp_cram is stored in NATIVE byte order (not swapped to little-endian)
+       So on x86 (little-endian), when we read as bytes:
+         p[0] = high byte (bits 15-8) = 0000_BBB0  ← Blue is here!
+         p[1] = low byte  (bits 7-0)  = GGG0_RRR0  ← Red & Green are here!
+
+       Therefore:
+         Red:   bits 3-1 of p[1]
+         Green: bits 7-5 of p[1]
+         Blue:  bits 3-1 of p[0] */
+    r = (p[1] & 0x0E);        /* Red:   bits 3-1 of p[1] → mask 0x0E */
+    g = (p[1] & 0xE0) >> 4;   /* Green: bits 7-5 of p[1] → mask 0xE0, shift right 4 */
+    b = (p[0] & 0x0E);        /* Blue:  bits 3-1 of p[0] → mask 0x0E */
 
     /* Expand 3-bit to 8-bit: (value << 4) | (value >> 1)
        Maps: 0→0, 2→36, 4→73, 6→109, 8→146, 10→182, 12→219, 14→255 */
@@ -62,31 +83,43 @@ void uiplot_checkpalcache(int flag)
     g8 = (g << 4) | (g >> 1);
 
     /* Normal brightness
-       For RGB565: need 5 bits for R/B (shift 8-bit down by 3), 6 bits for G (shift down by 2)
+       For 16-bit formats: need 5 bits for R/B (shift 8-bit down by 3)
        For RGB888: all stay at 8 bits (no shift needed)
-       We detect the bit depth by checking shift values - if they're typical RGB565 (11,5,0)
-       we scale, otherwise we assume higher bit depth format */
-    int is_16bit = (uiplot_redshift == 11 && uiplot_greenshift == 5 && uiplot_blueshift == 0) ||
-                   (uiplot_redshift == 10 && uiplot_greenshift == 5 && uiplot_blueshift == 0);
 
-    if (is_16bit) {
-      /* RGB565 or RGB555 - scale 8-bit colors down to 5/6 bits */
+       We detect the format by checking the green mask to distinguish RGB565 vs RGB555:
+         - greenmask == 0x07E0: RGB565 or BGR565 (green has 6 bits)
+         - greenmask == 0x03E0: RGB555 or BGR555 (green has 5 bits)
+         - Otherwise: 24/32-bit format
+    */
+    int green_bits;
+    if (uiplot_greenmask == 0x07E0) {
+      green_bits = 6; /* RGB565/BGR565 */
+    } else if (uiplot_greenmask == 0x03E0) {
+      green_bits = 5; /* RGB555/BGR555 */
+    } else {
+      green_bits = 8; /* RGB888/RGBA8888 */
+    }
+
+    if (green_bits < 8) {
+      /* 16-bit format - scale down to 5 or 6 bits */
+      int green_shift_amount = 8 - green_bits; /* 2 for 6-bit, 3 for 5-bit */
+
       uiplot_palcache[col] =
         ((b8 >> 3) << uiplot_blueshift) |   /* 8-bit to 5-bit blue */
         ((r8 >> 3) << uiplot_redshift) |    /* 8-bit to 5-bit red */
-        ((g8 >> 2) << uiplot_greenshift);   /* 8-bit to 6-bit green */
+        ((g8 >> green_shift_amount) << uiplot_greenshift);   /* 8-bit to 5 or 6-bit green */
 
       /* Highlight (add 16 to each 8-bit component, then scale down, saturated) */
       uiplot_palcache[col + 64] =
         (((b8 + 16 > 255 ? 255 : b8 + 16) >> 3) << uiplot_blueshift) |
         (((r8 + 16 > 255 ? 255 : r8 + 16) >> 3) << uiplot_redshift) |
-        (((g8 + 16 > 255 ? 255 : g8 + 16) >> 2) << uiplot_greenshift);
+        (((g8 + 16 > 255 ? 255 : g8 + 16) >> green_shift_amount) << uiplot_greenshift);
 
       /* Shadow (divide by 2, then scale down) */
       uiplot_palcache[col + 128] =
         (((b8 >> 1) >> 3) << uiplot_blueshift) |
         (((r8 >> 1) >> 3) << uiplot_redshift) |
-        (((g8 >> 1) >> 2) << uiplot_greenshift);
+        (((g8 >> 1) >> green_shift_amount) << uiplot_greenshift);
     } else {
       /* Higher bit depth (24/32-bit) - use full 8-bit values */
       uiplot_palcache[col] =
@@ -106,6 +139,7 @@ void uiplot_checkpalcache(int flag)
         ((r8 >> 1) << uiplot_redshift) |
         ((g8 >> 1) << uiplot_greenshift);
     }
+
   }
 }
 

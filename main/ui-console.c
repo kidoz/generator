@@ -628,6 +628,8 @@ int ui_loop(void)
   }
   uiplot_setshifts(ui_uipinfo.redshift, ui_uipinfo.greenshift,
                    ui_uipinfo.blueshift);
+  uiplot_setmasks(ui_uipinfo.redmask, ui_uipinfo.greenmask,
+                  ui_uipinfo.bluemask);
   gen_quit = 0;
   while (!uip_checkkeyboard()) {
     switch (ui_state) {
@@ -944,6 +946,14 @@ void ui_rendertoscreen(void)
   uip_displaybank(-1);
   if (ui_vsync)
     uip_vsync();
+
+  /* Update write buffer to point to the opposite bank for next frame
+   * This ensures we write to bank 0 while displaying bank 1, and vice versa */
+  if (uip_whichbank() == 0)
+    ui_uipinfo.screenmem_w = ui_uipinfo.screenmem1;
+  else
+    ui_uipinfo.screenmem_w = ui_uipinfo.screenmem0;
+
   /* swap ui_screenX and ui_newscreen pointers */
   scrtmp = *oldscreenpp;
   *oldscreenpp = ui_newscreen;
