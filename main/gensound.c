@@ -22,7 +22,7 @@
 int sound_debug = 0;            /* debug mode */
 int sound_feedback = 0;         /* -1, running out of sound
                                    +0, lots of sound, do something */
-unsigned int sound_minfields = 5;       /* min fields to try to buffer */
+unsigned int sound_minfields = 5;       /* min fields to try to buffer (optimized with g_idle_add architecture) */
 unsigned int sound_maxfields = 10;      /* max fields before blocking */
 unsigned int sound_speed = SOUND_SAMPLERATE;    /* sample rate */
 unsigned int sound_sampsperfield;       /* samples per field */

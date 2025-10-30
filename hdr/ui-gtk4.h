@@ -63,6 +63,14 @@ typedef struct {
   t_filter_type filter_type;
   int scale_factor; /* 1-4 for scale factors */
 
+  /* Dynamic Rate Control */
+  gboolean dynamic_rate_control;  /* Enable/disable dynamic rate control */
+  double rate_adjust;              /* Current rate adjustment factor (1.0 = normal) */
+  double rate_delta;               /* Maximum adjustment delta (default 0.005 = 0.5%) */
+  gint64 fps_times[60];            /* Last 60 frame timestamps for FPS calculation */
+  int fps_index;                   /* Current index in fps_times array */
+  double measured_fps;             /* Measured FPS (rolling average) */
+
   /* SDL and rendering */
   void *screen; /* SDL_Surface pointer */
   guint8 *screen_buffers[3];

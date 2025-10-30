@@ -57,7 +57,8 @@ static void ui_setup_actions(GtkApplication *app);
 static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data);
 static gboolean ui_key_pressed(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
 static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
-static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data);
+static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data);
+static gboolean ui_idle_callback(gpointer user_data);
 static void ui_newframe(void);
 static void ui_simpleplot(void);
 static void ui_sdl_events(void);
@@ -87,6 +88,14 @@ int ui_init(int argc, char *argv[])
   gen_ui->frameskip = 0;
   gen_ui->filter_type = FILTER_XBRZ2X;  /* Default to xBRZ 2x upscaling (highest quality) */
   gen_ui->scale_factor = 2;              /* Default to 2x scale */
+
+  /* Initialize dynamic rate control */
+  gen_ui->dynamic_rate_control = TRUE;   /* Enable by default */
+  gen_ui->rate_adjust = 1.0;             /* Normal speed */
+  gen_ui->rate_delta = 0.005;            /* ±0.5% maximum adjustment */
+  gen_ui->fps_index = 0;
+  gen_ui->measured_fps = 0.0;
+  /* fps_times array is zero-initialized by g_new0 */
 
   /* Allocate screen buffers */
   gen_ui->screen_buffers[0] = g_malloc0(4 * HMAXSIZE * VMAXSIZE);
@@ -222,6 +231,8 @@ int ui_loop(void)
     }
   } else {
     gen_loadmemrom(initcart, initcart_len);
+    /* Default ROM loaded, start emulation */
+    gen_ui->running = TRUE;
   }
 
   /* Run GTK application */
@@ -249,6 +260,14 @@ static void ui_activate(GtkApplication *app, gpointer user_data)
 
 static void ui_shutdown(GtkApplication *app, gpointer user_data)
 {
+  /* Stop emulation and cleanup */
+  gen_ui->running = FALSE;
+  gen_quit = 1;
+
+  /* Stop and cleanup sound system - this will close SDL2 audio device
+     and stop the audio callback thread, preventing sound from continuing */
+  sound_final();
+
   /* Save configuration */
   if (gtkopts_save(gen_ui->configfile) != 0) {
     fprintf(stderr, "Failed to save configuration\n");
@@ -399,8 +418,13 @@ static void ui_create_main_window(GtkApplication *app)
   g_signal_connect(key_controller, "key-released", G_CALLBACK(ui_key_released), NULL);
   gtk_widget_add_controller(GTK_WIDGET(gen_ui->window), key_controller);
 
-  /* Add tick callback for emulation loop */
-  gtk_widget_add_tick_callback(GTK_WIDGET(gen_ui->window), ui_tick_callback, NULL, NULL);
+  /* Connect window close signal to properly cleanup when window is closed */
+  g_signal_connect(gen_ui->window, "close-request", G_CALLBACK(ui_window_close_request), NULL);
+
+  /* Add idle callback for emulation loop
+     Using g_idle_add instead of gtk_widget_add_tick_callback provides
+     better thread scheduling with SDL2 audio thread, preventing priority conflicts */
+  g_idle_add(ui_idle_callback, NULL);
 
   /* Show window */
   gtk_window_present(GTK_WINDOW(gen_ui->window));
@@ -610,6 +634,21 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int h
   cairo_surface_destroy(surface);
 }
 
+/*** Window close handling ***/
+
+static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data)
+{
+  /* Stop emulation */
+  gen_ui->running = FALSE;
+  gen_quit = 1;
+
+  /* Quit the GTK application - this will trigger ui_shutdown */
+  g_application_quit(G_APPLICATION(gen_ui->app));
+
+  /* Return FALSE to allow the window to close */
+  return FALSE;
+}
+
 /*** Input handling ***/
 
 static gboolean ui_key_pressed(GtkEventControllerKey *controller, guint keyval,
@@ -628,7 +667,7 @@ static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval,
 
 /*** Emulation loop ***/
 
-static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data)
+static gboolean ui_idle_callback(gpointer user_data)
 {
   static gint64 last_frame_time = 0;
   gint64 current_time;
@@ -636,12 +675,17 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, 
   gint64 frame_duration_us;
   int pending_samples;
 
+  /* Stop the idle callback if quitting or not running
+     Return G_SOURCE_REMOVE to stop being called, not G_SOURCE_CONTINUE */
   if (!gen_ui->running || gen_quit)
-    return G_SOURCE_CONTINUE;
+    return G_SOURCE_REMOVE;
 
-  /* Get current time in microseconds
-     Note: GdkFrameClock provides VSync-aware timing automatically.
-     This callback is invoked in sync with the display refresh rate. */
+  /* Process SDL events with non-blocking SDL_PollEvent (called in ui_sdl_events)
+     This is the recommended pattern for GTK+SDL2 integration to avoid blocking
+     the GTK event loop, which would starve the SDL2 audio thread */
+  ui_sdl_events();
+
+  /* Get current time in microseconds for frame timing */
   current_time = g_get_monotonic_time();
 
   if (last_frame_time == 0) {
@@ -650,38 +694,116 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, 
 
   /* Calculate frame duration based on Genesis timing
      NTSC: 60Hz = 16666.67 microseconds per frame
-     PAL:  50Hz = 20000 microseconds per frame */
-  frame_duration_us = vdp_pal ? 20000 : 16667;
+     PAL:  50Hz = 20000 microseconds per frame
+     Apply dynamic rate adjustment if enabled */
+  if (gen_ui->dynamic_rate_control) {
+    /* Apply rate adjustment: higher rate_adjust means slower emulation (longer frame time) */
+    frame_duration_us = (vdp_pal ? 20000 : 16667) * gen_ui->rate_adjust;
+  } else {
+    frame_duration_us = vdp_pal ? 20000 : 16667;
+  }
 
   elapsed_us = current_time - last_frame_time;
 
-  /* Check sound buffer status to prevent overflow */
+  /* Check sound buffer status to prevent overflow
+     This provides backpressure to maintain audio/video sync */
   pending_samples = soundp_samplesbuffered();
 
   /* If sound buffer is too full (more than 2x threshold), skip this frame
-     to let audio catch up and prevent buffer overflow.
-     This provides backpressure to maintain audio/video sync. */
+     to let audio catch up and prevent buffer overflow */
   if (pending_samples > (int)(sound_threshold * 2)) {
     return G_SOURCE_CONTINUE;
   }
 
-  /* Only execute frame if enough time has elapsed.
-     With GdkFrameClock's VSync-aware callbacks, this provides smooth rendering
-     without tearing while maintaining correct emulation speed. */
+  /* Only execute frame if enough time has elapsed
+     Using g_idle_add provides better integration with SDL2 audio thread
+     compared to GdkFrameClock, avoiding thread priority conflicts */
   if (elapsed_us >= frame_duration_us) {
-    ui_sdl_events();
     ui_newframe();
     event_doframe();
     gtk_widget_queue_draw(gen_ui->drawing_area);
 
     /* Update last frame time
-       Note: We use current_time rather than += frame_duration_us
-       to avoid accumulating timing errors over long sessions */
+       Using current_time rather than += frame_duration_us
+       avoids accumulating timing errors over long sessions */
     last_frame_time = current_time;
+
+    /* Record frame timestamp for FPS measurement (dynamic rate control) */
+    if (gen_ui->dynamic_rate_control) {
+      gen_ui->fps_times[gen_ui->fps_index] = current_time;
+
+      /* Track how many frames we've recorded */
+      static int frames_recorded = 0;
+      if (frames_recorded < 60) {
+        frames_recorded++;
+      }
+
+      gen_ui->fps_index = (gen_ui->fps_index + 1) % 60;
+
+      /* Calculate measured FPS from last 60 frames
+         Only calculate after we have filled the buffer (60 frames) */
+      if (frames_recorded >= 60) {
+        /* Find oldest and newest timestamps */
+        int oldest_idx = gen_ui->fps_index; /* Next slot to write is oldest data */
+        int newest_idx = (gen_ui->fps_index + 59) % 60; /* Previous slot */
+
+        gint64 time_span = gen_ui->fps_times[newest_idx] - gen_ui->fps_times[oldest_idx];
+
+        /* Calculate FPS: 59 frame intervals over time_span microseconds
+           FPS = (59 frames) / (time_span / 1,000,000 seconds) */
+        if (time_span > 0) {
+          gen_ui->measured_fps = 59.0 * 1000000.0 / (double)time_span;
+
+          /* Dynamic rate calculation: adjust emulation speed to maintain sync
+             This is simpler than audio resampling and works well for emulators */
+
+          /* Get target FPS based on PAL/NTSC mode */
+          double target_fps = vdp_pal ? 50.0 : 59.94;
+
+          /* Calculate how far off we are from target */
+          double fps_error = (gen_ui->measured_fps - target_fps) / target_fps;
+
+          /* Check audio buffer status for additional adjustment
+             Target: maintain buffer at sound_threshold level */
+          double buffer_ratio = (double)pending_samples / (double)sound_threshold;
+          double buffer_error = buffer_ratio - 1.0; /* >0 means too full, <0 means too empty */
+
+          /* Combine both errors: fps_error tells us emulation speed,
+             buffer_error tells us audio sync status
+             Weight buffer_error more heavily (2x) as audio is the master clock */
+          double total_error = (fps_error * 0.3) + (buffer_error * 0.7);
+
+          /* Apply rate adjustment with limiting to ±rate_delta
+             If total_error > 0: we're running too fast or buffer too full → slow down
+             If total_error < 0: we're running too slow or buffer too empty → speed up */
+          double new_rate_adjust = gen_ui->rate_adjust * (1.0 - total_error * 0.1);
+
+          /* Clamp to ±rate_delta (default ±0.5%) */
+          double min_rate = 1.0 - gen_ui->rate_delta;
+          double max_rate = 1.0 + gen_ui->rate_delta;
+          if (new_rate_adjust < min_rate) new_rate_adjust = min_rate;
+          if (new_rate_adjust > max_rate) new_rate_adjust = max_rate;
+
+          /* Smooth the adjustment with exponential moving average
+             This prevents rapid oscillations */
+          gen_ui->rate_adjust = gen_ui->rate_adjust * 0.9 + new_rate_adjust * 0.1;
+
+          /* Debug logging every 60 frames (about once per second) */
+          static int debug_counter = 0;
+          debug_counter++;
+          if (debug_counter >= 60) {
+            fprintf(stderr, "DRC: FPS=%.2f (target=%.2f) buffer=%d/%d ratio=%.2f rate_adjust=%.4f\n",
+                    gen_ui->measured_fps, target_fps, pending_samples, sound_threshold,
+                    buffer_ratio, gen_ui->rate_adjust);
+            debug_counter = 0;
+          }
+        }
+      }
+    }
   }
 
-  /* Callback will run again on next display refresh, but will skip execution
-     if not enough time has elapsed for proper emulation timing */
+  /* Callback will be invoked again when idle, allowing GTK events
+     and SDL2 audio thread to run without blocking */
   return G_SOURCE_CONTINUE;
 }
 
@@ -794,42 +916,20 @@ void ui_line(int line)
 void ui_endfield(void)
 {
   static int counter = 0;
-  static uint64_t last_frame_time = 0;
-  static uint64_t frame_count = 0;
-  uint64_t current_time;
-  uint64_t elapsed_time;
-  uint32_t target_frame_time_ms;
-  uint32_t delay_needed;
 
   if (gen_ui->plotfield) {
     ui_rendertoscreen();        /* plot newscreen to screen */
 
-    /* Frame rate limiting - ensure we don't run faster than target framerate
-       Genesis timing: NTSC = 60 Hz (16.67ms), PAL = 50 Hz (20ms) */
-    frame_count++;
-    current_time = g_get_monotonic_time() / 1000;  /* Convert microseconds to milliseconds */
+    /* NOTE: Frame rate limiting is handled by ui_tick_callback() using GdkFrameClock.
 
-    if (last_frame_time == 0) {
-      last_frame_time = current_time;
-    } else {
-      /* Calculate target frame time in milliseconds
-         vdp_framerate is set in vdp.c: 60 for NTSC, 50 for PAL */
-      target_frame_time_ms = 1000 / vdp_framerate;  /* 16ms for NTSC, 20ms for PAL */
+       IMPORTANT: Do NOT add g_usleep() or any blocking delays here!
 
-      elapsed_time = current_time - last_frame_time;
+       GTK4 uses an event-driven architecture. Blocking the main thread with g_usleep()
+       prevents audio sample generation, GTK event processing, and causes stuttering.
 
-      /* If we're running too fast, delay to maintain proper frame rate */
-      if (elapsed_time < target_frame_time_ms) {
-        delay_needed = target_frame_time_ms - elapsed_time;
-        /* Cap delay at 2x target time to avoid hanging if timing goes wrong */
-        if (delay_needed > 0 && delay_needed < target_frame_time_ms * 2) {
-          g_usleep(delay_needed * 1000);  /* g_usleep takes microseconds */
-          current_time = g_get_monotonic_time() / 1000;
-        }
-      }
-
-      last_frame_time = current_time;
-    }
+       The console UI can use SDL_Delay() because it has a simple polling loop,
+       but GTK4's GdkFrameClock provides VSync-aware timing via ui_tick_callback(),
+       so additional delays here would be harmful. */
   }
 
   if (gen_ui->frameskip == 0) {

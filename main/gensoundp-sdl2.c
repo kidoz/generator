@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <SDL2/SDL.h>
 
 #include "generator.h"
@@ -22,6 +23,47 @@ static int16_t soundp_ring_buffer[RING_BUFFER_SIZE * 2]; /* stereo */
 static volatile unsigned int soundp_write_pos = 0;
 static volatile unsigned int soundp_read_pos = 0;
 static SDL_mutex *soundp_mutex = NULL;
+
+/*** soundp_detect_pipewire - Detect if PipeWire is being used ***/
+
+static const char* soundp_detect_audio_backend(void)
+{
+  const char *driver;
+  char runtime_dir[512];
+  const char *xdg_runtime;
+
+  /* Get the current SDL audio driver name */
+  driver = SDL_GetCurrentAudioDriver();
+
+  /* Check if PipeWire runtime directory exists */
+  xdg_runtime = getenv("XDG_RUNTIME_DIR");
+  if (xdg_runtime) {
+    snprintf(runtime_dir, sizeof(runtime_dir), "%s/pipewire-0", xdg_runtime);
+    if (access(runtime_dir, F_OK) == 0) {
+      return "PipeWire (via PulseAudio compatibility)";
+    }
+  }
+
+  /* Check for direct PipeWire detection via environment */
+  if (getenv("PIPEWIRE_RUNTIME_DIR")) {
+    return "PipeWire (native)";
+  }
+
+  /* Otherwise, return the SDL driver name */
+  if (driver) {
+    if (strcmp(driver, "pulseaudio") == 0) {
+      return "PulseAudio";
+    } else if (strcmp(driver, "alsa") == 0) {
+      return "ALSA (direct)";
+    } else if (strcmp(driver, "pipewire") == 0) {
+      return "PipeWire (native)";
+    } else {
+      return driver;
+    }
+  }
+
+  return "Unknown";
+}
 
 /*** soundp_audio_callback - SDL2 audio callback ***/
 
@@ -89,9 +131,11 @@ int soundp_start(void)
   desired.freq = sound_speed;
   desired.format = AUDIO_S16SYS; /* 16-bit signed, system byte order */
   desired.channels = 2; /* stereo */
-  /* Buffer size scales with sample rate: 4096 samples = ~93ms @ 44.1kHz, ~186ms @ 22.05kHz
-     Larger buffer reduces stuttering but increases audio latency */
-  desired.samples = 4096;
+  /* Buffer size: 2048 samples = ~46ms @ 44.1kHz
+     With dynamic rate control, we can use a smaller buffer for lower latency.
+     This balances responsiveness with stability, providing enough cushion for
+     xBRZ upscaling overhead (3-5ms per frame) while avoiding audio underruns. */
+  desired.samples = 2048;
   desired.callback = soundp_audio_callback;
   desired.userdata = NULL;
 
@@ -147,11 +191,22 @@ int soundp_start(void)
   /* Start audio playback */
   SDL_PauseAudioDevice(soundp_dev, 0);
 
+  /* Detect and log audio backend */
+  const char *backend = soundp_detect_audio_backend();
+
   LOG_VERBOSE(("SDL2 Audio opened: %d Hz, %d channels, %d samples buffer",
                soundp_spec.freq, soundp_spec.channels, soundp_spec.samples));
+  LOG_VERBOSE(("Audio backend: %s (SDL driver: %s)", backend,
+               SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
   LOG_VERBOSE(("Threshold = %d bytes (%d fields of sound === %dms latency)",
                sound_threshold * 4, sound_minfields,
                (int)(1000 * (float)sound_minfields / (float)vdp_framerate)));
+
+  /* Provide helpful information for PulseAudio users (but not PipeWire users) */
+  if (strstr(backend, "PulseAudio") != NULL && strstr(backend, "PipeWire") == NULL) {
+    LOG_VERBOSE(("Tip: For lower latency, consider switching to PipeWire"));
+    LOG_VERBOSE(("     PipeWire provides 3-10ms latency vs PulseAudio's 50-100ms"));
+  }
 
   return 0;
 }
