@@ -11,8 +11,20 @@
 #define HBORDER_DEFAULT 8
 #define VBORDER_MAX 32
 #define VBORDER_DEFAULT 8
-#define HMAXSIZE (320 + 2 * HBORDER_MAX)
-#define VMAXSIZE (240 + 2 * VBORDER_MAX)
+#define MAX_SCALE_FACTOR 4
+#define HMAXSIZE ((320 * MAX_SCALE_FACTOR) + 2 * HBORDER_MAX)
+#define VMAXSIZE ((240 * MAX_SCALE_FACTOR) + 2 * VBORDER_MAX)
+
+/* Upscaling filter types */
+typedef enum {
+  FILTER_NONE = 0,      /* Nearest neighbor (no filtering) */
+  FILTER_SCALE2X = 1,   /* Scale2x/EPX algorithm */
+  FILTER_SCALE3X = 2,   /* Scale3x algorithm */
+  FILTER_SCALE4X = 3,   /* Scale4x algorithm */
+  FILTER_XBRZ2X = 4,    /* xBRZ 2x - High quality */
+  FILTER_XBRZ3X = 5,    /* xBRZ 3x - High quality */
+  FILTER_XBRZ4X = 6     /* xBRZ 4x - High quality */
+} t_filter_type;
 
 typedef struct {
   unsigned int a;
@@ -46,6 +58,10 @@ typedef struct {
   int screen_mode; /* 0=100%, 1=200%, 2=fullscreen */
   unsigned int hborder;
   unsigned int vborder;
+
+  /* Upscaling */
+  t_filter_type filter_type;
+  int scale_factor; /* 1-4 for scale factors */
 
   /* SDL and rendering */
   void *screen; /* SDL_Surface pointer */

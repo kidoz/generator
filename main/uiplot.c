@@ -3,10 +3,12 @@
 /* plotter routines for user interfaces - used by console and gtk */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "generator.h"
 #include "vdp.h"
 
 #include "uiplot.h"
+#include "xbrz_wrapper.h"  /* xBRZ high-quality upscaling */
 
 uint32 uiplot_palcache[192];
 
@@ -418,5 +420,192 @@ void uiplot_irender32_weavefilter(uint32 *evendata, uint32 *odddata,
     ((uint32 *)screen)[(ui << 1) + 0] = (evenval >> 1) + (oddval >> 1);
     ((uint32 *)screen)[(ui << 1) + 1] = (evenval >> 1) + (oddval >> 1);
   }
+}
+
+/*** Scale2x/EPX Upscaling Algorithm ***/
+
+/* Scale2x algorithm (also known as EPX or AdvMAME2x)
+   Originally developed by Eric Johnston (EPX, 1992) for LucasArts
+   Reimplemented as Scale2x by Andrea Mazzoleni (2001) for AdvanceMAME
+
+   Algorithm: For each source pixel, examine its 4 neighbors (N, S, E, W)
+
+        N
+      W C E
+        S
+
+   The center pixel C generates 4 output pixels (E0, E1, E2, E3):
+      E0 E1
+      E2 E3
+
+   Rules:
+   - E0 = (W == N && W != S && W != E) ? W : C
+   - E1 = (N == E && N != W && N != S) ? N : C
+   - E2 = (W == S && W != N && W != E) ? W : C
+   - E3 = (S == E && S != W && S != N) ? S : C
+
+   This preserves diagonal edges while smoothing jaggy lines.
+*/
+
+/* Scale2x for full frame (32-bit) - processes entire 2D image at once */
+void uiplot_scale2x_frame32(uint32 *srcdata, uint32 *dstdata,
+                            unsigned int src_width, unsigned int src_height,
+                            unsigned int dst_pitch)
+{
+  unsigned int x, y;
+  uint32 *dst_line1, *dst_line2;
+  uint32 N, S, E, W, C;
+  uint32 E0, E1, E2, E3;
+
+  for (y = 0; y < src_height; y++) {
+    dst_line1 = dstdata + (y * 2) * (dst_pitch / 4);
+    dst_line2 = dstdata + (y * 2 + 1) * (dst_pitch / 4);
+
+    for (x = 0; x < src_width; x++) {
+      C = srcdata[y * src_width + x];
+
+      /* Get neighbors (with boundary checks) */
+      N = (y > 0) ? srcdata[(y - 1) * src_width + x] : C;
+      S = (y < src_height - 1) ? srcdata[(y + 1) * src_width + x] : C;
+      W = (x > 0) ? srcdata[y * src_width + (x - 1)] : C;
+      E = (x < src_width - 1) ? srcdata[y * src_width + (x + 1)] : C;
+
+      /* Apply Scale2x rules */
+      E0 = (W == N && W != S && W != E) ? W : C;
+      E1 = (N == E && N != W && N != S) ? N : C;
+      E2 = (W == S && W != N && W != E) ? W : C;
+      E3 = (S == E && S != W && S != N) ? S : C;
+
+      /* Write 2x2 output pixels */
+      dst_line1[x * 2] = E0;
+      dst_line1[x * 2 + 1] = E1;
+      dst_line2[x * 2] = E2;
+      dst_line2[x * 2 + 1] = E3;
+    }
+  }
+}
+
+/* Scale3x for full frame (32-bit) - EPX/Scale3x variant */
+void uiplot_scale3x_frame32(uint32 *srcdata, uint32 *dstdata,
+                            unsigned int src_width, unsigned int src_height,
+                            unsigned int dst_pitch)
+{
+  unsigned int x, y;
+  uint32 *dst_line1, *dst_line2, *dst_line3;
+  uint32 A, B, C, D, E, F, G, H, I;
+  uint32 E0, E1, E2, E3, E4, E5, E6, E7, E8;
+
+  for (y = 0; y < src_height; y++) {
+    dst_line1 = dstdata + (y * 3) * (dst_pitch / 4);
+    dst_line2 = dstdata + (y * 3 + 1) * (dst_pitch / 4);
+    dst_line3 = dstdata + (y * 3 + 2) * (dst_pitch / 4);
+
+    for (x = 0; x < src_width; x++) {
+      /* Get 3x3 neighborhood:
+         A B C
+         D E F
+         G H I
+      */
+      E = srcdata[y * src_width + x];
+
+      A = (y > 0 && x > 0) ? srcdata[(y - 1) * src_width + (x - 1)] : E;
+      B = (y > 0) ? srcdata[(y - 1) * src_width + x] : E;
+      C = (y > 0 && x < src_width - 1) ? srcdata[(y - 1) * src_width + (x + 1)] : E;
+      D = (x > 0) ? srcdata[y * src_width + (x - 1)] : E;
+      F = (x < src_width - 1) ? srcdata[y * src_width + (x + 1)] : E;
+      G = (y < src_height - 1 && x > 0) ? srcdata[(y + 1) * src_width + (x - 1)] : E;
+      H = (y < src_height - 1) ? srcdata[(y + 1) * src_width + x] : E;
+      I = (y < src_height - 1 && x < src_width - 1) ? srcdata[(y + 1) * src_width + (x + 1)] : E;
+
+      /* Apply Scale3x rules (simplified)
+         E0 E1 E2
+         E3 E4 E5
+         E6 E7 E8
+      */
+      E0 = (D == B && D != H && D != F) ? D : E;
+      E1 = ((D == B && D != H && D != F) || (B == F && B != D && B != H)) ? B : E;
+      E2 = (B == F && B != D && B != H) ? F : E;
+      E3 = ((D == B && D != H && D != F) || (D == H && D != B && D != F)) ? D : E;
+      E4 = E;
+      E5 = ((B == F && B != D && B != H) || (F == H && F != B && F != D)) ? F : E;
+      E6 = (D == H && D != B && D != F) ? D : E;
+      E7 = ((D == H && D != B && D != F) || (H == F && H != D && H != B)) ? H : E;
+      E8 = (H == F && H != D && H != B) ? F : E;
+
+      /* Write 3x3 output pixels */
+      dst_line1[x * 3] = E0;
+      dst_line1[x * 3 + 1] = E1;
+      dst_line1[x * 3 + 2] = E2;
+      dst_line2[x * 3] = E3;
+      dst_line2[x * 3 + 1] = E4;
+      dst_line2[x * 3 + 2] = E5;
+      dst_line3[x * 3] = E6;
+      dst_line3[x * 3 + 1] = E7;
+      dst_line3[x * 3 + 2] = E8;
+    }
+  }
+}
+
+/* Scale4x for full frame (32-bit) - Double application of Scale2x */
+void uiplot_scale4x_frame32(uint32 *srcdata, uint32 *dstdata,
+                            unsigned int src_width, unsigned int src_height,
+                            unsigned int dst_pitch)
+{
+  /* Scale4x = Scale2x applied twice
+     First: src -> temp (2x)
+     Second: temp -> dst (2x again = 4x total) */
+
+  unsigned int temp_width = src_width * 2;
+  unsigned int temp_height = src_height * 2;
+
+  /* Allocate temporary buffer for intermediate 2x result */
+  uint32 *temp = malloc(temp_width * temp_height * sizeof(uint32));
+  if (!temp) {
+    /* Fallback: just do simple 4x duplication if malloc fails */
+    unsigned int x, y, dx, dy;
+    for (y = 0; y < src_height; y++) {
+      for (x = 0; x < src_width; x++) {
+        uint32 pixel = srcdata[y * src_width + x];
+        for (dy = 0; dy < 4; dy++) {
+          uint32 *dst_line = dstdata + (y * 4 + dy) * (dst_pitch / 4);
+          for (dx = 0; dx < 4; dx++) {
+            dst_line[x * 4 + dx] = pixel;
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  /* First pass: Scale2x from src to temp */
+  uiplot_scale2x_frame32(srcdata, temp, src_width, src_height, temp_width * 4);
+
+  /* Second pass: Scale2x from temp to dst */
+  uiplot_scale2x_frame32(temp, dstdata, temp_width, temp_height, dst_pitch);
+
+  free(temp);
+}
+
+/*** xBRZ High-Quality Upscaling Algorithm ***/
+
+/* xBRZ upscaling - wraps the C++ xBRZ library
+   xBRZ provides significantly better quality than Scale2x/3x/4x by using:
+   - Gradient analysis for smoother edges
+   - Advanced edge detection with multi-directional blending
+   - Color distance calculations in YCbCr color space
+   - Preserves fine pixel art details while smoothing diagonals
+
+   Trade-off: Slightly slower than Scale2x (~2-3x computational cost)
+   but still maintains 60 FPS on modern CPUs */
+
+void uiplot_xbrz_frame32(int factor, uint32 *srcdata, uint32 *dstdata,
+                         unsigned int src_width, unsigned int src_height)
+{
+  if (factor < 2 || factor > 6) {
+    return;  /* Invalid scale factor */
+  }
+
+  /* Call the C++ xBRZ library through our C wrapper */
+  xbrz_scale(factor, srcdata, dstdata, src_width, src_height);
 }
 

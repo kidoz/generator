@@ -3,11 +3,12 @@
 # Original: (c) James Ponder 1997-2003
 # Meson build: 2025
 
-project('generator', 'c',
+project('generator', 'c', 'cpp',
   version: '0.35',
   license: 'GPL-2.0-or-later',
   default_options: [
     'c_std=c17',  # Use pure C17 standard (ISO/IEC 9899:2018) without GNU extensions
+    'cpp_std=c++17',  # C++17 for xBRZ library (requires std::clamp)
     'warning_level=1',
   ],
   meson_version: '>=0.60.0'
@@ -172,12 +173,13 @@ elif ui_backend == 'tcltk'
 endif
 
 # Include directories
-inc = include_directories('hdr', 'cpu68k', 'ym2612', 'sn76496', 'gtkopts')
+inc = include_directories('hdr', 'cpu68k', 'ym2612', 'sn76496', 'gtkopts', 'xbrz')
 
 # Build subdirectories
 subdir('cpu68k')
 subdir('ym2612')
 subdir('sn76496')
+subdir('xbrz')
 
 # Z80 emulator
 if z80_backend == 'cmz80'

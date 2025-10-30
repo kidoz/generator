@@ -85,6 +85,8 @@ int ui_init(int argc, char *argv[])
   gen_ui->vborder = VBORDER_DEFAULT;
   gen_ui->statusbar_enabled = TRUE;
   gen_ui->frameskip = 0;
+  gen_ui->filter_type = FILTER_XBRZ2X;  /* Default to xBRZ 2x upscaling (highest quality) */
+  gen_ui->scale_factor = 2;              /* Default to 2x scale */
 
   /* Allocate screen buffers */
   gen_ui->screen_buffers[0] = g_malloc0(4 * HMAXSIZE * VMAXSIZE);
@@ -563,10 +565,17 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int h
 {
   cairo_surface_t *surface;
   uint8 *screen_data;
-  unsigned int display_width = (vdp_reg[12] & 1) ? 320 : 256;
-  unsigned int display_height = vdp_vislines;
+  unsigned int base_width = (vdp_reg[12] & 1) ? 320 : 256;
+  unsigned int base_height = vdp_vislines;
   unsigned int xoffset = (vdp_reg[12] & 1) ? 0 : 32;
   unsigned int yoffset = (vdp_reg[1] & (1 << 3)) ? 0 : 8;
+
+  /* Apply scaling factor for upscaled rendering */
+  int scale = (gen_ui->filter_type != FILTER_NONE) ? gen_ui->scale_factor : 1;
+  unsigned int display_width = base_width * scale;
+  unsigned int display_height = base_height * scale;
+  unsigned int scaled_xoffset = xoffset * scale;
+  unsigned int scaled_yoffset = yoffset * scale;
 
   if (!gen_ui || !gen_ui->screen0 || !gen_ui->screen1)
     return;
@@ -579,11 +588,11 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int h
   /* Create Cairo image surface from emulator buffer
      Format: CAIRO_FORMAT_RGB24 which is 32-bit with unused alpha */
   surface = cairo_image_surface_create_for_data(
-    screen_data + (yoffset * 384 + xoffset) * 4,  /* offset into buffer */
+    screen_data + (scaled_yoffset * HMAXSIZE + scaled_xoffset) * 4,  /* offset into buffer */
     CAIRO_FORMAT_RGB24,
     display_width,
     display_height,
-    384 * 4  /* stride: full buffer width including borders */
+    HMAXSIZE * 4  /* stride: full buffer width including borders */
   );
 
   /* Scale to fit drawing area while maintaining aspect ratio */
@@ -591,7 +600,11 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int h
 
   /* Draw the emulator screen */
   cairo_set_source_surface(cr, surface, 0, 0);
-  cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_NEAREST);
+
+  /* Use bilinear filtering for smooth scaling to window size
+     The upscaling filter (Scale2x/3x/4x) has already been applied to the buffer,
+     so Cairo only needs to scale from the upscaled buffer to the window size */
+  cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
   cairo_paint(cr);
 
   cairo_surface_destroy(surface);
@@ -861,11 +874,73 @@ static void ui_rendertoscreen(void)
   case 0:                    /* normal */
   case 1:                    /* interlace simply doubled up */
   case 2:                    /* invalid */
-    /* Simple rendering - copy newscreen to the write buffer */
-    for (line = 0; line < vdp_vislines; line++) {
-      newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
-      screen = write_buffer + ((line + yoffset) * 384 + xoffset) * 4;
-      memcpy(screen, newlinedata, nominalwidth * 4);
+    /* Apply upscaling if enabled, otherwise simple copy */
+    if (gen_ui->filter_type != FILTER_NONE && gen_ui->scale_factor > 1) {
+      /* Allocate temporary buffer for source data (compact, no stride) */
+      uint32 *src_buffer = malloc(nominalwidth * vdp_vislines * sizeof(uint32));
+      if (src_buffer) {
+        /* Extract source pixels from newscreen (remove stride) */
+        for (line = 0; line < vdp_vislines; line++) {
+          newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
+          memcpy(src_buffer + line * nominalwidth, newlinedata, nominalwidth * sizeof(uint32));
+        }
+
+        /* Calculate scaled dimensions */
+        unsigned int scaled_width = nominalwidth * gen_ui->scale_factor;
+        unsigned int scaled_height = vdp_vislines * gen_ui->scale_factor;
+
+        /* Allocate temporary scaled buffer */
+        uint32 *scaled_buffer = malloc(scaled_width * scaled_height * sizeof(uint32));
+        if (scaled_buffer) {
+          /* Apply the selected upscaling filter */
+          switch (gen_ui->filter_type) {
+          case FILTER_SCALE2X:
+            uiplot_scale2x_frame32(src_buffer, scaled_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+            break;
+          case FILTER_SCALE3X:
+            uiplot_scale3x_frame32(src_buffer, scaled_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+            break;
+          case FILTER_SCALE4X:
+            uiplot_scale4x_frame32(src_buffer, scaled_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+            break;
+          case FILTER_XBRZ2X:
+            uiplot_xbrz_frame32(2, src_buffer, scaled_buffer, nominalwidth, vdp_vislines);
+            break;
+          case FILTER_XBRZ3X:
+            uiplot_xbrz_frame32(3, src_buffer, scaled_buffer, nominalwidth, vdp_vislines);
+            break;
+          case FILTER_XBRZ4X:
+            uiplot_xbrz_frame32(4, src_buffer, scaled_buffer, nominalwidth, vdp_vislines);
+            break;
+          default:
+            /* Fallback: simple copy without scaling */
+            for (line = 0; line < vdp_vislines; line++) {
+              memcpy(scaled_buffer + line * scaled_width,
+                     src_buffer + line * nominalwidth,
+                     nominalwidth * sizeof(uint32));
+            }
+            break;
+          }
+
+          /* Copy scaled data to write buffer with proper offsets */
+          unsigned int scaled_yoffset = yoffset * gen_ui->scale_factor;
+          unsigned int scaled_xoffset = xoffset * gen_ui->scale_factor;
+          for (line = 0; line < scaled_height; line++) {
+            screen = write_buffer + ((line + scaled_yoffset) * HMAXSIZE + scaled_xoffset) * 4;
+            memcpy(screen, scaled_buffer + line * scaled_width, scaled_width * sizeof(uint32));
+          }
+
+          free(scaled_buffer);
+        }
+        free(src_buffer);
+      }
+    } else {
+      /* No upscaling - simple rendering */
+      for (line = 0; line < vdp_vislines; line++) {
+        newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
+        screen = write_buffer + ((line + yoffset) * HMAXSIZE + xoffset) * 4;
+        memcpy(screen, newlinedata, nominalwidth * 4);
+      }
     }
     break;
 

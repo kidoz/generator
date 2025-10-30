@@ -21,6 +21,7 @@ build_deps = [
   cpu68k_dep,
   ym2612_dep,
   sn76496_dep,
+  xbrz_dep,
   common_deps
 ]
 
