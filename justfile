@@ -27,19 +27,19 @@ build-gtk4-release:
 
 # Run console version with custom ROM
 run-console ROM: build-console
-    ./build/main/generator-console "{{ROM}}"
+    ./build/src/main/generator-console "{{ROM}}"
 
 # Run GTK4 version with custom ROM
 run-gtk4 ROM: build-gtk4
-    ./build/main/generator-gtk4 "{{ROM}}"
+    ./build/src/main/generator-gtk4 "{{ROM}}"
 
 # Run console version (release) with custom ROM
 run-console-release ROM: build-console-release
-    ./build/main/generator-console "{{ROM}}"
+    ./build/src/main/generator-console "{{ROM}}"
 
 # Run GTK4 version (release) with custom ROM
 run-gtk4-release ROM: build-gtk4-release
-    ./build/main/generator-gtk4 "{{ROM}}"
+    ./build/src/main/generator-gtk4 "{{ROM}}"
 
 # Clean build artifacts
 clean:
@@ -58,11 +58,11 @@ compile:
 
 # Quick rebuild and run with custom ROM (console)
 run-console-quick ROM: compile
-    ./build/main/generator-console "{{ROM}}"
+    ./build/src/main/generator-console "{{ROM}}"
 
 # Quick rebuild and run with custom ROM (GTK4)
 run-gtk4-quick ROM: compile
-    ./build/main/generator-gtk4 "{{ROM}}"
+    ./build/src/main/generator-gtk4 "{{ROM}}"
 
 # Show build configuration
 show-config:
@@ -74,14 +74,14 @@ show-config:
 
 # Run with debug verbosity
 run-console-verbose ROM: build-console
-    ./build/main/generator-console -v 3 "{{ROM}}"
+    ./build/src/main/generator-console -v 3 "{{ROM}}"
 
 run-gtk4-verbose ROM: build-gtk4
-    ./build/main/generator-gtk4 -v 3 "{{ROM}}"
+    ./build/src/main/generator-gtk4 -v 3 "{{ROM}}"
 
 # Build and run with memory debugging (valgrind)
 run-console-valgrind ROM: build-console
-    valgrind --leak-check=full ./build/main/generator-console "{{ROM}}"
+    valgrind --leak-check=full ./build/src/main/generator-console "{{ROM}}"
 
 # Build with RAZE Z80 backend (x86 only, faster)
 build-console-raze:

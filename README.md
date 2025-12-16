@@ -19,7 +19,7 @@ meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80
 meson compile -C build
 
 # Run
-./build/main/generator-gtk4 [rom-file.bin]
+./build/src/main/generator-gtk4 [rom-file.bin]
 ```
 
 ### Console UI (no GTK required)
@@ -34,7 +34,7 @@ meson setup build -Dui-backend=console -Dz80-backend=cmz80
 meson compile -C build
 
 # Run
-./build/main/generator-console [rom-file.bin]
+./build/src/main/generator-console [rom-file.bin]
 ```
 
 ## Build Options
@@ -88,10 +88,10 @@ meson setup build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
 
 ```bash
 # Run with ROM
-./build/main/generator-gtk4 ~/roms/sonic.bin
+./build/src/main/generator-gtk4 ~/roms/sonic.bin
 
 # Run console version
-./build/main/generator-console ~/roms/sonic.bin
+./build/src/main/generator-console ~/roms/sonic.bin
 ```
 
 ### Keyboard Shortcuts (GTK4)
@@ -130,15 +130,16 @@ meson setup build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
 
 ```
 generator/
-├── cpu68k/        # Motorola 68000 CPU emulation (code generation)
-├── cmz80/         # Portable C Z80 emulator
-├── raze/          # x86 assembly Z80 emulator
-├── ym2612/        # YM2612 FM synthesizer
-├── sn76496/       # SN76496 PSG sound chip
-├── xbrz/          # xBRZ image upscaler (C++17)
-├── gtkopts/       # GTK options handling
-├── main/          # Main emulator and UI code
-├── hdr/           # Header files
+├── src/
+│   ├── cpu68k/    # Motorola 68000 CPU emulation (code generation)
+│   ├── cmz80/     # Portable C Z80 emulator
+│   ├── raze/      # x86 assembly Z80 emulator
+│   ├── ym2612/    # YM2612 FM synthesizer
+│   ├── sn76496/   # SN76496 PSG sound chip
+│   ├── xbrz/      # xBRZ image upscaler (C++23)
+│   ├── gtkopts/   # GTK options handling
+│   ├── main/      # Main emulator and UI code
+│   └── hdr/       # Header files
 └── meson.build    # Build configuration
 ```
 

@@ -8,7 +8,7 @@ project('generator', 'c', 'cpp',
   license: 'GPL-2.0-or-later',
   default_options: [
     'c_std=c23',  # Use C23 standard (ISO/IEC 9899:2024) - latest C standard
-    'cpp_std=c++17',  # C++17 for xBRZ library (requires std::clamp)
+    'cpp_std=c++23',  # Use C++23 standard for xBRZ library
     'warning_level=1',
   ],
   meson_version: '>=0.60.0'
@@ -135,43 +135,43 @@ if ui_backend == 'gtk4'
   adwaita_dep = dependency('libadwaita-1', version: '>=1.4.0')
   sdl2_dep = dependency('sdl2', version: '>=2.0.0')
   ui_deps = [gtk4_dep, adwaita_dep, sdl2_dep]
-  ui_sources = files('main/ui-gtk4.c', 'main/uiplot.c', 'main/gensoundp-sdl2.c')
+  ui_sources = files('src/main/ui-gtk4.c', 'src/main/uiplot.c', 'src/main/gensoundp-sdl2.c')
 
 elif ui_backend == 'console'
   sdl2_dep = dependency('sdl2', version: '>=2.0.0')
   ui_deps = [sdl2_dep]
-  ui_sources = files('main/ui-console.c', 'main/uip-sdl2.c',
-                     'main/uiplot.c', 'main/gensoundp-sdl2.c',
-                     'main/logo.c', 'main/font.c')
+  ui_sources = files('src/main/ui-console.c', 'src/main/uip-sdl2.c',
+                     'src/main/uiplot.c', 'src/main/gensoundp-sdl2.c',
+                     'src/main/logo.c', 'src/main/font.c')
 
 endif
 
 # Include directories
-inc = include_directories('hdr', 'cpu68k', 'ym2612', 'sn76496', 'gtkopts', 'xbrz')
+inc = include_directories('src/hdr', 'src/cpu68k', 'src/ym2612', 'src/sn76496', 'src/gtkopts', 'src/xbrz')
 
 # Build subdirectories
-subdir('cpu68k')
-subdir('ym2612')
-subdir('sn76496')
-subdir('xbrz')
+subdir('src/cpu68k')
+subdir('src/ym2612')
+subdir('src/sn76496')
+subdir('src/xbrz')
 
 # Z80 emulator
 if z80_backend == 'cmz80'
-  subdir('cmz80')
+  subdir('src/cmz80')
   z80_lib = cmz80_lib
 elif z80_backend == 'raze'
-  subdir('raze')
+  subdir('src/raze')
   z80_lib = raze_lib
 endif
 
 # UI-specific libraries
 if ui_backend == 'gtk4'
-  subdir('gtkopts')
+  subdir('src/gtkopts')
   ui_libs = [gtkopts_lib]
 endif
 
 # Main executable
-subdir('main')
+subdir('src/main')
 
 # Summary
 summary({
