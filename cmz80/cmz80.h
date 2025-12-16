@@ -38,26 +38,26 @@
  * with subsequent releases of mZ80.
  *
  * The whole idea of this emulator is to have the fastest available 32 bit
- * Multi-z80 emulator for the PC, giving maximum performance. 
- */ 
+ * Multi-z80 emulator for the PC, giving maximum performance.
+ */
 
 /* General z80 based defines */
 
-//#include "rccore/types.h"
+// #include "rccore/types.h"
 
-#ifndef	_MZ80_H_
-#define	_MZ80_H_
+#ifndef _MZ80_H_
+#define _MZ80_H_
 
 #ifndef UINT32
-#define UINT32  unsigned long int
+#define UINT32 unsigned long int
 #endif
 
 #ifndef UINT16
-#define UINT16  unsigned short int
+#define UINT16 unsigned short int
 #endif
 
 #ifndef UINT8
-#define UINT8   unsigned char
+#define UINT8 unsigned char
 #endif
 
 #ifdef __cplusplus
@@ -67,76 +67,70 @@ extern "C" {
 #ifndef _MEMORYREADWRITEBYTE_
 #define _MEMORYREADWRITEBYTE_
 
-struct MemoryWriteByte
-{
-	UINT32 lowAddr;
-	UINT32 highAddr;
-	void (*memoryCall)(UINT32, UINT8, struct MemoryWriteByte *);
-	void *pUserArea;
-};      
-
-struct MemoryReadByte
-{
-	UINT32 lowAddr;
-	UINT32 highAddr;
-	UINT8 (*memoryCall)(UINT32, struct MemoryReadByte *);
-	void *pUserArea;
-};      
-
-#endif // _MEMORYREADWRITEBYTE_
-
-struct z80PortWrite
-{
-	UINT16 lowIoAddr;
-	UINT16 highIoAddr;
-	void (*IOCall)(UINT16, UINT8, struct z80PortWrite *);
-	void *pUserArea;
+struct MemoryWriteByte {
+  UINT32 lowAddr;
+  UINT32 highAddr;
+  void (*memoryCall)(UINT32, UINT8, struct MemoryWriteByte *);
+  void *pUserArea;
 };
 
-struct z80PortRead
-{
-	UINT16 lowIoAddr;
-	UINT16 highIoAddr;
-	UINT16 (*IOCall)(UINT16, struct z80PortRead *);
-	void *pUserArea;
-};	
-
-struct z80TrapRec
-{
-  	UINT16 trapAddr;
-	UINT8  skipCnt;
-	UINT8  origIns;
+struct MemoryReadByte {
+  UINT32 lowAddr;
+  UINT32 highAddr;
+  UINT8 (*memoryCall)(UINT32, struct MemoryReadByte *);
+  void *pUserArea;
 };
 
-struct mz80context
-{
-	UINT8 *z80Base;
-	struct MemoryReadByte *z80MemRead;
-	struct MemoryWriteByte *z80MemWrite;
-	struct z80PortRead *z80IoRead;
-	struct z80PortWrite *z80IoWrite;
-	UINT32 z80clockticks;
-	UINT32 z80inInterrupt;
-	UINT32 z80interruptMode;
-	UINT32 z80interruptState;
-	UINT32 z80halted;
-	UINT16 z80af;
-	UINT16 z80bc;
-	UINT16 z80de;
-	UINT16 z80hl;
-	UINT16 z80afprime;
-	UINT16 z80bcprime;
-	UINT16 z80deprime;
-	UINT16 z80hlprime;
-	UINT16 z80ix;
-	UINT16 z80iy;
-	UINT16 z80sp;
-	UINT16 z80pc;
-	UINT16 z80nmiAddr;
-	UINT16 z80intAddr;
-	UINT8 z80i;
-	UINT8 z80r;
-} /* RETRO_PACKED */ ;
+#endif  // _MEMORYREADWRITEBYTE_
+
+struct z80PortWrite {
+  UINT16 lowIoAddr;
+  UINT16 highIoAddr;
+  void (*IOCall)(UINT16, UINT8, struct z80PortWrite *);
+  void *pUserArea;
+};
+
+struct z80PortRead {
+  UINT16 lowIoAddr;
+  UINT16 highIoAddr;
+  UINT16 (*IOCall)(UINT16, struct z80PortRead *);
+  void *pUserArea;
+};
+
+struct z80TrapRec {
+  UINT16 trapAddr;
+  UINT8 skipCnt;
+  UINT8 origIns;
+};
+
+struct mz80context {
+  UINT8 *z80Base;
+  struct MemoryReadByte *z80MemRead;
+  struct MemoryWriteByte *z80MemWrite;
+  struct z80PortRead *z80IoRead;
+  struct z80PortWrite *z80IoWrite;
+  UINT32 z80clockticks;
+  UINT32 z80inInterrupt;
+  UINT32 z80interruptMode;
+  UINT32 z80interruptState;
+  UINT32 z80halted;
+  UINT16 z80af;
+  UINT16 z80bc;
+  UINT16 z80de;
+  UINT16 z80hl;
+  UINT16 z80afprime;
+  UINT16 z80bcprime;
+  UINT16 z80deprime;
+  UINT16 z80hlprime;
+  UINT16 z80ix;
+  UINT16 z80iy;
+  UINT16 z80sp;
+  UINT16 z80pc;
+  UINT16 z80nmiAddr;
+  UINT16 z80intAddr;
+  UINT8 z80i;
+  UINT8 z80r;
+} /* RETRO_PACKED */;
 
 extern UINT8 *mz80Base;
 extern UINT32 mz80exec(unsigned long int);
@@ -158,4 +152,4 @@ typedef struct mz80context CONTEXTMZ80;
 };
 #endif
 
-#endif	// _MZ80_H_
+#endif  // _MZ80_H_

@@ -11,7 +11,7 @@
 #include "reg68k.h"
 
 #define DATAREG(a) (reg68k_regs[a])
-#define ADDRREG(a) (reg68k_regs[8+(a)])
+#define ADDRREG(a) (reg68k_regs[8 + (a)])
 #define PC (reg68k_pc)
 #define SR (reg68k_sr.sr_int)
 #define SP (regs.sp)
@@ -24,30 +24,40 @@
 #define VFLAG (reg68k_sr.sr_struct.v)
 #define CFLAG (reg68k_sr.sr_struct.c)
 
-static inline sint32 idxval_dst(t_ipc *ipc) {
-  switch( ((ipc->dst>>27) & 1) | ((ipc->dst>>30) & 2) ) {
+static inline sint32 idxval_dst(t_ipc *ipc)
+{
+  switch (((ipc->dst >> 27) & 1) | ((ipc->dst >> 30) & 2)) {
   case 0: /* data, word */
-    return ((sint16)DATAREG((ipc->dst>>28)&7))+((((sint32)(ipc->dst<<8)))>>8);
+    return ((sint16)DATAREG((ipc->dst >> 28) & 7)) +
+           ((((sint32)(ipc->dst << 8))) >> 8);
   case 1: /* data, long */
-    return ((sint32)DATAREG((ipc->dst>>28)&7))+((((sint32)(ipc->dst<<8)))>>8);
+    return ((sint32)DATAREG((ipc->dst >> 28) & 7)) +
+           ((((sint32)(ipc->dst << 8))) >> 8);
   case 2: /* addr, word */
-    return ((sint16)ADDRREG((ipc->dst>>28)&7))+((((sint32)(ipc->dst<<8)))>>8);
+    return ((sint16)ADDRREG((ipc->dst >> 28) & 7)) +
+           ((((sint32)(ipc->dst << 8))) >> 8);
   case 3: /* addr, long */
-    return ((sint32)ADDRREG((ipc->dst>>28)&7))+((((sint32)(ipc->dst<<8)))>>8);
+    return ((sint32)ADDRREG((ipc->dst >> 28) & 7)) +
+           ((((sint32)(ipc->dst << 8))) >> 8);
   }
   return 0;
 }
 
-static inline sint32 idxval_src(t_ipc *ipc) {
-  switch( ((ipc->src>>27) & 1) | ((ipc->src>>30) & 2) ) {
+static inline sint32 idxval_src(t_ipc *ipc)
+{
+  switch (((ipc->src >> 27) & 1) | ((ipc->src >> 30) & 2)) {
   case 0: /* data, word */
-    return ((sint16)DATAREG((ipc->src>>28)&7))+((((sint32)(ipc->src<<8)))>>8);
+    return ((sint16)DATAREG((ipc->src >> 28) & 7)) +
+           ((((sint32)(ipc->src << 8))) >> 8);
   case 1: /* data, long */
-    return ((sint32)DATAREG((ipc->src>>28)&7))+((((sint32)(ipc->src<<8)))>>8);
+    return ((sint32)DATAREG((ipc->src >> 28) & 7)) +
+           ((((sint32)(ipc->src << 8))) >> 8);
   case 2: /* addr, word */
-    return ((sint16)ADDRREG((ipc->src>>28)&7))+((((sint32)(ipc->src<<8)))>>8);
+    return ((sint16)ADDRREG((ipc->src >> 28) & 7)) +
+           ((((sint32)(ipc->src << 8))) >> 8);
   case 3: /* addr, long */
-    return ((sint32)ADDRREG((ipc->src>>28)&7))+((((sint32)(ipc->src<<8)))>>8);
+    return ((sint32)ADDRREG((ipc->src >> 28) & 7)) +
+           ((((sint32)(ipc->src << 8))) >> 8);
   }
   return 0;
 }

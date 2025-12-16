@@ -30,11 +30,11 @@ typedef struct _t_statelist {
   uint8 *data;
 } t_statelist;
 
-FILE *state_outputfile;         /* the file handle to place data blocks */
-uint8 state_transfermode;       /* 0 = save, 1 = load */
-uint8 state_major;              /* major version */
-uint8 state_minor;              /* minor version */
-t_statelist *state_statelist;   /* loaded state */
+FILE *state_outputfile;       /* the file handle to place data blocks */
+uint8 state_transfermode;     /* 0 = save, 1 = load */
+uint8 state_major;            /* major version */
+uint8 state_minor;            /* minor version */
+t_statelist *state_statelist; /* loaded state */
 
 /*
  * NB:
@@ -84,8 +84,8 @@ void state_transfer8(const char *mod, const char *name, uint8 instance,
 
   if (state_transfermode == 0) {
     /* save */
-    fwrite(mod, strlen(mod)+1, 1, state_outputfile);
-    fwrite(name, strlen(name)+1, 1, state_outputfile);
+    fwrite(mod, strlen(mod) + 1, 1, state_outputfile);
+    fwrite(name, strlen(name) + 1, 1, state_outputfile);
     buf[0] = instance;
     buf[1] = 1; /* bytes per object */
     fwrite(buf, 2, 1, state_outputfile);
@@ -122,8 +122,8 @@ void state_transfer16(const char *mod, const char *name, uint8 instance,
 
   if (state_transfermode == 0) {
     /* save */
-    fwrite(mod, strlen(mod)+1, 1, state_outputfile);
-    fwrite(name, strlen(name)+1, 1, state_outputfile);
+    fwrite(mod, strlen(mod) + 1, 1, state_outputfile);
+    fwrite(name, strlen(name) + 1, 1, state_outputfile);
     buf[0] = instance;
     buf[1] = 2; /* bytes per object */
     fwrite(buf, 2, 1, state_outputfile);
@@ -165,8 +165,8 @@ void state_transfer32(const char *mod, const char *name, uint8 instance,
 
   if (state_transfermode == 0) {
     /* save */
-    fwrite(mod, strlen(mod)+1, 1, state_outputfile);
-    fwrite(name, strlen(name)+1, 1, state_outputfile);
+    fwrite(mod, strlen(mod) + 1, 1, state_outputfile);
+    fwrite(name, strlen(name) + 1, 1, state_outputfile);
     buf[0] = instance;
     buf[1] = 4; /* bytes per object */
     fwrite(buf, 2, 1, state_outputfile);
@@ -213,7 +213,7 @@ static void state_dotransfer(unsigned int mode)
   (void)i8b;
   state_transfermode = mode; /* 0 = save, 1 = load */
   state_transfer8("ver", "major", 0, &state_major, 1);
-  state_transfer8("ver" ,"minor", 0, &state_minor, 1);
+  state_transfer8("ver", "minor", 0, &state_minor, 1);
   state_transfer8("vdp", "vram", 0, vdp_vram, LEN_VRAM);
   state_transfer8("vdp", "cram", 0, vdp_cram, LEN_CRAM);
   state_transfer8("vdp", "vsram", 0, vdp_vsram, LEN_VSRAM);
@@ -241,47 +241,77 @@ static void state_dotransfer(unsigned int mode)
 #ifdef RAZE
   if (state_transfermode == 0) {
     /* save */
-    i16 = z80_get_reg(Z80_REG_AF); state_transfer16("z80", "af", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_BC); state_transfer16("z80", "bc", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_DE); state_transfer16("z80", "de", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_HL); state_transfer16("z80", "hl", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_AF2); state_transfer16("z80", "af2", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_BC2); state_transfer16("z80", "bc2", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_DE2); state_transfer16("z80", "de2", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_HL2); state_transfer16("z80", "hl2", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_IX); state_transfer16("z80", "ix", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_IY); state_transfer16("z80", "iy", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_SP); state_transfer16("z80", "sp", 0, &i16, 1);
-    i16 = z80_get_reg(Z80_REG_PC); state_transfer16("z80", "pc", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_AF);
+    state_transfer16("z80", "af", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_BC);
+    state_transfer16("z80", "bc", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_DE);
+    state_transfer16("z80", "de", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_HL);
+    state_transfer16("z80", "hl", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_AF2);
+    state_transfer16("z80", "af2", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_BC2);
+    state_transfer16("z80", "bc2", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_DE2);
+    state_transfer16("z80", "de2", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_HL2);
+    state_transfer16("z80", "hl2", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_IX);
+    state_transfer16("z80", "ix", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_IY);
+    state_transfer16("z80", "iy", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_SP);
+    state_transfer16("z80", "sp", 0, &i16, 1);
+    i16 = z80_get_reg(Z80_REG_PC);
+    state_transfer16("z80", "pc", 0, &i16, 1);
     i8 = (z80_get_reg(Z80_REG_IR) >> 8) & 0xff;
     state_transfer8("z80", "i", 0, &i8, 1);
     i8 = z80_get_reg(Z80_REG_IR) & 0xff;
     state_transfer8("z80", "r", 0, &i8, 1);
-    i8 = z80_get_reg(Z80_REG_IFF1); state_transfer8("z80", "iff1", 0, &i8, 1);
-    i8 = z80_get_reg(Z80_REG_IFF2); state_transfer8("z80", "iff2", 0, &i8, 1);
-    i8 = z80_get_reg(Z80_REG_IM); state_transfer8("z80", "im", 0, &i8, 1);
+    i8 = z80_get_reg(Z80_REG_IFF1);
+    state_transfer8("z80", "iff1", 0, &i8, 1);
+    i8 = z80_get_reg(Z80_REG_IFF2);
+    state_transfer8("z80", "iff2", 0, &i8, 1);
+    i8 = z80_get_reg(Z80_REG_IM);
+    state_transfer8("z80", "im", 0, &i8, 1);
     i8 = z80_get_reg(Z80_REG_Halted);
     state_transfer8("z80", "halted", 0, &i8, 1);
   } else {
     /* load */
-    state_transfer16("z80", "af", 0, &i16, 1); z80_set_reg(Z80_REG_AF, i16);
-    state_transfer16("z80", "bc", 0, &i16, 1); z80_set_reg(Z80_REG_BC, i16);
-    state_transfer16("z80", "de", 0, &i16, 1); z80_set_reg(Z80_REG_DE, i16);
-    state_transfer16("z80", "hl", 0, &i16, 1); z80_set_reg(Z80_REG_HL, i16);
-    state_transfer16("z80", "af2", 0, &i16, 1); z80_set_reg(Z80_REG_AF2, i16);
-    state_transfer16("z80", "bc2", 0, &i16, 1); z80_set_reg(Z80_REG_BC2, i16);
-    state_transfer16("z80", "de2", 0, &i16, 1); z80_set_reg(Z80_REG_DE2, i16);
-    state_transfer16("z80", "hl2", 0, &i16, 1); z80_set_reg(Z80_REG_HL2, i16);
-    state_transfer16("z80", "ix", 0, &i16, 1); z80_set_reg(Z80_REG_IX, i16);
-    state_transfer16("z80", "iy", 0, &i16, 1); z80_set_reg(Z80_REG_IY, i16);
-    state_transfer16("z80", "sp", 0, &i16, 1); z80_set_reg(Z80_REG_SP, i16);
-    state_transfer16("z80", "pc", 0, &i16, 1); z80_set_reg(Z80_REG_PC, i16);
+    state_transfer16("z80", "af", 0, &i16, 1);
+    z80_set_reg(Z80_REG_AF, i16);
+    state_transfer16("z80", "bc", 0, &i16, 1);
+    z80_set_reg(Z80_REG_BC, i16);
+    state_transfer16("z80", "de", 0, &i16, 1);
+    z80_set_reg(Z80_REG_DE, i16);
+    state_transfer16("z80", "hl", 0, &i16, 1);
+    z80_set_reg(Z80_REG_HL, i16);
+    state_transfer16("z80", "af2", 0, &i16, 1);
+    z80_set_reg(Z80_REG_AF2, i16);
+    state_transfer16("z80", "bc2", 0, &i16, 1);
+    z80_set_reg(Z80_REG_BC2, i16);
+    state_transfer16("z80", "de2", 0, &i16, 1);
+    z80_set_reg(Z80_REG_DE2, i16);
+    state_transfer16("z80", "hl2", 0, &i16, 1);
+    z80_set_reg(Z80_REG_HL2, i16);
+    state_transfer16("z80", "ix", 0, &i16, 1);
+    z80_set_reg(Z80_REG_IX, i16);
+    state_transfer16("z80", "iy", 0, &i16, 1);
+    z80_set_reg(Z80_REG_IY, i16);
+    state_transfer16("z80", "sp", 0, &i16, 1);
+    z80_set_reg(Z80_REG_SP, i16);
+    state_transfer16("z80", "pc", 0, &i16, 1);
+    z80_set_reg(Z80_REG_PC, i16);
     state_transfer8("z80", "i", 0, &i8, 1);
     state_transfer8("z80", "r", 0, &i8b, 1);
     z80_set_reg(Z80_REG_IR, ((uint16)i8 << 8) | i8b);
-    state_transfer8("z80", "iff1", 0, &i8, 1); z80_set_reg(Z80_REG_IFF1, i8);
-    state_transfer8("z80", "iff2", 0, &i8, 1); z80_set_reg(Z80_REG_IFF2, i8);
-    state_transfer8("z80", "im", 0, &i8, 1); z80_set_reg(Z80_REG_IM, i8);
+    state_transfer8("z80", "iff1", 0, &i8, 1);
+    z80_set_reg(Z80_REG_IFF1, i8);
+    state_transfer8("z80", "iff2", 0, &i8, 1);
+    z80_set_reg(Z80_REG_IFF2, i8);
+    state_transfer8("z80", "im", 0, &i8, 1);
+    z80_set_reg(Z80_REG_IM, i8);
     state_transfer8("z80", "halted", 0, &i8, 1);
     z80_set_reg(Z80_REG_Halted, i8);
   }
@@ -333,15 +363,15 @@ static void state_dotransfer(unsigned int mode)
      c -> z80intAddr = z80intAddr;
      c -> z80nmiAddr = z80nmiAddr;
    */
-}  
+}
 
 /*** state_savefile - save to the given filename */
 
 int state_savefile(const char *filename)
 {
   if ((state_outputfile = fopen(filename, "wb")) == nullptr) {
-    LOG_CRITICAL(("Failed to open '%s' for writing: %s",
-                  filename, strerror(errno)));
+    LOG_CRITICAL(
+        ("Failed to open '%s' for writing: %s", filename, strerror(errno)));
     return -1;
   }
   fprintf(state_outputfile, "Generator " VERSION " saved state\n");
@@ -393,7 +423,8 @@ int state_loadfile(const char *filename)
   e = blk + statbuf.st_size;
 
   /* skip first line comment */
-  while (p < e && *p++ != '\n') ;
+  while (p < e && *p++ != '\n')
+    ;
   if (p >= e)
     goto OVERRUN;
 
@@ -406,24 +437,26 @@ int state_loadfile(const char *filename)
       break;
     if ((ent = malloc(sizeof(t_statelist))) == nullptr)
       ui_err("out of memory");
-    if ((e-p) < 8)
+    if ((e - p) < 8)
       goto OVERRUN;
     ent->mod = p;
-    while (p < e && *p++) ;
-    if ((e-p) < 7)
+    while (p < e && *p++)
+      ;
+    if ((e - p) < 7)
       goto OVERRUN;
     ent->name = p;
-    while (p < e && *p++) ;
-    if ((e-p) < 6)
+    while (p < e && *p++)
+      ;
+    if ((e - p) < 6)
       goto OVERRUN;
     ent->instance = p[0];
     ent->bytes = p[1];
     ent->size = (p[2] << 24) | (p[3] << 16) | (p[4] << 8) | p[5];
-    if ((e-p) < (int)(ent->bytes * ent->size))
+    if ((e - p) < (int)(ent->bytes * ent->size))
       goto OVERRUN;
-    p+= 6;
+    p += 6;
     ent->data = p;
-    p+= ent->bytes * ent->size;
+    p += ent->bytes * ent->size;
     ent->next = state_statelist;
     state_statelist = ent;
   }
@@ -464,4 +497,3 @@ OVERRUN:
   }
   return -1;
 }
-

@@ -31,18 +31,17 @@ void memz80_store_psg_byte(uint16 addr, uint8 data);
 /*** memory map ***/
 
 t_memz80_def memz80_def[] = {
-  {0x00, 0x40, memz80_fetch_sram_byte, memz80_store_sram_byte},
-  {0x40, 0x41, memz80_fetch_yam_byte, memz80_store_yam_byte},
-  {0x41, 0x60, memz80_fetch_bad_byte, memz80_store_bad_byte},
-  {0x60, 0x70, memz80_fetch_bank_byte, memz80_store_bank_byte},
-  {0x70, 0x7F, memz80_fetch_bad_byte, memz80_store_bad_byte},
-  {0x7F, 0x80, memz80_fetch_psg_byte, memz80_store_psg_byte},
-  {0x80, 0x100, memz80_fetch_mem_byte, memz80_store_mem_byte},
-  {0, 0, nullptr, nullptr}
-};
+    {0x00, 0x40, memz80_fetch_sram_byte, memz80_store_sram_byte},
+    {0x40, 0x41, memz80_fetch_yam_byte, memz80_store_yam_byte},
+    {0x41, 0x60, memz80_fetch_bad_byte, memz80_store_bad_byte},
+    {0x60, 0x70, memz80_fetch_bank_byte, memz80_store_bank_byte},
+    {0x70, 0x7F, memz80_fetch_bad_byte, memz80_store_bad_byte},
+    {0x7F, 0x80, memz80_fetch_psg_byte, memz80_store_psg_byte},
+    {0x80, 0x100, memz80_fetch_mem_byte, memz80_store_mem_byte},
+    {0, 0, nullptr, nullptr}};
 
-uint8 (*memz80_fetch_byte[0x100]) (uint16 addr);
-void (*memz80_store_byte[0x100]) (uint16 addr, uint8 data);
+uint8 (*memz80_fetch_byte[0x100])(uint16 addr);
+void (*memz80_store_byte[0x100])(uint16 addr, uint8 data);
 
 /*** initialise memory tables ***/
 
@@ -57,8 +56,7 @@ int memz80_init(void)
       memz80_store_byte[j] = memz80_def[i].store_byte;
     }
     i++;
-  }
-  while ((memz80_def[i].start != 0) || (memz80_def[i].end != 0));
+  } while ((memz80_def[i].start != 0) || (memz80_def[i].end != 0));
   return 0;
 }
 

@@ -18,7 +18,7 @@ static SDL_AudioDeviceID soundp_dev = 0;
 static SDL_AudioSpec soundp_spec;
 
 /* Ring buffer for audio samples */
-#define RING_BUFFER_SIZE (SOUND_MAXRATE * 4)  /* 4 seconds of buffering */
+#define RING_BUFFER_SIZE (SOUND_MAXRATE * 4) /* 4 seconds of buffering */
 static int16_t soundp_ring_buffer[RING_BUFFER_SIZE * 2]; /* stereo */
 static volatile unsigned int soundp_write_pos = 0;
 static volatile unsigned int soundp_read_pos = 0;
@@ -26,7 +26,7 @@ static SDL_mutex *soundp_mutex = nullptr;
 
 /*** soundp_detect_pipewire - Detect if PipeWire is being used ***/
 
-static const char* soundp_detect_audio_backend(void)
+static const char *soundp_detect_audio_backend(void)
 {
   const char *driver;
   char runtime_dir[512];
@@ -130,23 +130,23 @@ int soundp_start(void)
   memset(&desired, 0, sizeof(desired));
   desired.freq = sound_speed;
   desired.format = AUDIO_S16SYS; /* 16-bit signed, system byte order */
-  desired.channels = 2; /* stereo */
+  desired.channels = 2;          /* stereo */
   /* Buffer size: clamp to audio threshold to avoid starving the callback.
      GTK4 rendering occasionally blocks longer than one frame; keeping the SDL
      request below the amount we normally stage (sound_threshold ≈ 5 fields)
      prevents the callback from zero-filling and crackling. */
   unsigned int requested_samples = sound_threshold;
   if (requested_samples > 2048)
-    requested_samples = 2048;          /* ~46ms @ 44.1kHz */
+    requested_samples = 2048; /* ~46ms @ 44.1kHz */
   if (requested_samples < 1024)
-    requested_samples = 1024;          /* keep latency reasonable on PAL */
+    requested_samples = 1024; /* keep latency reasonable on PAL */
   desired.samples = (Uint16)requested_samples;
   desired.callback = soundp_audio_callback;
   desired.userdata = nullptr;
 
   /* Open audio device */
   soundp_dev = SDL_OpenAudioDevice(nullptr, 0, &desired, &soundp_spec,
-                                    SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
+                                   SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
   if (soundp_dev == 0) {
     LOG_CRITICAL(("SDL_OpenAudioDevice failed: %s", SDL_GetError()));
     SDL_DestroyMutex(soundp_mutex);
@@ -184,8 +184,8 @@ int soundp_start(void)
   }
 
   if (soundp_spec.freq != sound_speed) {
-    LOG_NORMAL(("Warning: Sample rate not exactly %d (got %d)",
-                sound_speed, soundp_spec.freq));
+    LOG_NORMAL(("Warning: Sample rate not exactly %d (got %d)", sound_speed,
+                soundp_spec.freq));
   }
 
   /* Initialize ring buffer */
@@ -201,16 +201,20 @@ int soundp_start(void)
 
   LOG_VERBOSE(("SDL2 Audio opened: %d Hz, %d channels, %d samples buffer",
                soundp_spec.freq, soundp_spec.channels, soundp_spec.samples));
-  LOG_VERBOSE(("Audio backend: %s (SDL driver: %s)", backend,
-               SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
+  LOG_VERBOSE(
+      ("Audio backend: %s (SDL driver: %s)", backend,
+       SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
   LOG_VERBOSE(("Threshold = %d bytes (%d fields of sound === %dms latency)",
                sound_threshold * 4, sound_minfields,
                (int)(1000 * (float)sound_minfields / (float)vdp_framerate)));
 
-  /* Provide helpful information for PulseAudio users (but not PipeWire users) */
-  if (strstr(backend, "PulseAudio") != nullptr && strstr(backend, "PipeWire") == nullptr) {
+  /* Provide helpful information for PulseAudio users (but not PipeWire users)
+   */
+  if (strstr(backend, "PulseAudio") != nullptr &&
+      strstr(backend, "PipeWire") == nullptr) {
     LOG_VERBOSE(("Tip: For lower latency, consider switching to PipeWire"));
-    LOG_VERBOSE(("     PipeWire provides 3-10ms latency vs PulseAudio's 50-100ms"));
+    LOG_VERBOSE(
+        ("     PipeWire provides 3-10ms latency vs PulseAudio's 50-100ms"));
   }
 
   return 0;
@@ -291,15 +295,17 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 
   /* Calculate available space in ring buffer */
   if (soundp_write_pos >= soundp_read_pos) {
-    space_available = RING_BUFFER_SIZE - (soundp_write_pos - soundp_read_pos) - 1;
+    space_available =
+        RING_BUFFER_SIZE - (soundp_write_pos - soundp_read_pos) - 1;
   } else {
     space_available = soundp_read_pos - soundp_write_pos - 1;
   }
 
   /* Clamp samples to available space */
   if (samples > space_available) {
-    /* Note: Don't log here - this is in the hot audio path and logging can block/freeze audio.
-       The backpressure mechanism in ui_tick_callback should prevent this from happening. */
+    /* Note: Don't log here - this is in the hot audio path and logging can
+       block/freeze audio. The backpressure mechanism in ui_tick_callback should
+       prevent this from happening. */
     samples = space_available;
   }
 

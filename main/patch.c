@@ -64,8 +64,8 @@ int patch_savefile(const char *filename)
   t_patchlist *ent;
 
   if ((f = fopen(filename, "wb")) == nullptr) {
-    LOG_CRITICAL(("Failed to open '%s' for writing: %s",
-                  filename, strerror(errno)));
+    LOG_CRITICAL(
+        ("Failed to open '%s' for writing: %s", filename, strerror(errno)));
     return -1;
   }
   for (ent = patch_patchlist; ent; ent = ent->next)
@@ -93,13 +93,13 @@ int patch_loadfile(const char *filename)
   patch_clearlist();
   end = &patch_patchlist;
   while (fgets(linebuf, sizeof(linebuf), f)) {
-    if (linebuf[strlen(linebuf)-1] != '\n') {
+    if (linebuf[strlen(linebuf) - 1] != '\n') {
       LOG_CRITICAL(("Line too long in '%s': %s", filename, strerror(errno)));
       return -1;
     }
-    linebuf[strlen(linebuf)-1] = '\0'; /* remove newline */
-    if (*linebuf && linebuf[strlen(linebuf)-1] == '\r')
-      linebuf[strlen(linebuf)-1] = '\0'; /* remove optional cr */
+    linebuf[strlen(linebuf) - 1] = '\0'; /* remove newline */
+    if (*linebuf && linebuf[strlen(linebuf) - 1] == '\r')
+      linebuf[strlen(linebuf) - 1] = '\0'; /* remove optional cr */
     if (strlen(linebuf) < 11 && linebuf[6] != ':') {
       LOG_CRITICAL(("Invalid patch file '%s'", filename));
       return -1;
@@ -107,7 +107,8 @@ int patch_loadfile(const char *filename)
     if ((ent = malloc(sizeof(t_patchlist))) == nullptr)
       ui_err("out of memory");
     snprintf(ent->code, 12, "%s", linebuf);
-    for (p = linebuf + 11; *p == ' '; p++) ;
+    for (p = linebuf + 11; *p == ' '; p++)
+      ;
     if ((ent->action = strdup(p)) == nullptr)
       ui_err("out of memory");
     ent->next = nullptr;
@@ -143,7 +144,8 @@ void patch_addcode(const char *code, const char *action)
   t_patchlist *ent, **end;
 
   /* where's the end of the list */
-  for (end = &patch_patchlist; *end; end = &((*end)->next)) ;
+  for (end = &patch_patchlist; *end; end = &((*end)->next))
+    ;
 
   /* create and insert */
   if ((ent = malloc(sizeof(t_patchlist))) == nullptr)
@@ -192,20 +194,42 @@ int patch_genietoraw(const char *code, uint32 *addr, uint16 *data)
 
   if (strlen(code) != 9 || code[4] != '-')
     return -1;
-  for (i = 0; i < 9; i = (i == 3 ? i+2 : i+1)) {
+  for (i = 0; i < 9; i = (i == 3 ? i + 2 : i + 1)) {
     if ((p = strchr(patch_codestring, code[i])) == nullptr)
       return -1;
     v = p - patch_codestring;
     switch (i) {
-    case 0: d|= v << 3; break;
-    case 1: d|= v >> 2; a|= (v & 3) << 14; break;
-    case 2: a|= v << 9; break;
-    case 3: a|= (v >> 4) << 8; a|= (v & 15) << 20; break;
-    case 5: a|= (v >> 1) << 16; d|= (v & 1) << 12; break;
-    case 6: d|= (v >> 1) << 8; d|= (v & 1) << 15; break;
-    case 7: d|= (v >> 3) << 13; a|= (v & 7) << 5; break;
-    case 8: a|= v; break; 
-    default: return -1;
+    case 0:
+      d |= v << 3;
+      break;
+    case 1:
+      d |= v >> 2;
+      a |= (v & 3) << 14;
+      break;
+    case 2:
+      a |= v << 9;
+      break;
+    case 3:
+      a |= (v >> 4) << 8;
+      a |= (v & 15) << 20;
+      break;
+    case 5:
+      a |= (v >> 1) << 16;
+      d |= (v & 1) << 12;
+      break;
+    case 6:
+      d |= (v >> 1) << 8;
+      d |= (v & 1) << 15;
+      break;
+    case 7:
+      d |= (v >> 3) << 13;
+      a |= (v & 7) << 5;
+      break;
+    case 8:
+      a |= v;
+      break;
+    default:
+      return -1;
     }
   }
   *addr = a;
@@ -223,16 +247,32 @@ int patch_rawtogenie(uint32 addr, uint16 data, char *code)
   if (addr & 0xff000000)
     return -1;
   code[4] = '-';
-  for (i = 0; i < 9; i = (i == 3 ? i+2 : i+1)) {
+  for (i = 0; i < 9; i = (i == 3 ? i + 2 : i + 1)) {
     switch (i) {
-    case 0: v = (data >> 3) & 15; break;
-    case 1: v = ((data & 7) << 2) | ((addr >> 14) & 3); break;
-    case 2: v = (addr >> 9) & 15; break;
-    case 3: v = (addr >> 20) | ((addr >> 4) & 0x10); break;
-    case 5: v = ((addr >> 15) & 14) | ((data >> 12) & 1); break;
-    case 6: v = ((data >> 8) & 14) | (data >> 15); break;
-    case 7: v = ((data >> 10) & 0x18) | ((addr >> 5) & 7); break;
-    case 8: v = addr & 15; break;
+    case 0:
+      v = (data >> 3) & 15;
+      break;
+    case 1:
+      v = ((data & 7) << 2) | ((addr >> 14) & 3);
+      break;
+    case 2:
+      v = (addr >> 9) & 15;
+      break;
+    case 3:
+      v = (addr >> 20) | ((addr >> 4) & 0x10);
+      break;
+    case 5:
+      v = ((addr >> 15) & 14) | ((data >> 12) & 1);
+      break;
+    case 6:
+      v = ((data >> 8) & 14) | (data >> 15);
+      break;
+    case 7:
+      v = ((data >> 10) & 0x18) | ((addr >> 5) & 7);
+      break;
+    case 8:
+      v = addr & 15;
+      break;
     }
     code[i] = patch_codestring[v];
   }

@@ -1,5 +1,7 @@
 typedef enum {
-  mem_byte, mem_word, mem_long
+  mem_byte,
+  mem_word,
+  mem_long
 } t_memtype;
 
 typedef struct {
@@ -38,9 +40,12 @@ extern void (*mem68k_store_byte[0x1000])(uint32 addr, uint8 data);
 extern void (*mem68k_store_word[0x1000])(uint32 addr, uint16 data);
 extern void (*mem68k_store_long[0x1000])(uint32 addr, uint32 data);
 
-#define fetchbyte(addr) mem68k_fetch_byte[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF)
-#define fetchword(addr) mem68k_fetch_word[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF)
-#define fetchlong(addr) mem68k_fetch_long[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF)
+#define fetchbyte(addr) \
+  mem68k_fetch_byte[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF)
+#define fetchword(addr) \
+  mem68k_fetch_word[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF)
+#define fetchlong(addr) \
+  mem68k_fetch_long[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF)
 
 /* XXX BUG: these direct routines do not check for over-run of the 64k
    cpu68k_ram block - so writing a long at $FFFF corrupts 3 bytes of data -
@@ -53,10 +58,10 @@ extern void (*mem68k_store_long[0x1000])(uint32 addr, uint32 data);
 static inline void storebyte(uint32 addr, uint8 data)
 {
   if ((addr & 0xE00000) == 0xE00000) {
-    addr&= 0xffff;
+    addr &= 0xffff;
     *(uint8 *)(cpu68k_ram + addr) = data;
   } else {
-    mem68k_store_byte[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF,data);
+    mem68k_store_byte[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data);
   }
 }
 
@@ -64,10 +69,10 @@ static inline void storeword(uint32 addr, uint16 data)
 {
   /* in an ideal world we'd check bit 0 of addr, but speed is everything */
   if ((addr & 0xE00000) == 0xE00000) {
-    addr&= 0xffff;
+    addr &= 0xffff;
     *(uint16 *)(cpu68k_ram + addr) = LOCENDIAN16(data);
   } else {
-    mem68k_store_word[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF,data);
+    mem68k_store_word[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data);
   }
 }
 
@@ -75,7 +80,7 @@ static inline void storelong(uint32 addr, uint32 data)
 {
   /* in an ideal world we'd check bit 0 of addr, but speed is everything */
   if ((addr & 0xE00000) == 0xE00000) {
-    addr&= 0xffff;
+    addr &= 0xffff;
 #ifdef ALIGNLONGS
     *(uint16 *)(cpu68k_ram + addr) = LOCENDIAN16((uint16)(data >> 16));
     *(uint16 *)(cpu68k_ram + addr + 2) = LOCENDIAN16((uint16)(data));
@@ -83,14 +88,17 @@ static inline void storelong(uint32 addr, uint32 data)
     *(uint32 *)(cpu68k_ram + addr) = LOCENDIAN32(data);
 #endif
   } else {
-    mem68k_store_long[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF,data);
+    mem68k_store_long[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data);
   }
 }
 
 #else
 
-#define storebyte(addr,data) mem68k_store_byte[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF,data)
-#define storeword(addr,data) mem68k_store_word[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF,data)
-#define storelong(addr,data) mem68k_store_long[((addr) & 0xFFFFFF)>>12]((addr) & 0xFFFFFF,data)
+#define storebyte(addr, data) \
+  mem68k_store_byte[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data)
+#define storeword(addr, data) \
+  mem68k_store_word[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data)
+#define storelong(addr, data) \
+  mem68k_store_long[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data)
 
 #endif

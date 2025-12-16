@@ -19,12 +19,12 @@ uint8 *cpu68k_rom = nullptr;
 unsigned int cpu68k_romlen = 0;
 uint8 *cpu68k_ram = nullptr;
 t_iib *cpu68k_iibtable[65536];
-void (*cpu68k_functable[65536 * 2]) (t_ipc * ipc);
+void (*cpu68k_functable[65536 * 2])(t_ipc *ipc);
 int cpu68k_totalinstr;
 int cpu68k_totalfuncs;
 unsigned int cpu68k_clocks;
 unsigned int cpu68k_frames;
-unsigned int cpu68k_frozen;     /* cpu frozen, do not interrupt, make pending */
+unsigned int cpu68k_frozen; /* cpu frozen, do not interrupt, make pending */
 t_regs regs;
 uint8 movem_bit[256];
 t_ipclist *ipclist[LEN_IPCLISTTABLE];
@@ -129,8 +129,8 @@ int cpu68k_init(void)
     for (sbit = 0; sbit < (1 << sbits); sbit++) {
       for (dbit = 0; dbit < (1 << dbits); dbit++) {
         bitmap = iib->bits | (sbit << iib->sbitpos) | (dbit << iib->dbitpos);
-        if (iib->stype == dt_Imm3 || iib->stype == dt_Imm4
-            || iib->stype == dt_Imm8) {
+        if (iib->stype == dt_Imm3 || iib->stype == dt_Imm4 ||
+            iib->stype == dt_Imm8) {
           if (sbit == 0 && iib->flags.imm_notzero) {
             continue;
           }
@@ -156,8 +156,8 @@ int cpu68k_init(void)
     }
   }
   if (j != cpu68k_totalinstr) {
-    LOG_CRITICAL(("Instruction count not verified (%d/%d)\n",
-                  cpu68k_totalinstr, i));
+    LOG_CRITICAL(
+        ("Instruction count not verified (%d/%d)\n", cpu68k_totalinstr, i));
     return 1;
   }
 
@@ -177,18 +177,17 @@ int cpu68k_init(void)
   return 0;
 }
 
-void cpu68k_printipc(t_ipc * ipc)
+void cpu68k_printipc(t_ipc *ipc)
 {
   printf("IPC @ 0x%p\n", ipc);
-  printf("  opcode: %04X, uses %X set %X\n", ipc->opcode, ipc->used,
-         ipc->set);
+  printf("  opcode: %04X, uses %X set %X\n", ipc->opcode, ipc->used, ipc->set);
   printf("  src = %08X\n", ipc->src);
   printf("  dst = %08X\n", ipc->dst);
 }
 
 /* fill in ipc */
 
-void cpu68k_ipc(uint32 addr68k, uint8 *addr, t_iib * iib, t_ipc * ipc)
+void cpu68k_ipc(uint32 addr68k, uint8 *addr, t_iib *iib, t_ipc *ipc)
 {
   t_type type;
   uint32 *p;
@@ -211,13 +210,13 @@ void cpu68k_ipc(uint32 addr68k, uint8 *addr, t_iib * iib, t_ipc * ipc)
       ipc->src = (sint32)(sint16)LOCENDIAN16(*(uint16 *)(addr + 2));
       ipc->wordlen++;
     }
-    ipc->src += addr68k + 2;    /* add PC of next instruction */
+    ipc->src += addr68k + 2; /* add PC of next instruction */
     return;
   }
   if (iib->mnemonic == i_DBcc || iib->mnemonic == i_DBRA) {
     /* special case - we can calculate the offset now */
     ipc->src = (sint32)(sint16)LOCENDIAN16(*(uint16 *)(addr + 2));
-    ipc->src += addr68k + 2;    /* add PC of next instruction */
+    ipc->src += addr68k + 2; /* add PC of next instruction */
     ipc->wordlen++;
     return;
   }
@@ -260,7 +259,7 @@ void cpu68k_ipc(uint32 addr68k, uint8 *addr, t_iib * iib, t_ipc * ipc)
       break;
     case dt_Pdis:
       *p = (sint32)(sint16)LOCENDIAN16(*(uint16 *)addr);
-      *p += addr68k;            /* add PC of extension word (this word) */
+      *p += addr68k; /* add PC of extension word (this word) */
       ipc->wordlen++;
       addr += 2;
       addr68k += 2;
@@ -326,7 +325,7 @@ t_ipclist *cpu68k_makeipclist(uint32 pc)
 {
   int size = 16;
   t_ipclist *list = malloc(sizeof(t_ipclist) + 16 * sizeof(t_ipc) + 8);
-  t_ipc *ipc = (t_ipc *) (list + 1);
+  t_ipc *ipc = (t_ipc *)(list + 1);
   t_iib *iib;
   int instrs = 0;
   uint16 required;
@@ -348,24 +347,23 @@ t_ipclist *cpu68k_makeipclist(uint32 pc)
       list = realloc(list, sizeof(t_ipclist) + size * sizeof(t_ipc) + 8);
       if (list == nullptr)
         ui_err("Out of memory whilst making ipc list @ %08X", pc);
-      ipc = ((t_ipc *) (list + 1)) + instrs - 1;
+      ipc = ((t_ipc *)(list + 1)) + instrs - 1;
     }
     if (!(iib = cpu68k_iibtable[fetchword(pc)])) {
       ui_err("Invalid instruction @ %08X [%04X]", pc, fetchword(pc));
     }
-    cpu68k_ipc(pc, mem68k_memptr[pc >> 12] (pc), iib, ipc);
+    cpu68k_ipc(pc, mem68k_memptr[pc >> 12](pc), iib, ipc);
     list->clocks += iib->clocks;
     pc += (iib->wordlen) << 1;
     ipc++;
-  }
-  while (!iib->flags.endblk);
+  } while (!iib->flags.endblk);
   *(int *)ipc = 0;
 
   if (instrs == 2) {
     ipc--;
     if (iib->mnemonic == i_Bcc && ipc->src == list->pc) {
       /* we have a 2-instruction block ending in a branch to start */
-      ipc = (t_ipc *) (list + 1);
+      ipc = (t_ipc *)(list + 1);
       iib = cpu68k_iibtable[ipc->opcode];
       if (iib->mnemonic == i_TST || iib->mnemonic == i_CMP) {
         /* it's a tst/cmp and then a Bcc */
@@ -377,8 +375,8 @@ t_ipclist *cpu68k_makeipclist(uint32 pc)
     }
   }
 
-  ipc = ((t_ipc *) (list + 1)) + instrs - 1;
-  required = 0x1F;              /* all 5 flags need to be correct at end */
+  ipc = ((t_ipc *)(list + 1)) + instrs - 1;
+  required = 0x1F; /* all 5 flags need to be correct at end */
   for (i = 0; i < instrs; i++) {
     ipc->set &= required;
     required &= ~ipc->set;
@@ -420,10 +418,10 @@ void cpu68k_reset(void)
   regs.pc = fetchlong(4);
   regs.regs[15] = fetchlong(0);
   regs.sr.sr_int = 0;
-  regs.sr.sr_struct.s = 1;      /* Supervisor mode */
+  regs.sr.sr_struct.s = 1; /* Supervisor mode */
   regs.stop = 0;
   cpu68k_clocks = 0;
-  cpu68k_frames = 0;            /* Number of frames */
+  cpu68k_frames = 0; /* Number of frames */
 
   for (i = 0; i < LEN_IPCLISTTABLE; i++) {
     if (ipclist[i]) {

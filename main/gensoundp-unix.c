@@ -17,18 +17,18 @@
 #include "ui.h"
 
 #ifdef JFM
-#  include "jfm.h"
+#include "jfm.h"
 #else
-#  include "support.h"
-#  include "fm.h"
+#include "support.h"
+#include "fm.h"
 #endif
 
 #if defined(__NetBSD__) || defined(__OpenBSD__)
-  #include <soundcard.h>
-  #define SOUND_DEVICE "/dev/sound"
+#include <soundcard.h>
+#define SOUND_DEVICE "/dev/sound"
 #else
-  #include <sys/soundcard.h>
-  #define SOUND_DEVICE "/dev/dsp"
+#include <sys/soundcard.h>
+#define SOUND_DEVICE "/dev/dsp"
 #endif
 
 /*** variables externed ***/
@@ -101,7 +101,8 @@ int soundp_start(void)
       LOG_NORMAL(("Warning: Sample rate not exactly 22050"));
     } else {
       LOG_CRITICAL(("Sound device does not support sample rate %d "
-                    "(returned %d)", sound_speed, soundp_speed));
+                    "(returned %d)",
+                    sound_speed, soundp_speed));
       close(soundp_dev);
       return 1;
     }
@@ -148,12 +149,12 @@ int soundp_samplesbuffered(void)
     return -1;
   }
   pending = (sound_info.fragstotal * sound_info.fragsize) - sound_info.bytes;
-  return (pending / 4);         /* 2 bytes per sample, 2 channel stereo */
+  return (pending / 4); /* 2 bytes per sample, 2 channel stereo */
 }
 
 void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 {
-  uint16 buffer[(SOUND_MAXRATE / 50) * 2];      /* pal is slowest framerate */
+  uint16 buffer[(SOUND_MAXRATE / 50) * 2]; /* pal is slowest framerate */
 #ifdef WORDS_BIGENDIAN
   int endian = 1;
 #else
@@ -168,9 +169,9 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
   }
 #ifdef WORDS_BIGENDIAN
   if (soundp_format == AFMT_S16_BE) {
-#else  
+#else
   if (soundp_format == AFMT_S16_LE) {
-#endif  
+#endif
     /* device matches endianness of host */
     for (i = 0; i < samples; i++) {
       buffer[i * 2] = left[i];

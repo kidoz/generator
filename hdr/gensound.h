@@ -1,10 +1,11 @@
 #ifndef JFM
-#  include "support.h"
-#  include "fm.h"
+#include "support.h"
+#include "fm.h"
 #endif
 
 #define SOUND_MAXRATE 44100
-#define SOUND_SAMPLERATE 44100  /* Increased from 22050 Hz for better audio quality */
+#define SOUND_SAMPLERATE \
+  44100 /* Increased from 22050 Hz for better audio quality */
 
 /* C11: Verify audio configuration at compile time */
 static_assert(SOUND_SAMPLERATE <= SOUND_MAXRATE,

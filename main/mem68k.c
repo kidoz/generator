@@ -92,57 +92,57 @@ static uint8 mem68k_contEoutput;
 
 t_mem68k_def mem68k_def[] = {
 
-  {0x000, 0x400, mem68k_memptr_rom,
-   mem68k_fetch_rom_byte, mem68k_fetch_rom_word, mem68k_fetch_rom_long,
-   mem68k_store_rom_byte, mem68k_store_rom_word, mem68k_store_rom_long},
+    {0x000, 0x400, mem68k_memptr_rom, mem68k_fetch_rom_byte,
+     mem68k_fetch_rom_word, mem68k_fetch_rom_long, mem68k_store_rom_byte,
+     mem68k_store_rom_word, mem68k_store_rom_long},
 
-  {0x400, 0x1000, mem68k_memptr_bad,
-   mem68k_fetch_bad_byte, mem68k_fetch_bad_word, mem68k_fetch_bad_long,
-   mem68k_store_bad_byte, mem68k_store_bad_word, mem68k_store_bad_long},
+    {0x400, 0x1000, mem68k_memptr_bad, mem68k_fetch_bad_byte,
+     mem68k_fetch_bad_word, mem68k_fetch_bad_long, mem68k_store_bad_byte,
+     mem68k_store_bad_word, mem68k_store_bad_long},
 
-  {0xA00, 0xA10, mem68k_memptr_bad,     /* note overlaps blocks below */
-   mem68k_fetch_sram_byte, mem68k_fetch_sram_word, mem68k_fetch_sram_long,
-   mem68k_store_sram_byte, mem68k_store_sram_word, mem68k_store_sram_long},
+    {0xA00, 0xA10, mem68k_memptr_bad, /* note overlaps blocks below */
+     mem68k_fetch_sram_byte, mem68k_fetch_sram_word, mem68k_fetch_sram_long,
+     mem68k_store_sram_byte, mem68k_store_sram_word, mem68k_store_sram_long},
 
-  {0xA04, 0xA05, mem68k_memptr_bad,
-   mem68k_fetch_yam_byte, mem68k_fetch_yam_word, mem68k_fetch_yam_long,
-   mem68k_store_yam_byte, mem68k_store_yam_word, mem68k_store_yam_long},
+    {0xA04, 0xA05, mem68k_memptr_bad, mem68k_fetch_yam_byte,
+     mem68k_fetch_yam_word, mem68k_fetch_yam_long, mem68k_store_yam_byte,
+     mem68k_store_yam_word, mem68k_store_yam_long},
 
-  {0xA06, 0xA07, mem68k_memptr_bad,
-   mem68k_fetch_bank_byte, mem68k_fetch_bank_word, mem68k_fetch_bank_long,
-   mem68k_store_bank_byte, mem68k_store_bank_word, mem68k_store_bank_long},
+    {0xA06, 0xA07, mem68k_memptr_bad, mem68k_fetch_bank_byte,
+     mem68k_fetch_bank_word, mem68k_fetch_bank_long, mem68k_store_bank_byte,
+     mem68k_store_bank_word, mem68k_store_bank_long},
 
-  {0xA0C, 0xA10, mem68k_memptr_bad,     /* this is probably more yam/bank stuff */
-   mem68k_fetch_bad_byte, mem68k_fetch_bad_word, mem68k_fetch_bad_long,
-   mem68k_store_bad_byte, mem68k_store_bad_word, mem68k_store_bad_long},
+    {0xA0C, 0xA10, mem68k_memptr_bad, /* this is probably more yam/bank stuff */
+     mem68k_fetch_bad_byte, mem68k_fetch_bad_word, mem68k_fetch_bad_long,
+     mem68k_store_bad_byte, mem68k_store_bad_word, mem68k_store_bad_long},
 
-  {0xA10, 0xA11, mem68k_memptr_bad,
-   mem68k_fetch_io_byte, mem68k_fetch_io_word, mem68k_fetch_io_long,
-   mem68k_store_io_byte, mem68k_store_io_word, mem68k_store_io_long},
+    {0xA10, 0xA11, mem68k_memptr_bad, mem68k_fetch_io_byte,
+     mem68k_fetch_io_word, mem68k_fetch_io_long, mem68k_store_io_byte,
+     mem68k_store_io_word, mem68k_store_io_long},
 
-  {0xA11, 0xA12, mem68k_memptr_bad,
-   mem68k_fetch_ctrl_byte, mem68k_fetch_ctrl_word, mem68k_fetch_ctrl_long,
-   mem68k_store_ctrl_byte, mem68k_store_ctrl_word, mem68k_store_ctrl_long},
+    {0xA11, 0xA12, mem68k_memptr_bad, mem68k_fetch_ctrl_byte,
+     mem68k_fetch_ctrl_word, mem68k_fetch_ctrl_long, mem68k_store_ctrl_byte,
+     mem68k_store_ctrl_word, mem68k_store_ctrl_long},
 
-  {0xC00, 0xC01, mem68k_memptr_bad,
-   mem68k_fetch_vdp_byte, mem68k_fetch_vdp_word, mem68k_fetch_vdp_long,
-   mem68k_store_vdp_byte, mem68k_store_vdp_word, mem68k_store_vdp_long},
+    {0xC00, 0xC01, mem68k_memptr_bad, mem68k_fetch_vdp_byte,
+     mem68k_fetch_vdp_word, mem68k_fetch_vdp_long, mem68k_store_vdp_byte,
+     mem68k_store_vdp_word, mem68k_store_vdp_long},
 
-  {0xE00, 0x1000, mem68k_memptr_ram,
-   mem68k_fetch_ram_byte, mem68k_fetch_ram_word, mem68k_fetch_ram_long,
-   mem68k_store_ram_byte, mem68k_store_ram_word, mem68k_store_ram_long},
+    {0xE00, 0x1000, mem68k_memptr_ram, mem68k_fetch_ram_byte,
+     mem68k_fetch_ram_word, mem68k_fetch_ram_long, mem68k_store_ram_byte,
+     mem68k_store_ram_word, mem68k_store_ram_long},
 
-  {0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}
+    {0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}
 
 };
 
-uint8 *(*mem68k_memptr[0x1000]) (uint32 addr);
-uint8 (*mem68k_fetch_byte[0x1000]) (uint32 addr);
-uint16 (*mem68k_fetch_word[0x1000]) (uint32 addr);
-uint32 (*mem68k_fetch_long[0x1000]) (uint32 addr);
-void (*mem68k_store_byte[0x1000]) (uint32 addr, uint8 data);
-void (*mem68k_store_word[0x1000]) (uint32 addr, uint16 data);
-void (*mem68k_store_long[0x1000]) (uint32 addr, uint32 data);
+uint8 *(*mem68k_memptr[0x1000])(uint32 addr);
+uint8 (*mem68k_fetch_byte[0x1000])(uint32 addr);
+uint16 (*mem68k_fetch_word[0x1000])(uint32 addr);
+uint32 (*mem68k_fetch_long[0x1000])(uint32 addr);
+void (*mem68k_store_byte[0x1000])(uint32 addr, uint8 data);
+void (*mem68k_store_word[0x1000])(uint32 addr, uint16 data);
+void (*mem68k_store_long[0x1000])(uint32 addr, uint32 data);
 
 /*** initialise memory tables ***/
 
@@ -162,8 +162,7 @@ int mem68k_init(void)
       mem68k_store_long[j] = mem68k_def[i].store_long;
     }
     i++;
-  }
-  while ((mem68k_def[i].start != 0) || (mem68k_def[i].end != 0));
+  } while ((mem68k_def[i].start != 0) || (mem68k_def[i].end != 0));
   mem68k_cont1ctrl = 0;
   mem68k_cont2ctrl = 0;
   mem68k_contEctrl = 0;
@@ -187,8 +186,7 @@ uint8 *mem68k_memptr_rom(uint32 addr)
   if (addr < cpu68k_romlen) {
     return (cpu68k_rom + addr);
   }
-  LOG_CRITICAL(("%08X [MEM] Invalid memory access to ROM 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [MEM] Invalid memory access to ROM 0x%X", regs.pc, addr));
   return cpu68k_rom;
 }
 
@@ -204,46 +202,46 @@ uint8 *mem68k_memptr_ram(uint32 addr)
 
 uint8 mem68k_fetch_bad_byte(uint32 addr)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (byte) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
   return 0;
 }
 
 uint16 mem68k_fetch_bad_word(uint32 addr)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (word) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (word) 0x%X", regs.pc, addr));
   return 0;
 }
 
 uint32 mem68k_fetch_bad_long(uint32 addr)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (long) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (long) 0x%X", regs.pc, addr));
   return 0;
 }
 
 void mem68k_store_bad_byte(uint32 addr, uint8 data)
 {
-  /* Note: Don't log here - invalid memory accesses can happen frequently in some ROMs.
-     Logging in memory access path causes severe performance issues and audio freezing.
-     If debugging is needed, use a conditional compile flag or rate-limited logging. */
+  /* Note: Don't log here - invalid memory accesses can happen frequently in
+     some ROMs. Logging in memory access path causes severe performance issues
+     and audio freezing. If debugging is needed, use a conditional compile flag
+     or rate-limited logging. */
   // LOG_CRITICAL(("%08X [MEM] Invalid memory store (byte) 0x%X = %X", regs.pc,
   //               addr, data));
 }
 
 void mem68k_store_bad_word(uint32 addr, uint16 data)
 {
-  /* Note: Don't log here - invalid memory accesses can happen frequently in some ROMs.
-     Logging in memory access path causes severe performance issues and audio freezing. */
+  /* Note: Don't log here - invalid memory accesses can happen frequently in
+     some ROMs. Logging in memory access path causes severe performance issues
+     and audio freezing. */
   // LOG_CRITICAL(("%08X [MEM] Invalid memory store (word) 0x%X = %X", regs.pc,
   //               addr, data));
 }
 
 void mem68k_store_bad_long(uint32 addr, uint32 data)
 {
-  /* Note: Don't log here - invalid memory accesses can happen frequently in some ROMs.
-     Logging in memory access path causes severe performance issues and audio freezing. */
+  /* Note: Don't log here - invalid memory accesses can happen frequently in
+     some ROMs. Logging in memory access path causes severe performance issues
+     and audio freezing. */
   // LOG_CRITICAL(("%08X [MEM] Invalid memory store (long) 0x%X = %X", regs.pc,
   //               addr, data));
 }
@@ -256,8 +254,7 @@ uint8 mem68k_fetch_rom_byte(uint32 addr)
   if (addr < cpu68k_romlen) {
     return (*(uint8 *)(cpu68k_rom + addr));
   }
-  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (byte) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
   return 0;
 }
 
@@ -272,8 +269,7 @@ uint16 mem68k_fetch_rom_word(uint32 addr)
   if (addr < cpu68k_romlen) {
     return LOCENDIAN16(*(uint16 *)(cpu68k_rom + addr));
   }
-  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (word) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (word) 0x%X", regs.pc, addr));
   return 0;
 }
 
@@ -288,20 +284,20 @@ uint32 mem68k_fetch_rom_long(uint32 addr)
   if (addr < cpu68k_romlen) {
 #ifdef ALIGNLONGS
     return (LOCENDIAN16(*(uint16 *)(cpu68k_rom + addr)) << 16) |
-      LOCENDIAN16(*(uint16 *)(cpu68k_rom + addr + 2));
+           LOCENDIAN16(*(uint16 *)(cpu68k_rom + addr + 2));
 #else
     return LOCENDIAN32(*(uint32 *)(cpu68k_rom + addr));
 #endif
   }
-  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (long) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (long) 0x%X", regs.pc, addr));
   return 0;
 }
 
 void mem68k_store_rom_byte(uint32 addr, uint8 data)
 {
-  /* Note: Don't log here - ROM writes can happen frequently (some ROMs try to write to ROM area).
-     Logging in memory access path causes severe performance issues and audio freezing. */
+  /* Note: Don't log here - ROM writes can happen frequently (some ROMs try to
+     write to ROM area). Logging in memory access path causes severe performance
+     issues and audio freezing. */
   // LOG_CRITICAL(("%08X [ROM] Invalid memory store (byte) 0x%X = %X", regs.pc,
   //               addr, data));
 }
@@ -309,7 +305,8 @@ void mem68k_store_rom_byte(uint32 addr, uint8 data)
 void mem68k_store_rom_word(uint32 addr, uint16 data)
 {
   /* Note: Don't log here - ROM writes can happen frequently.
-     Logging in memory access path causes severe performance issues and audio freezing. */
+     Logging in memory access path causes severe performance issues and audio
+     freezing. */
   // LOG_CRITICAL(("%08X [ROM] Invalid memory store (word) 0x%X = %X", regs.pc,
   //               addr, data));
 }
@@ -317,7 +314,8 @@ void mem68k_store_rom_word(uint32 addr, uint16 data)
 void mem68k_store_rom_long(uint32 addr, uint32 data)
 {
   /* Note: Don't log here - ROM writes can happen frequently.
-     Logging in memory access path causes severe performance issues and audio freezing. */
+     Logging in memory access path causes severe performance issues and audio
+     freezing. */
   // LOG_CRITICAL(("%08X [ROM] Invalid memory store (long) 0x%X = %X", regs.pc,
   //               addr, data));
 }
@@ -366,7 +364,7 @@ uint32 mem68k_fetch_sram_long(uint32 addr)
   addr &= 0x1fff;
 #ifdef ALIGNLONGS
   return (LOCENDIAN16(*(uint16 *)(cpuz80_ram + addr)) << 16) |
-    LOCENDIAN16(*(uint16 *)(cpuz80_ram + addr + 2));
+         LOCENDIAN16(*(uint16 *)(cpuz80_ram + addr + 2));
 #else
   return LOCENDIAN32(*(uint32 *)(cpuz80_ram + addr));
 #endif
@@ -444,8 +442,7 @@ uint16 mem68k_fetch_yam_word(uint32 addr)
   }
 #endif
   addr -= 0xA04000;
-  LOG_CRITICAL(("%08X [YAM] Invalid memory fetch (word) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [YAM] Invalid memory fetch (word) 0x%X", regs.pc, addr));
   return 0;
 }
 
@@ -459,8 +456,7 @@ uint32 mem68k_fetch_yam_long(uint32 addr)
 #endif
   addr -= 0xA04000;
   /* no longs please */
-  LOG_CRITICAL(("%08X [YAM] Invalid memory fetch (long) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [YAM] Invalid memory fetch (long) 0x%X", regs.pc, addr));
   return 0;
 }
 
@@ -508,24 +504,21 @@ void mem68k_store_yam_long(uint32 addr, uint32 data)
 uint8 mem68k_fetch_bank_byte(uint32 addr)
 {
   /* write only */
-  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (byte) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
   return 0;
 }
 
 uint16 mem68k_fetch_bank_word(uint32 addr)
 {
   /* write only */
-  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (word) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (word) 0x%X", regs.pc, addr));
   return 0;
 }
 
 uint32 mem68k_fetch_bank_long(uint32 addr)
 {
   /* write only */
-  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (long) 0x%X", regs.pc,
-                addr));
+  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (long) 0x%X", regs.pc, addr));
   return 0;
 }
 
@@ -538,8 +531,8 @@ void mem68k_store_bank_byte(uint32 addr, uint8 data)
 #endif
     cpuz80_bankwrite(data);
   } else {
-    LOG_CRITICAL(("%08X [BANK] Invalid memory store (byte) 0x%X", regs.pc,
-                  addr));
+    LOG_CRITICAL(
+        ("%08X [BANK] Invalid memory store (byte) 0x%X", regs.pc, addr));
   }
 }
 
@@ -552,8 +545,8 @@ void mem68k_store_bank_word(uint32 addr, uint16 data)
 #endif
     cpuz80_bankwrite(data >> 8);
   } else {
-    LOG_CRITICAL(("%08X [BANK] Invalid memory store (word) 0x%X", regs.pc,
-                  addr));
+    LOG_CRITICAL(
+        ("%08X [BANK] Invalid memory store (word) 0x%X", regs.pc, addr));
   }
 }
 
@@ -574,46 +567,48 @@ uint8 mem68k_fetch_io_byte(uint32 addr)
 
   addr -= 0xA10000;
   if ((addr & 1) == 0) {
-    LOG_CRITICAL(("%08X [IO] Invalid memory fetch (byte) 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(("%08X [IO] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
     return 0;
   }
   switch (addr >> 1) {
-  case 0:                      /* 0x1 */
+  case 0: /* 0x1 */
     /* version */
     return (1 << 5 | vdp_pal << 6 | vdp_overseas << 7);
-  case 1:                      /* 0x3 */
+  case 1: /* 0x3 */
     /* get input state */
-    in = ((mem68k_cont1output & 1 << 6)
-          ? ((1 - mem68k_cont[0].up) | (1 - mem68k_cont[0].down) << 1 |
-             (1 - mem68k_cont[0].left) << 2 | (1 - mem68k_cont[0].right) << 3 |
-             (1 - mem68k_cont[0].b) << 4 | (1 - mem68k_cont[0].c) << 5)
-          : ((1 - mem68k_cont[0].up) | (1 - mem68k_cont[0].down) << 1 |
-             (1 - mem68k_cont[0].a) << 4 | (1 - mem68k_cont[0].start) << 5));
+    in =
+        ((mem68k_cont1output & 1 << 6)
+             ? ((1 - mem68k_cont[0].up) | (1 - mem68k_cont[0].down) << 1 |
+                (1 - mem68k_cont[0].left) << 2 |
+                (1 - mem68k_cont[0].right) << 3 | (1 - mem68k_cont[0].b) << 4 |
+                (1 - mem68k_cont[0].c) << 5)
+             : ((1 - mem68k_cont[0].up) | (1 - mem68k_cont[0].down) << 1 |
+                (1 - mem68k_cont[0].a) << 4 | (1 - mem68k_cont[0].start) << 5));
     return (in & ~mem68k_cont1ctrl) | (mem68k_cont1output & mem68k_cont1ctrl);
-  case 2:                      /* 0x5 */
+  case 2: /* 0x5 */
     /* get input state */
-    in = ((mem68k_cont2output & 1 << 6)
-          ? ((1 - mem68k_cont[1].up) | (1 - mem68k_cont[1].down) << 1 |
-             (1 - mem68k_cont[1].left) << 2 | (1 - mem68k_cont[1].right) << 3 |
-             (1 - mem68k_cont[1].b) << 4 | (1 - mem68k_cont[1].c) << 5)
-          : ((1 - mem68k_cont[1].up) | (1 - mem68k_cont[1].down) << 1 |
-             (1 - mem68k_cont[1].a) << 4 | (1 - mem68k_cont[1].start) << 5));
+    in =
+        ((mem68k_cont2output & 1 << 6)
+             ? ((1 - mem68k_cont[1].up) | (1 - mem68k_cont[1].down) << 1 |
+                (1 - mem68k_cont[1].left) << 2 |
+                (1 - mem68k_cont[1].right) << 3 | (1 - mem68k_cont[1].b) << 4 |
+                (1 - mem68k_cont[1].c) << 5)
+             : ((1 - mem68k_cont[1].up) | (1 - mem68k_cont[1].down) << 1 |
+                (1 - mem68k_cont[1].a) << 4 | (1 - mem68k_cont[1].start) << 5));
     return (in & ~mem68k_cont2ctrl) | (mem68k_cont2output & mem68k_cont2ctrl);
-  case 3:                      /* 0x7 */
+  case 3: /* 0x7 */
     LOG_NORMAL(("%08X [IO] EXT port read", regs.pc));
     /* get input state */
-    in = 0;                     /* BUG: unsupported */
+    in = 0; /* BUG: unsupported */
     return (in & ~mem68k_cont1ctrl) | (mem68k_cont1output & mem68k_cont1ctrl);
-  case 4:                      /* 0x9 */
+  case 4: /* 0x9 */
     return mem68k_cont1ctrl;
-  case 5:                      /* 0xB */
+  case 5: /* 0xB */
     return mem68k_cont2ctrl;
-  case 6:                      /* 0xD */
+  case 6: /* 0xD */
     return mem68k_contEctrl;
   default:
-    LOG_CRITICAL(("%08X [IO] Invalid memory fetch (byte) 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(("%08X [IO] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
     return 0;
   }
 }
@@ -645,15 +640,15 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
   case 0x9:
     mem68k_cont1ctrl = data;
     if (data != 0x40) {
-      LOG_CRITICAL(("%08X [IO] Unknown controller 1 setting (0x%X)",
-                    regs.pc, data));
+      LOG_CRITICAL(
+          ("%08X [IO] Unknown controller 1 setting (0x%X)", regs.pc, data));
     }
     return;
   case 0xB:
     mem68k_cont2ctrl = data;
     if (data != 0x40) {
-      LOG_CRITICAL(("%08X [IO] Unknown controller 2 setting (0x%X)",
-                    regs.pc, data));
+      LOG_CRITICAL(
+          ("%08X [IO] Unknown controller 2 setting (0x%X)", regs.pc, data));
     }
     return;
   case 0xD:
@@ -671,8 +666,7 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
   case 0x1F:
     /* return; */
   default:
-    LOG_CRITICAL(("%08X [IO] Invalid memory store (byte) 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(("%08X [IO] Invalid memory store (byte) 0x%X", regs.pc, addr));
     return;
   }
 }
@@ -701,8 +695,7 @@ uint8 mem68k_fetch_ctrl_byte(uint32 addr)
   if (addr == 0x100) {
     return cpuz80_active ? 1 : 0;
   }
-  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (byte) 0x%X",
-                regs.pc, addr));
+  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
   return 0;
 }
 
@@ -713,8 +706,7 @@ uint16 mem68k_fetch_ctrl_word(uint32 addr)
   if (addr == 0x100) {
     return cpuz80_active ? 0x100 : 0;
   }
-  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (word) 0x%X",
-                regs.pc, addr));
+  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (word) 0x%X", regs.pc, addr));
   return 0;
 }
 
@@ -722,8 +714,7 @@ uint32 mem68k_fetch_ctrl_long(uint32 addr)
 {
   addr -= 0xA11000;
   /* no long access allowed */
-  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (long) 0x%X",
-                regs.pc, addr));
+  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (long) 0x%X", regs.pc, addr));
   return 0;
 }
 
@@ -743,7 +734,7 @@ void mem68k_store_ctrl_byte(uint32 addr, uint8 data)
       LOG_DEBUG1(("%08X Z80 started", regs.pc));
     }
   } else if (addr == 0x101) {
-    return;                     /* ignore low byte */
+    return; /* ignore low byte */
   } else if (addr == 0x200) {
     /* z80 reset request */
     if (!(data & 1)) {
@@ -756,10 +747,10 @@ void mem68k_store_ctrl_byte(uint32 addr, uint8 data)
       LOG_DEBUG1(("%08X Z80 un-reset", regs.pc));
     }
   } else if (addr == 0x201) {
-    return;                     /* ignore low byte */
+    return; /* ignore low byte */
   } else {
-    LOG_CRITICAL(("%08X [CTRL] Invalid memory store (byte) 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(
+        ("%08X [CTRL] Invalid memory store (byte) 0x%X", regs.pc, addr));
   }
 }
 
@@ -790,8 +781,8 @@ void mem68k_store_ctrl_word(uint32 addr, uint16 data)
       LOG_DEBUG1(("%08X Z80 un-reset", regs.pc));
     }
   } else {
-    LOG_CRITICAL(("%08X [CTRL] Invalid memory store (word) 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(
+        ("%08X [CTRL] Invalid memory store (word) 0x%X", regs.pc, addr));
   }
 }
 
@@ -799,8 +790,8 @@ void mem68k_store_ctrl_long(uint32 addr, uint32 data)
 {
   addr -= 0xA11000;
   /* no long access allowed */
-  LOG_CRITICAL(("%08X [CTRL] Invalid memory store (long) 0x%X = %X",
-                regs.pc, addr, data));
+  LOG_CRITICAL(("%08X [CTRL] Invalid memory store (long) 0x%X = %X", regs.pc,
+                addr, data));
 }
 
 
@@ -834,7 +825,8 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
     /* control port */
 #ifdef DEBUG_VDP
     LOG_VERBOSE(("%08X [VDP] Word fetch from control port "
-                 "(status) 0x%X", regs.pc, addr));
+                 "(status) 0x%X",
+                 regs.pc, addr));
 #endif
     return vdp_status();
   case 4:
@@ -847,8 +839,8 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
       line8 = (vdp_line - vdp_visstartline + (vdp_event > 2 ? 1 : 0)) & 0xff;
 
 #ifdef DEBUG_VDP
-      LOG_VERBOSE(("%08X [VDP] Word fetch from hv counter 0x%X",
-                   regs.pc, addr));
+      LOG_VERBOSE(
+          ("%08X [VDP] Word fetch from hv counter 0x%X", regs.pc, addr));
 #endif
       if ((vdp_reg[12] >> 1) & 3) {
         /* interlace mode - replace lowest bit with highest bit */
@@ -866,8 +858,8 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
     LOG_CRITICAL(("%08X [VDP] PSG/prohibited word fetch.", regs.pc));
     return 0;
   default:
-    LOG_CRITICAL(("%08X [VDP] Invalid memory fetch (word) 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(
+        ("%08X [VDP] Invalid memory fetch (word) 0x%X", regs.pc, addr));
     return 0;
   }
 }
@@ -891,20 +883,20 @@ uint32 mem68k_fetch_vdp_long(uint32 addr)
   case 2:
     /* control port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Long fetch from control port 0x%X",
-                 regs.pc, addr));
-    LOG_CRITICAL(("%08X [VDP] Long fetch from control port 0x%X",
-                  regs.pc, addr));
+    LOG_VERBOSE(
+        ("%08X [VDP] Long fetch from control port 0x%X", regs.pc, addr));
+    LOG_CRITICAL(
+        ("%08X [VDP] Long fetch from control port 0x%X", regs.pc, addr));
 #endif
     return 0;
   case 4:
     /* hv counter ish */
-    LOG_CRITICAL(("%08X [VDP] Long fetch from hv/prohibited 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(
+        ("%08X [VDP] Long fetch from hv/prohibited 0x%X", regs.pc, addr));
     return 0;
   default:
-    LOG_CRITICAL(("%08X [VDP] Invalid memory fetch (word) 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(
+        ("%08X [VDP] Invalid memory fetch (word) 0x%X", regs.pc, addr));
     return 0;
   }
 }
@@ -919,8 +911,8 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
   case 3:
     /* data port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Byte store to DATA of %X [%d][%X]", regs.pc,
-                 data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE(("%08X [VDP] Byte store to DATA of %X [%d][%X]", regs.pc, data,
+                 vdp_reg[23] >> 6, vdp_reg[1]));
 #endif
     vdp_storedata(data | (data << 8));
     return;
@@ -930,8 +922,8 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
   case 7:
 
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Byte store to CONTROL of %X [%d][%X]",
-                 regs.pc, data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE(("%08X [VDP] Byte store to CONTROL of %X [%d][%X]", regs.pc,
+                 data, vdp_reg[23] >> 6, vdp_reg[1]));
 #endif
     /* control port */
     vdp_storectrl(data | (data << 8));
@@ -945,8 +937,8 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
     sound_sn76496store(data);
     return;
   default:
-    LOG_CRITICAL(("%08X [VDP] Invalid memory store (byte) 0x%X",
-                  regs.pc, addr));
+    LOG_CRITICAL(
+        ("%08X [VDP] Invalid memory store (byte) 0x%X", regs.pc, addr));
     return;
   }
 }
@@ -965,16 +957,16 @@ void mem68k_store_vdp_word(uint32 addr, uint16 data)
   case 1:
     /* data port */
 #ifdef DEBUG_VDP
-    LOG_CRITICAL(("%08X [VDP] Word store to DATA of %X [%d][%X]", regs.pc,
-                  data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_CRITICAL(("%08X [VDP] Word store to DATA of %X [%d][%X]", regs.pc, data,
+                  vdp_reg[23] >> 6, vdp_reg[1]));
 #endif
     vdp_storedata(data);
     return;
   case 2:
   case 3:
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Word store to CONTROL of %X [%d][%X]",
-                 regs.pc, data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE(("%08X [VDP] Word store to CONTROL of %X [%d][%X]", regs.pc,
+                 data, vdp_reg[23] >> 6, vdp_reg[1]));
 #endif
     /* control port */
     vdp_storectrl(data);
@@ -987,8 +979,8 @@ void mem68k_store_vdp_word(uint32 addr, uint16 data)
     LOG_CRITICAL(("%08X [VDP] PSG/prohibited word store.", regs.pc));
     return;
   default:
-    LOG_CRITICAL(("%08X [VDP] Invalid memory store (word) 0x%X", regs.pc,
-                  addr));
+    LOG_CRITICAL(
+        ("%08X [VDP] Invalid memory store (word) 0x%X", regs.pc, addr));
     return;
   }
 }
@@ -1006,8 +998,8 @@ void mem68k_store_vdp_long(uint32 addr, uint32 data)
   case 0:
     /* data port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Long store to DATA of %X [%d][%X]", regs.pc,
-                 data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE(("%08X [VDP] Long store to DATA of %X [%d][%X]", regs.pc, data,
+                 vdp_reg[23] >> 6, vdp_reg[1]));
 #endif
     vdp_storedata((uint16)(data >> 16));
     vdp_storedata((uint16)(data));
@@ -1015,20 +1007,20 @@ void mem68k_store_vdp_long(uint32 addr, uint32 data)
   case 2:
     /* control port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Long store to CONTROL of %X [%d][%X]",
-                 regs.pc, data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE(("%08X [VDP] Long store to CONTROL of %X [%d][%X]", regs.pc,
+                 data, vdp_reg[23] >> 6, vdp_reg[1]));
 #endif
     vdp_storectrl((uint16)(data >> 16));
     vdp_storectrl((uint16)(data));
     return;
   case 4:
     /* hv counter */
-    LOG_CRITICAL(("%08X [VDP] Long store to hv/prohibited 0x%X", regs.pc,
-                  addr));
+    LOG_CRITICAL(
+        ("%08X [VDP] Long store to hv/prohibited 0x%X", regs.pc, addr));
     return;
   default:
-    LOG_CRITICAL(("%08X [VDP] Invalid memory store (long) 0x%X", regs.pc,
-                  addr));
+    LOG_CRITICAL(
+        ("%08X [VDP] Invalid memory store (long) 0x%X", regs.pc, addr));
     return;
   }
 }
@@ -1052,7 +1044,7 @@ uint32 mem68k_fetch_ram_long(uint32 addr)
   addr &= 0xffff;
 #ifdef ALIGNLONGS
   return (LOCENDIAN16(*(uint16 *)(cpu68k_ram + addr)) << 16) |
-    LOCENDIAN16(*(uint16 *)(cpu68k_ram + addr + 2));
+         LOCENDIAN16(*(uint16 *)(cpu68k_ram + addr + 2));
 #else
   return LOCENDIAN32(*(uint32 *)(cpu68k_ram + addr));
 #endif

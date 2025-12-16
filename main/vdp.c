@@ -40,23 +40,23 @@ unsigned int vdp_framerate;
 unsigned int vdp_clock;
 unsigned int vdp_68kclock;
 unsigned int vdp_clksperline_68k;
-unsigned int vdp_line = 0;      /* current line number */
-uint8 vdp_oddframe = 0;  /* odd/even frame */
-uint8 vdp_vblank = 0;    /* set during vertical blanking */
-uint8 vdp_hblank = 0;    /* set during horizontal blanking */
-uint8 vdp_vsync = 0;     /* a vsync just happened */
-uint8 vdp_dmabusy = 0;   /* dma busy flag */
-uint8 vdp_pal = 0;       /* set for pal mode */
-uint8 vdp_overseas = 1;  /* set for overseas model */
-uint8 vdp_layerB = 1;    /* flag */
-uint8 vdp_layerBp = 1;   /* flag */
-uint8 vdp_layerA = 1;    /* flag */
-uint8 vdp_layerAp = 1;   /* flag */
-uint8 vdp_layerW = 1;    /* flag */
-uint8 vdp_layerWp = 1;   /* flag */
-uint8 vdp_layerH = 1;    /* flag */
-uint8 vdp_layerS = 1;    /* flag */
-uint8 vdp_layerSp = 1;   /* flag */
+unsigned int vdp_line = 0; /* current line number */
+uint8 vdp_oddframe = 0;    /* odd/even frame */
+uint8 vdp_vblank = 0;      /* set during vertical blanking */
+uint8 vdp_hblank = 0;      /* set during horizontal blanking */
+uint8 vdp_vsync = 0;       /* a vsync just happened */
+uint8 vdp_dmabusy = 0;     /* dma busy flag */
+uint8 vdp_pal = 0;         /* set for pal mode */
+uint8 vdp_overseas = 1;    /* set for overseas model */
+uint8 vdp_layerB = 1;      /* flag */
+uint8 vdp_layerBp = 1;     /* flag */
+uint8 vdp_layerA = 1;      /* flag */
+uint8 vdp_layerAp = 1;     /* flag */
+uint8 vdp_layerW = 1;      /* flag */
+uint8 vdp_layerWp = 1;     /* flag */
+uint8 vdp_layerH = 1;      /* flag */
+uint8 vdp_layerS = 1;      /* flag */
+uint8 vdp_layerSp = 1;     /* flag */
 uint8 vdp_cram[LEN_CRAM];
 uint8 vdp_vsram[LEN_VSRAM];
 uint8 vdp_vram[LEN_VRAM];
@@ -67,24 +67,24 @@ unsigned int vdp_event_hint;
 unsigned int vdp_event_hdisplay;
 unsigned int vdp_event_end;
 signed int vdp_nextevent = 0;
-sint32 vdp_dmabytes = 0;        /* bytes left in DMA - must be fixed size */
-signed int vdp_hskip_countdown = 0;     /* actual countdown */
-uint16 vdp_address;             /* address for data/dma transfers */
-t_code vdp_code;                /* code number for data/dma transfers CD3-CD0 */
-uint8 vdp_ctrlflag;             /* set inbetween ctrl writes */
-uint16 vdp_first;               /* first word of address set */
-uint16 vdp_second;              /* second word of address set */
+sint32 vdp_dmabytes = 0;            /* bytes left in DMA - must be fixed size */
+signed int vdp_hskip_countdown = 0; /* actual countdown */
+uint16 vdp_address;                 /* address for data/dma transfers */
+t_code vdp_code;    /* code number for data/dma transfers CD3-CD0 */
+uint8 vdp_ctrlflag; /* set inbetween ctrl writes */
+uint16 vdp_first;   /* first word of address set */
+uint16 vdp_second;  /* second word of address set */
 
 /*** global variables ***/
 
 uint8 vdp_reg[25];
-static int vdp_collision;       /* set during a sprite collision */
-static int vdp_overflow;        /* set when too many sprites in one line */
-static int vdp_fifofull;        /* set when write fifo full (4 entries) */
-static int vdp_fifoempty;       /* set when write fifo empty (0 entries) */
-static int vdp_fifo_count;      /* number of entries in FIFO (0-4) */
-#define VDP_FIFO_SIZE 4         /* Genesis VDP has 4-entry FIFO */
-static int vdp_complex;         /* set when simple routines can't cope */
+static int vdp_collision;  /* set during a sprite collision */
+static int vdp_overflow;   /* set when too many sprites in one line */
+static int vdp_fifofull;   /* set when write fifo full (4 entries) */
+static int vdp_fifoempty;  /* set when write fifo empty (0 entries) */
+static int vdp_fifo_count; /* number of entries in FIFO (0-4) */
+#define VDP_FIFO_SIZE 4    /* Genesis VDP has 4-entry FIFO */
+static int vdp_complex;    /* set when simple routines can't cope */
 
 /*** forward references ***/
 
@@ -97,8 +97,8 @@ void vdp_eventinit(void);
 void vdp_layer_simple(unsigned int layer, unsigned int priority,
                       uint8 *fielddata, unsigned int lineoffset);
 /* C17 migration: removed 'inline' to provide external linkage */
-void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags,
-                  uint8 *cellloc, unsigned int lineoffset);
+void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags, uint8 *cellloc,
+                  unsigned int lineoffset);
 void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata);
 int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
                       unsigned int lineoffset, unsigned int number,
@@ -215,8 +215,8 @@ void vdp_reset(void)
     vdp_cramf[i] = 1;
   }
   vdp_eventinit();
-  LOG_VERBOSE(("VDP: totlines = %d (%s)", vdp_totlines, vdp_pal ?
-               "PAL" : "NTSC"));
+  LOG_VERBOSE(
+      ("VDP: totlines = %d (%s)", vdp_totlines, vdp_pal ? "PAL" : "NTSC"));
 }
 
 uint16 vdp_status(void)
@@ -237,8 +237,8 @@ uint16 vdp_status(void)
    * 10-15 are next word on bus, i.e. next word in ROM - CM
    */
   ret = vdp_pal | vdp_dmabusy << 1 | vdp_hblank << 2 | vdp_vblank << 3 |
-    vdp_oddframe << 4 | vdp_collision << 5 | vdp_overflow << 6 | vdp_vsync <<
-    7 | vdp_fifofull << 8 | vdp_fifoempty << 9;
+        vdp_oddframe << 4 | vdp_collision << 5 | vdp_overflow << 6 |
+        vdp_vsync << 7 | vdp_fifofull << 8 | vdp_fifoempty << 9;
 
 #ifdef DEBUG_VDP
   if (vdp_collision)
@@ -246,7 +246,7 @@ uint16 vdp_status(void)
 #endif
 
   vdp_vsync = vdp_collision = vdp_overflow = 0;
-  vdp_ctrlflag = 0;             /* Charles MacDonald - so he claims ;) */
+  vdp_ctrlflag = 0; /* Charles MacDonald - so he claims ;) */
 
   LOG_DEBUG1(("%08X STATUS READ %02X", regs.pc, ret));
   LOG_VERBOSE(("%08X STATUS READ %02X", regs.pc, ret));
@@ -270,15 +270,15 @@ void vdp_storectrl(uint16 data)
       reg = (data >> 8) & 31;
       regdata = data & 255;
       if (reg > 24) {
-        LOG_NORMAL(("%08X [VDP] Invalid register (%d)", regs.pc,
-                    ((data >> 8) & 31)));
+        LOG_NORMAL(
+            ("%08X [VDP] Invalid register (%d)", regs.pc, ((data >> 8) & 31)));
         return;
       }
       vdp_reg[reg] = regdata;
       vdp_code = 0;
 #ifdef DEBUG_VDP
-      LOG_VERBOSE(("%08X [VDP] Register %d set to %04X", regs.pc,
-                   reg, regdata));
+      LOG_VERBOSE(
+          ("%08X [VDP] Register %d set to %04X", regs.pc, reg, regdata));
 #endif
       return;
     } else {
@@ -297,41 +297,41 @@ void vdp_storectrl(uint16 data)
                  (vdp_first << 16) | vdp_second, vdp_code, vdp_address));
 #endif
 
-    if ((data & 1 << 7) && (vdp_reg[1] & 1 << 4)) {     /* CD5 - DMA ? */
+    if ((data & 1 << 7) && (vdp_reg[1] & 1 << 4)) { /* CD5 - DMA ? */
       if (vdp_dmabusy) {
-        vdp_dmabusy = 1;        /* null statement to avoid gcc warnings */
+        vdp_dmabusy = 1; /* null statement to avoid gcc warnings */
         LOG_DEBUG1(("DMA initiation during DMA!"));
       }
       /* CD4 - not read - need to verify */
       vdp_dmabusy = 1;
       switch ((vdp_reg[23] >> 6) & 3) {
       case 0:
-      case 1:                  /* ram to vram */
+      case 1: /* ram to vram */
         switch (vdp_code) {
-        case 1:                /* ram copy to vram */
+        case 1: /* ram copy to vram */
           vdp_ramcopy_vram(0);
           break;
-        case 3:                /* ram copy to cram */
+        case 3: /* ram copy to cram */
           vdp_ramcopy_vram(1);
           break;
-        case 5:                /* ram copy to vsram */
+        case 5: /* ram copy to vsram */
           vdp_ramcopy_vram(2);
           break;
-        default:               /* undefined */
-          LOG_NORMAL(("%08X [VDP] start of type %d to address %X",
-                      regs.pc, vdp_code, vdp_address));
+        default: /* undefined */
+          LOG_NORMAL(("%08X [VDP] start of type %d to address %X", regs.pc,
+                      vdp_code, vdp_address));
           break;
         }
-        vdp_dmabusy = 0;        /* 68k was frozen */
+        vdp_dmabusy = 0; /* 68k was frozen */
         break;
-      case 2:                  /* VRAM fill */
+      case 2: /* VRAM fill */
         /* VRAM fill is triggered by the next data write to VDP.
          * vdp_dmabusy remains set (from line 306 above), and when
          * vdp_storedata() is called, it detects vdp_dmabusy and
          * calls vdp_dma_fill() to perform the actual fill operation.
          * See vdp_storedata() for the fill trigger logic. */
         break;
-      case 3:                  /* VRAM copy */
+      case 3: /* VRAM copy */
         vdp_dma_vramcopy();
         /* vdp_dmabusy is cleared when vdp_dmabytes is empty */
         break;
@@ -356,25 +356,27 @@ void vdp_ramcopy_vram(int type)
                "vdpaddr=%08X length=%d (%s)",
                regs.pc, (srcbank * 0x10000 + srcoffset) * 2, vdp_address,
                length,
-               type == 0 ? "vram" :
-               type == 1 ? "cram" : type == 2 ? "vsram" : "??"));
+               type == 0   ? "vram"
+               : type == 1 ? "cram"
+               : type == 2 ? "vsram"
+                           : "??"));
 #endif
 
   if (srcbank & 1 << 6) {
     srcmemory = (uint16 *)cpu68k_ram;
-    srcmask = 0x7fff;           /* 32k words = 64k */
+    srcmask = 0x7fff; /* 32k words = 64k */
   } else {
     srcmemory = (uint16 *)(cpu68k_rom + srcbank * 0x20000);
-    srcmask = 0xffff;           /* 64k words = 128k */
+    srcmask = 0xffff; /* 64k words = 128k */
   }
   for (i = 0; i < length; i++) {
     data = LOCENDIAN16(srcmemory[srcoffset & srcmask]);
     switch (type) {
-    case 0:                    /* VRAM */
+    case 0: /* VRAM */
       vdp_vram[vdp_address] = data >> 8;
       vdp_vram[vdp_address ^ 1] = data & 0xff;
       break;
-    case 1:                    /* CRAM */
+    case 1: /* CRAM */
       vdp_cram[vdp_address & 0x7e] = data >> 8;
       vdp_cram[(vdp_address & 0x7e) | 1] = data & 0xff;
       vdp_cramf[(vdp_address & 0x7e) >> 1] = 1;
@@ -382,7 +384,7 @@ void vdp_ramcopy_vram(int type)
       LOG_VERBOSE(("%08X CRAM %X = %04X", regs.pc, vdp_address >> 1, data));
 #endif
       break;
-    case 2:                    /* VSRAM */
+    case 2: /* VSRAM */
       if ((vdp_address & 0x7e) < LEN_VSRAM) {
         vdp_vsram[vdp_address & 0x7e] = data >> 8;
         vdp_vsram[(vdp_address & 0x7e) | 1] = data & 0xff;
@@ -409,12 +411,12 @@ void vdp_dma_vramcopy()
 
   if (length == 0) {
     LOG_NORMAL(("%08X [VDP] Warning - length of 0 used in vram copy"));
-    length = 0x10000;           /* could be 0xffff */
+    length = 0x10000; /* could be 0xffff */
   }
 #ifdef DEBUG_VDPDMA
   LOG_VERBOSE(("%08X [VDP] COPY length %04X dstaddr %08X inc %02X "
-               "srcaddr %04X", regs.pc, length, vdp_address, increment,
-               srcaddr));
+               "srcaddr %04X",
+               regs.pc, length, vdp_address, increment, srcaddr));
 #endif
 
   for (i = 0; i < length; i++) {
@@ -426,7 +428,7 @@ void vdp_dma_vramcopy()
   vdp_reg[20] = 0;
   vdp_reg[22] = (srcaddr >> 8) & 0xff;
   vdp_reg[21] = srcaddr & 0xff;
-  vdp_dmabytes = length * 2;    /* factor of 2 vram copy to vram fill (p36) */
+  vdp_dmabytes = length * 2; /* factor of 2 vram copy to vram fill (p36) */
 }
 
 /*** vdp_dma_fill - implement the DMA part of the fill operation - note
@@ -444,11 +446,11 @@ void vdp_dma_fill(uint8 data)
 
   for (i = 0; i < length; i++) {
     vdp_vram[vdp_address ^ 1] = data;
-    vdp_address += increment;   /* 16 bit wrap */
+    vdp_address += increment; /* 16 bit wrap */
   }
   vdp_reg[19] = 0;
   vdp_reg[20] = 0;
-  vdp_dmabytes = length + 1;    /* extra byte used (see p36) */
+  vdp_dmabytes = length + 1; /* extra byte used (see p36) */
 }
 
 void vdp_storedata(uint16 data)
@@ -457,45 +459,47 @@ void vdp_storedata(uint16 data)
   uint16 sdata;
 
   if (vdp_ctrlflag) {
-    /* Note: Don't log here - vdp_storedata() is called thousands of times per frame
-       during VDP writes. Logging causes severe performance issues and audio freezing.
-       This condition indicates an "unterminated control write" but is not critical. */
+    /* Note: Don't log here - vdp_storedata() is called thousands of times per
+       frame during VDP writes. Logging causes severe performance issues and
+       audio freezing. This condition indicates an "unterminated control write"
+       but is not critical. */
     // LOG_NORMAL(("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
     //             vdp_first, vdp_second));
     vdp_storectrl(vdp_second);
   }
 #ifdef DEBUG_VDPDATA
-  LOG_NORMAL(("%08X [VDP] code=%d (%s) data=%04X addr=%X inc=%d",
-              regs.pc, vdp_code,
-              vdp_code == cd_vram_store ? "vram" :
-              vdp_code == cd_cram_store ? "cram" :
-              vdp_code == cd_vsram_store ? "vsram" : "??",
+  LOG_NORMAL(("%08X [VDP] code=%d (%s) data=%04X addr=%X inc=%d", regs.pc,
+              vdp_code,
+              vdp_code == cd_vram_store    ? "vram"
+              : vdp_code == cd_cram_store  ? "cram"
+              : vdp_code == cd_vsram_store ? "vsram"
+                                           : "??",
               data, vdp_address, vdp_reg[15]));
 #endif
   switch (vdp_code) {
   case cd_vram_store:
-    sdata = (vdp_address & 1) ? SWAP16(data) : data;    /* only for VRAM */
+    sdata = (vdp_address & 1) ? SWAP16(data) : data; /* only for VRAM */
     *(uint16 *)(vdp_vram + (vdp_address & 0xfffe)) = LOCENDIAN16(sdata);
-    vdp_fifo_add();  /* Track FIFO entry */
+    vdp_fifo_add(); /* Track FIFO entry */
     break;
   case cd_cram_store:
-    address = vdp_address & 0x7e;       /* address lines used */
+    address = vdp_address & 0x7e; /* address lines used */
     *(uint16 *)(vdp_cram + address) = LOCENDIAN16(data);
     vdp_cramf[address >> 1] = 1;
-    vdp_fifo_add();  /* Track FIFO entry */
+    vdp_fifo_add(); /* Track FIFO entry */
     break;
   case cd_vsram_store:
-    address = vdp_address & 0x7e;       /* address lines used */
+    address = vdp_address & 0x7e; /* address lines used */
     if (address < LEN_VSRAM)
       *(uint16 *)(vdp_vsram + address) = LOCENDIAN16(data);
-    vdp_fifo_add();  /* Track FIFO entry */
+    vdp_fifo_add(); /* Track FIFO entry */
     break;
-  default:                     /* undefined */
+  default: /* undefined */
     LOG_NORMAL(("%08X [VDP] Bad word store to %08X of type %d data = %04X",
                 regs.pc, vdp_address, vdp_code, data));
     break;
   }
-  vdp_address += vdp_reg[15];   /* 16 bit wrap */
+  vdp_address += vdp_reg[15]; /* 16 bit wrap */
 
   /* note fall-through from normal write to DMA initiation - this is
      correct operation */
@@ -514,8 +518,9 @@ uint16 vdp_fetchdata(void)
   uint16 data;
 
   if (vdp_ctrlflag) {
-    /* Note: Don't log here - vdp_fetchdata() is called thousands of times per frame
-       during VDP reads. Logging causes severe performance issues and audio freezing. */
+    /* Note: Don't log here - vdp_fetchdata() is called thousands of times per
+       frame during VDP reads. Logging causes severe performance issues and
+       audio freezing. */
     // LOG_NORMAL(("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
     //             vdp_first, vdp_second));
     vdp_storectrl(vdp_second);
@@ -526,67 +531,67 @@ uint16 vdp_fetchdata(void)
     data = LOCENDIAN16(*(uint16 *)(vdp_vram + (vdp_address & 0xfffe)));
     break;
   case cd_cram_fetch:
-    address = vdp_address & 0x7e;       /* address lines used */
+    address = vdp_address & 0x7e; /* address lines used */
     data = LOCENDIAN16(*(uint16 *)(vdp_cram + address));
     break;
   case cd_vsram_fetch:
-    address = vdp_address & 0x7e;       /* address lines used */
+    address = vdp_address & 0x7e; /* address lines used */
     if (address < LEN_VSRAM)
       data = LOCENDIAN16(*(uint16 *)(vdp_vsram + address));
     else
-      data = 0;                 /* tests show this range appears random
-                                   (although I'm sure it isn't) */
+      data = 0; /* tests show this range appears random
+                   (although I'm sure it isn't) */
     break;
-  default:                     /* undefined */
+  default: /* undefined */
     /* reading in write mode suspends 68000 on a real machine */
-    LOG_NORMAL(("%08X [VDP] Bad word fetch of %08X of type %d",
-                regs.pc, vdp_address, vdp_code));
+    LOG_NORMAL(("%08X [VDP] Bad word fetch of %08X of type %d", regs.pc,
+                vdp_address, vdp_code));
     data = 0;
     break;
   }
-  vdp_address += vdp_reg[15];   /* 16 bit wrap */
+  vdp_address += vdp_reg[15]; /* 16 bit wrap */
   return data;
 }
 
 #define LINEDATA(offset, value, palette, priority) \
-if (value) { \
-  linedata[offset] = (palette)*16 + value; \
-} else if (priority) { \
-  linedata[offset] = (linedata[offset] & 63); \
-}
+  if (value) {                                     \
+    linedata[offset] = (palette) * 16 + value;     \
+  } else if (priority) {                           \
+    linedata[offset] = (linedata[offset] & 63);    \
+  }
 
 #define LINEDATASPR(offset, value, palette, priority) \
-if (value) { \
-  if (outdata[offset] < 62) \
-    vdp_collision = 1; \
-  if (priority) \
-    pridata[offset]|= 1<<PRIBIT_SPRITE; \
-  else \
-    pridata[offset]&= ~(1<<PRIBIT_SPRITE); \
-  outdata[offset] = (palette)*16 + value; \
-}
+  if (value) {                                        \
+    if (outdata[offset] < 62)                         \
+      vdp_collision = 1;                              \
+    if (priority)                                     \
+      pridata[offset] |= 1 << PRIBIT_SPRITE;          \
+    else                                              \
+      pridata[offset] &= ~(1 << PRIBIT_SPRITE);       \
+    outdata[offset] = (palette) * 16 + value;         \
+  }
 
-#define LINEDATALAYER(offset, value, palette, priority) \
-  if (priority) \
-    pridata[offset]|= layer ? 1<<PRIBIT_LAYERB : 1<<PRIBIT_LAYERA; \
-  if (value) \
-    outdata[offset] = (palette)*16 + value; \
-  else \
+#define LINEDATALAYER(offset, value, palette, priority)                 \
+  if (priority)                                                         \
+    pridata[offset] |= layer ? 1 << PRIBIT_LAYERB : 1 << PRIBIT_LAYERA; \
+  if (value)                                                            \
+    outdata[offset] = (palette) * 16 + value;                           \
+  else                                                                  \
     outdata[offset] = 0;
 
 void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
 {
   uint8 interlace = (vdp_reg[12] >> 1) & 3;
   uint8 *spritelist = vdp_vram + ((vdp_reg[5] & 0x7F) << 9);
-  t_spriteinfo si[128];         /* 128 - max sprites supported per line */
+  t_spriteinfo si[128]; /* 128 - max sprites supported per line */
   unsigned int sprites;
   unsigned int idx;
   int i;
   uint8 link;
   uint8 *sprite = spritelist;
-  int plotter;                  /* flag */
+  int plotter; /* flag */
   unsigned int screencells = (vdp_reg[12] & 1) ? 40 : 32;
-  unsigned int maxspl = (vdp_reg[12] & 1) ? 20 : 16;    /* max sprs/line */
+  unsigned int maxspl = (vdp_reg[12] & 1) ? 20 : 16; /* max sprs/line */
   unsigned int cells;
   uint8 loops = 0;
 
@@ -614,13 +619,12 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
     if (!link)
       break;
     sprite = spritelist + (link << 3);
-
   }
   if (idx < 1)
     return;
   sprites = idx;
   plotter = 1;
-  cells = (vdp_reg[12] & 1) ? 40 : 32;  /* 320 or 256 pixels */
+  cells = (vdp_reg[12] & 1) ? 40 : 32; /* 320 or 256 pixels */
   /* loop masking */
   for (i = 0; i < (signed int)sprites; i++) {
     if (plotter == 0) {
@@ -649,7 +653,7 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
     if (cells >= si[i].hplot) {
       cells -= si[i].hplot;
     } else {
-      si[i].hplot = cells;      /* only room for this many */
+      si[i].hplot = cells; /* only room for this many */
       cells = 0;
     }
   }
@@ -671,19 +675,19 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
     for (i = sprites - 1; i >= 0; i--) {
       hpos = si[i].hpos;
       vpos = si[i].vpos;
-      vsize = si[i].vsize;      /* doubled when in interlace mode */
+      vsize = si[i].vsize; /* doubled when in interlace mode */
       hsize = si[i].hsize;
       hmax = si[i].hmax;
       vmax = si[i].vmax;
-      hplot = si[i].hplot;      /* number of cells to plot for this sprite */
+      hplot = si[i].hplot; /* number of cells to plot for this sprite */
       cellinfo = LOCENDIAN16(*(uint16 *)(si[i].sprite + 4));
       pattern = cellinfo & 0x7FF;
       palette = (cellinfo >> 13) & 3;
       priority = (cellinfo >> 15) & 1;
 
       cellline =
-        vdp_vram + ((interlace == 3) ? (pattern << 6) : (pattern << 5));
-      if (cellinfo & 1 << 12)   /* vertical flip */
+          vdp_vram + ((interlace == 3) ? (pattern << 6) : (pattern << 5));
+      if (cellinfo & 1 << 12) /* vertical flip */
         cellline += (vmax - line - 1) * 4;
       else
         cellline += (line - vpos) * 4;
@@ -691,10 +695,9 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
         if (hpos > -8 && hpos < 0) {
           if (cellinfo & 1 << 11) {
             /* horizontal flip */
-            data = LOCENDIAN32(*(uint32 *)(cellline +
-                                           (hsize - k * 2 -
-                                            1) * (vsize << 5)));
-            data >>= (-hpos) * 4;       /* get first pixel in bottom 4 bits */
+            data = LOCENDIAN32(
+                *(uint32 *)(cellline + (hsize - k * 2 - 1) * (vsize << 5)));
+            data >>= (-hpos) * 4; /* get first pixel in bottom 4 bits */
             for (j = 0; j < 8 + hpos; j++) {
               pixel = data & 15;
               LINEDATASPR(j, pixel, palette, priority);
@@ -702,7 +705,7 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
             }
           } else {
             data = LOCENDIAN32(*(uint32 *)cellline);
-            data <<= (-hpos) * 4;       /* get first pixel in top 4 bits */
+            data <<= (-hpos) * 4; /* get first pixel in top 4 bits */
             for (j = 0; j < 8 + hpos; j++) {
               pixel = (data >> 28) & 15;
               LINEDATASPR(j, pixel, palette, priority);
@@ -712,9 +715,8 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
         } else if (hpos >= 0 && hpos <= (signed int)(screencells - 1) * 8) {
           if (cellinfo & 1 << 11) {
             /* horizontal flip */
-            data = LOCENDIAN32(*(uint32 *)(cellline +
-                                           (hsize - k * 2 -
-                                            1) * (vsize << 5)));
+            data = LOCENDIAN32(
+                *(uint32 *)(cellline + (hsize - k * 2 - 1) * (vsize << 5)));
             for (j = 0; j < 8; j++) {
               pixel = data & 15;
               LINEDATASPR(hpos + j, pixel, palette, priority);
@@ -732,9 +734,8 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
                    hpos < (signed int)screencells * 8) {
           if (cellinfo & 1 << 11) {
             /* horizontal flip */
-            data = LOCENDIAN32(*(uint32 *)(cellline +
-                                           (hsize - k * 2 -
-                                            1) * (vsize << 5)));
+            data = LOCENDIAN32(
+                *(uint32 *)(cellline + (hsize - k * 2 - 1) * (vsize << 5)));
             for (j = 0; j < (signed int)(screencells * 8 - hpos); j++) {
               pixel = data & 15;
               LINEDATASPR(hpos + j, pixel, palette, priority);
@@ -767,11 +768,11 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
   uint8 vsize = (vdp_reg[16] >> 4) & 3;
   uint8 hmode = vdp_reg[11] & 3;
   uint8 vmode = (vdp_reg[11] >> 2) & 1;
-  uint16 vramoffset = (layer ? ((vdp_reg[4] & 7) << 13) :
-                       ((vdp_reg[2] & (7 << 3)) << 10));
+  uint16 vramoffset =
+      (layer ? ((vdp_reg[4] & 7) << 13) : ((vdp_reg[2] & (7 << 3)) << 10));
   uint16 *patterndata = (uint16 *)(vdp_vram + vramoffset);
-  uint16 *hscrolldata = (uint16 *)(((vdp_reg[13] & 63) << 10)
-                                   + vdp_vram + layer * 2);
+  uint16 *hscrolldata =
+      (uint16 *)(((vdp_reg[13] & 63) << 10) + vdp_vram + layer * 2);
   uint8 screencells = (vdp_reg[12] & 1) ? 40 : 32;
   uint16 hwidth, vwidth, vmask, hoffset, voffset;
   uint16 cellinfo;
@@ -793,13 +794,12 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
   int corrupted = 0;
 
   if (layer == 0) {
-
     /* sometimes the window covers the whole line, so we skip layer A for
        that bit - for lines where layer A appears even for just one cell we
        plot the entire line - would it be worth improving this? */
 
     if (topbottom ? (vcell >= winvpos) : (vcell < winvpos))
-      return;                   /* window is on the whole line */
+      return; /* window is on the whole line */
 
     /* it could be that the vdp is in such a state that there is no whole line
        part to the window, but reg[17] is either 00 or 1F, meaning that
@@ -808,22 +808,22 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
        drawing layer A pointlessly as window will just clobber all our work) */
 
     if (leftright ? (winhpos == 0) : (winhpos >= (screencells >> 1)))
-      return;                   /* window is on the whole line */
+      return; /* window is on the whole line */
   }
 
   /* select horizontal scrolling offset based on mode */
 
   switch (hmode) {
-  case 0:                      /* full screen */
+  case 0: /* full screen */
     hoffset = (0x400 - LOCENDIAN16(hscrolldata[0])) & 0x3FF;
     break;
-  case 1:                      /* line scroll with first 8 lines */
+  case 1: /* line scroll with first 8 lines */
     hoffset = (0x400 - LOCENDIAN16(hscrolldata[2 * (realline & 7)])) & 0x3FF;
     break;
-  case 2:                      /* cell scroll */
+  case 2: /* cell scroll */
     hoffset = (0x400 - LOCENDIAN16(hscrolldata[2 * (realline & ~7)])) & 0x3FF;
     break;
-  case 3:                      /* line scroll */
+  case 3: /* line scroll */
     hoffset = (0x400 - LOCENDIAN16(hscrolldata[2 * realline])) & 0x3FF;
     break;
   default:
@@ -848,18 +848,18 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
 
   if (layer == 0 && !leftright && winhpos && (hoffset & 15)) {
     screencells -= winhpos;
-    hoffset += 16;              /* this is the corruption */
+    hoffset += 16; /* this is the corruption */
     hoffset += winhpos * 16;
     outdata += winhpos * 16;
     pridata += winhpos * 16;
-    corrupted = (hoffset & 15) >= 8 ? 1 : 2;    /* one lump or two? */
+    corrupted = (hoffset & 15) >= 8 ? 1 : 2; /* one lump or two? */
   }
   vwidth = ((vsize + 1) << 5) * (interlace + 1);
-  vmask = (vwidth << 3) - 1;    /* to put offsets into range */
+  vmask = (vwidth << 3) - 1; /* to put offsets into range */
   hwidth = (hsize + 1) << 5;
   /* if 2-cell mode and vsram not valid yet, use 0 as the offset */
-  voffset = ((vmode && column < 0) ? 0 :
-             LOCENDIAN16(((uint16 *)vdp_vsram)[layer]));
+  voffset =
+      ((vmode && column < 0) ? 0 : LOCENDIAN16(((uint16 *)vdp_vsram)[layer]));
   voffset = (voffset + line) & vmask;
   hoffset &= (hwidth << 3) - 1; /* put offset in range */
   if (hsize == 2) {
@@ -867,11 +867,10 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
     voffset &= 7;
     hwidth = 32;
   }
-  cellinfo = LOCENDIAN16(patterndata[(hoffset >> 3) +
-                                     hwidth *
-                                     ((voffset >> 3) >> interlace)]);
+  cellinfo = LOCENDIAN16(
+      patterndata[(hoffset >> 3) + hwidth * ((voffset >> 3) >> interlace)]);
   /* 32 bytes per pattern or 64 in interlace mode 2 */
-  pattern = vdp_vram + (((cellinfo & 2047) << 5) << interlace );
+  pattern = vdp_vram + (((cellinfo & 2047) << 5) << interlace);
   /* now get correct line from pattern data */
   if (interlace) {
     /* interlace - double height cells */
@@ -933,9 +932,8 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
     if (hsize == 2)
       /* hsize=2 is special - only use top row in table */
       voffset &= 7;
-    cellinfo = LOCENDIAN16(patterndata[(hoffset >> 3) +
-                                       hwidth *
-                                       ((voffset >> 3) >> interlace)]);
+    cellinfo = LOCENDIAN16(
+        patterndata[(hoffset >> 3) + hwidth * ((voffset >> 3) >> interlace)]);
     priority = (cellinfo >> 15) & 1;
     /* printf("hoff: %04X voff: %04X hwid: %04X cell: %08X info: %04X\n",
        hoffset, voffset, hwidth, (hoffset>>3)+hwidth*(voffset>>3),
@@ -945,7 +943,7 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
        cellinfo); */
     palette = (cellinfo >> 13) & 3;
     /* 32 bytes per pattern or 64 in interlace mode 2 */
-    pattern = vdp_vram + (((cellinfo & 2047) << 5) << interlace );
+    pattern = vdp_vram + (((cellinfo & 2047) << 5) << interlace);
     /* now get correct line from pattern data */
     if (interlace) {
       /* interlace - double height cells */
@@ -985,8 +983,8 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
     pridata += 8;
     hoffset += 8;
     if (--corrupted == 0)
-      hoffset -= 16;            /* turn off corruption */
-    hoffset &= (hwidth << 3) - 1;       /* put offset in range */
+      hoffset -= 16;              /* turn off corruption */
+    hoffset &= (hwidth << 3) - 1; /* put offset in range */
     column++;
   }
   if (hoffset & 7) {
@@ -1003,10 +1001,9 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
     voffset = (voffset + line) & vmask;
     if (hsize == 2)
       /* hsize=2 is special - only use top row in table */
-      voffset &= 7;   
-    cellinfo = LOCENDIAN16(patterndata[(hoffset >> 3) +
-                                       hwidth *
-                                       ((voffset >> 3) >> interlace)]);
+      voffset &= 7;
+    cellinfo = LOCENDIAN16(
+        patterndata[(hoffset >> 3) + hwidth * ((voffset >> 3) >> interlace)]);
     priority = (cellinfo >> 15) & 1;
     palette = (cellinfo >> 13) & 3;
     /* 32 bytes per pattern or 64 in interlace mode 2 */
@@ -1074,7 +1071,7 @@ void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata)
   unsigned int i;
   unsigned int wholeline = 0;
   uint8 priority;
-  int layer = 0;                /* for LINEDATALAYER macro */
+  int layer = 0; /* for LINEDATALAYER macro */
 
   /* if topbottom is set then the wholeline part of the window is to the
      bottom, if it is clear then it is to the top
@@ -1088,18 +1085,16 @@ void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata)
 
   if (!wholeline) {
     if (winhpos >= 20)
-      winhpos = 20;             /* 0x1F might be special? */
+      winhpos = 20; /* 0x1F might be special? */
     if (leftright) {
       /* clear out priority bits on right of line (winhpos units of 16 pix */
-      for (i = winhpos * 4; i < 320 / 4; i++)   /* winhpos units of 16 pix */
-        ((uint32 *)pridata)[i] &=
-          (0xffffffff - (0x01010101 << PRIBIT_LAYERA));
+      for (i = winhpos * 4; i < 320 / 4; i++) /* winhpos units of 16 pix */
+        ((uint32 *)pridata)[i] &= (0xffffffff - (0x01010101 << PRIBIT_LAYERA));
       memset(outdata + winhpos * 16, 0, 320 - (winhpos * 16));
     } else {
       /* clear out priority bits on left of line (winhpos units of 16 pix) */
       for (i = 0; i < (unsigned int)(winhpos / 4); i++)
-        ((uint32 *)pridata)[i] &=
-          (0xffffffff - (0x01010101 << PRIBIT_LAYERA));
+        ((uint32 *)pridata)[i] &= (0xffffffff - (0x01010101 << PRIBIT_LAYERA));
       memset(outdata, 0, winhpos * 16);
     }
   }
@@ -1153,7 +1148,7 @@ void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata)
         data <<= 4;
       }
     }
-  }                             /* hcell */
+  } /* hcell */
 }
 
 /*** vdp_renderline - render a line of a field ***/
@@ -1188,19 +1183,19 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
   if (vdp_layerS || vdp_layerSp)
     vdp_sprites(interlace ? (line * 2 + odd) : line, priorities, data_sprite);
   if (vdp_layerA || vdp_layerAp) {
-    vdp_newlayer(interlace ? (line * 2 + odd) : line, priorities,
-                 data_layerA, 0);
+    vdp_newlayer(interlace ? (line * 2 + odd) : line, priorities, data_layerA,
+                 0);
     if (vdp_layerW || vdp_layerWp)
       vdp_newwindow(interlace ? (line * 2 + odd) : line, priorities,
                     data_layerA);
   }
   if (vdp_layerB || vdp_layerBp)
-    vdp_newlayer(interlace ? (line * 2 + odd) : line, priorities,
-                 data_layerB, 1);
+    vdp_newlayer(interlace ? (line * 2 + odd) : line, priorities, data_layerB,
+                 1);
 
   for (i = 0; i < 320; i++) {
     switch (priorities[i] | (vdp_reg[12] & 1 << 3)) {
-    case 0:                    /* s/ten=0, B=0, A=0, S=0 */
+    case 0: /* s/ten=0, B=0, A=0, S=0 */
       if (data_sprite[i])
         linedata[i] = data_sprite[i];
       else if (data_layerA[i])
@@ -1210,7 +1205,7 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
       else
         linedata[i] = bg;
       break;
-    case 1:                    /* s/ten=0, B=1, A=0, S=0 */
+    case 1: /* s/ten=0, B=1, A=0, S=0 */
       if (data_layerB[i])
         linedata[i] = data_layerB[i];
       else if (data_sprite[i])
@@ -1220,7 +1215,7 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
       else
         linedata[i] = bg;
       break;
-    case 2:                    /* s/ten=0, B=0, A=1, S=0 */
+    case 2: /* s/ten=0, B=0, A=1, S=0 */
       if (data_layerA[i])
         linedata[i] = data_layerA[i];
       else if (data_sprite[i])
@@ -1230,7 +1225,7 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
       else
         linedata[i] = bg;
       break;
-    case 3:                    /* s/ten=0, B=1, A=1, S=0 */
+    case 3: /* s/ten=0, B=1, A=1, S=0 */
       if (data_layerA[i])
         linedata[i] = data_layerA[i];
       else if (data_layerB[i])
@@ -1240,7 +1235,7 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
       else
         linedata[i] = bg;
       break;
-    case 4:                    /* s/ten=0, B=0, A=0, S=1 */
+    case 4: /* s/ten=0, B=0, A=0, S=1 */
       if (data_sprite[i])
         linedata[i] = data_sprite[i];
       else if (data_layerA[i])
@@ -1250,7 +1245,7 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
       else
         linedata[i] = bg;
       break;
-    case 5:                    /* s/ten=0, B=1, A=0, S=1 */
+    case 5: /* s/ten=0, B=1, A=0, S=1 */
       if (data_sprite[i])
         linedata[i] = data_sprite[i];
       else if (data_layerB[i])
@@ -1260,7 +1255,7 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
       else
         linedata[i] = bg;
       break;
-    case 6:                    /* s/ten=0, B=0, A=1, S=1 */
+    case 6: /* s/ten=0, B=0, A=1, S=1 */
       if (data_sprite[i])
         linedata[i] = data_sprite[i];
       else if (data_layerA[i])
@@ -1270,7 +1265,7 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
       else
         linedata[i] = bg;
       break;
-    case 7:                    /* s/ten=0, B=1, A=1, S=1 */
+    case 7: /* s/ten=0, B=1, A=1, S=1 */
       if (data_sprite[i])
         linedata[i] = data_sprite[i];
       else if (data_layerA[i])
@@ -1280,202 +1275,202 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
       else
         linedata[i] = bg;
       break;
-    case 8:                    /* s/ten=1, B=0, A=0, S=0 */
+    case 8: /* s/ten=1, B=0, A=0, S=0 */
       if (data_sprite[i]) {
-        if (data_sprite[i] == 63) {     /* shadow operator */
+        if (data_sprite[i] == 63) { /* shadow operator */
           if (data_layerA[i])
             linedata[i] = data_layerA[i] | 128; /* shadow */
           else if (data_layerB[i])
             linedata[i] = data_layerB[i] | 128; /* shadow */
           else
-            linedata[i] = bg | 128;     /* shadow */
-        } else if (data_sprite[i] == 62) {      /* highlight operator */
+            linedata[i] = bg | 128;        /* shadow */
+        } else if (data_sprite[i] == 62) { /* highlight operator */
           if (data_layerA[i])
-            linedata[i] = data_layerA[i];       /* normal */
+            linedata[i] = data_layerA[i]; /* normal */
           else if (data_layerB[i])
-            linedata[i] = data_layerB[i];       /* normal */
+            linedata[i] = data_layerB[i]; /* normal */
           else
-            linedata[i] = bg;   /* normal */
+            linedata[i] = bg; /* normal */
         } else {
-          linedata[i] = data_sprite[i] | 128;   /* shadow */
+          linedata[i] = data_sprite[i] | 128; /* shadow */
         }
       } else {
         if (data_layerA[i])
-          linedata[i] = data_layerA[i] | 128;   /* shadow */
+          linedata[i] = data_layerA[i] | 128; /* shadow */
         else if (data_layerB[i])
-          linedata[i] = data_layerB[i] | 128;   /* shadow */
+          linedata[i] = data_layerB[i] | 128; /* shadow */
         else
-          linedata[i] = bg | 128;       /* shadow */
+          linedata[i] = bg | 128; /* shadow */
       }
       break;
-    case 9:                    /* s/ten=1, B=1, A=0, S=0 */
+    case 9: /* s/ten=1, B=1, A=0, S=0 */
       if (data_layerB[i]) {
-        linedata[i] = data_layerB[i];   /* normal */
+        linedata[i] = data_layerB[i]; /* normal */
       } else {
         if (data_sprite[i]) {
-          if (data_sprite[i] == 63) {   /* shadow operator */
+          if (data_sprite[i] == 63) { /* shadow operator */
             if (data_layerA[i])
-              linedata[i] = data_layerA[i] | 128;       /* shadow */
+              linedata[i] = data_layerA[i] | 128; /* shadow */
             else
-              linedata[i] = bg | 128;   /* shadow */
-          } else if (data_sprite[i] == 62) {    /* highlight operator */
+              linedata[i] = bg | 128;        /* shadow */
+          } else if (data_sprite[i] == 62) { /* highlight operator */
             if (data_layerA[i])
-              linedata[i] = data_layerA[i] | 64;        /* highlight */
+              linedata[i] = data_layerA[i] | 64; /* highlight */
             else
-              linedata[i] = bg | 64;    /* highlight */
+              linedata[i] = bg | 64; /* highlight */
           } else {
-            linedata[i] = data_sprite[i];       /* normal */
+            linedata[i] = data_sprite[i]; /* normal */
           }
         } else {
           if (data_layerA[i])
-            linedata[i] = data_layerA[i];       /* normal */
+            linedata[i] = data_layerA[i]; /* normal */
           else
-            linedata[i] = bg;   /* normal */
+            linedata[i] = bg; /* normal */
         }
       }
       break;
-    case 10:                   /* s/ten=1, B=0, A=1, S=0 */
+    case 10: /* s/ten=1, B=0, A=1, S=0 */
       if (data_layerA[i]) {
-        linedata[i] = data_layerA[i];   /* normal */
+        linedata[i] = data_layerA[i]; /* normal */
       } else {
         if (data_sprite[i]) {
-          if (data_sprite[i] == 63) {   /* shadow operator */
+          if (data_sprite[i] == 63) { /* shadow operator */
             if (data_layerB[i])
-              linedata[i] = data_layerB[i] | 128;       /* shadow */
+              linedata[i] = data_layerB[i] | 128; /* shadow */
             else
-              linedata[i] = bg | 128;   /* shadow */
-          } else if (data_sprite[i] == 62) {    /* highlight operator */
+              linedata[i] = bg | 128;        /* shadow */
+          } else if (data_sprite[i] == 62) { /* highlight operator */
             if (data_layerB[i])
-              linedata[i] = data_layerB[i] | 64;        /* highlight */
+              linedata[i] = data_layerB[i] | 64; /* highlight */
             else
-              linedata[i] = bg | 64;    /* highlight */
+              linedata[i] = bg | 64; /* highlight */
           } else {
-            linedata[i] = data_sprite[i];       /* normal */
+            linedata[i] = data_sprite[i]; /* normal */
           }
         } else {
           if (data_layerB[i])
-            linedata[i] = data_layerB[i];       /* normal */
+            linedata[i] = data_layerB[i]; /* normal */
           else
-            linedata[i] = bg;   /* normal */
+            linedata[i] = bg; /* normal */
         }
       }
       break;
-    case 11:                   /* s/ten=1, B=1, A=1, S=0 */
+    case 11: /* s/ten=1, B=1, A=1, S=0 */
       if (data_layerA[i]) {
-        linedata[i] = data_layerA[i];   /* normal */
+        linedata[i] = data_layerA[i]; /* normal */
       } else if (data_layerB[i]) {
-        linedata[i] = data_layerB[i];   /* normal */
+        linedata[i] = data_layerB[i]; /* normal */
       } else if (data_sprite[i]) {
-        if (data_sprite[i] == 63)       /* shadow operator */
-          linedata[i] = bg | 128;       /* shadow */
-        else if (data_sprite[i] == 62)  /* highlight operator */
-          linedata[i] = bg | 64;        /* highlight */
+        if (data_sprite[i] == 63)      /* shadow operator */
+          linedata[i] = bg | 128;      /* shadow */
+        else if (data_sprite[i] == 62) /* highlight operator */
+          linedata[i] = bg | 64;       /* highlight */
         else
           linedata[i] = data_sprite[i]; /* normal */
       } else {
-        linedata[i] = bg;       /* normal */
+        linedata[i] = bg; /* normal */
       }
       break;
-    case 12:                   /* s/ten=0, B=0, A=0, S=1 */
+    case 12: /* s/ten=0, B=0, A=0, S=1 */
       if (data_sprite[i]) {
-        if (data_sprite[i] == 63) {     /* shadow operator */
+        if (data_sprite[i] == 63) { /* shadow operator */
           if (data_layerA[i])
             linedata[i] = data_layerA[i] | 128; /* shadow */
           else if (data_layerB[i])
             linedata[i] = data_layerB[i] | 128; /* shadow */
           else
-            linedata[i] = bg | 128;     /* shadow */
-        } else if (data_sprite[i] == 62) {      /* highlight operator */
+            linedata[i] = bg | 128;        /* shadow */
+        } else if (data_sprite[i] == 62) { /* highlight operator */
           if (data_layerA[i])
-            linedata[i] = data_layerA[i];       /* normal */
+            linedata[i] = data_layerA[i]; /* normal */
           else if (data_layerB[i])
-            linedata[i] = data_layerB[i];       /* normal */
+            linedata[i] = data_layerB[i]; /* normal */
           else
-            linedata[i] = bg;   /* normal */
+            linedata[i] = bg; /* normal */
         } else {
           linedata[i] = data_sprite[i]; /* normal */
         }
       } else if (data_layerA[i]) {
-        linedata[i] = data_layerA[i] | 128;     /* shadow */
+        linedata[i] = data_layerA[i] | 128; /* shadow */
       } else if (data_layerB[i]) {
-        linedata[i] = data_layerB[i] | 128;     /* shadow */
+        linedata[i] = data_layerB[i] | 128; /* shadow */
       } else {
         linedata[i] = bg | 128; /* shadow */
       }
       break;
-    case 13:                   /* s/ten=1, B=1, A=0, S=1 */
+    case 13: /* s/ten=1, B=1, A=0, S=1 */
       if (data_sprite[i]) {
-        if (data_sprite[i] == 63) {     /* shadow operator */
+        if (data_sprite[i] == 63) { /* shadow operator */
           if (data_layerB[i])
             linedata[i] = data_layerB[i] | 128; /* shadow */
           else if (data_layerA[i])
             linedata[i] = data_layerA[i] | 128; /* shadow */
           else
-            linedata[i] = bg | 128;     /* shadow */
-        } else if (data_sprite[i] == 62) {      /* highlight operator */
+            linedata[i] = bg | 128;        /* shadow */
+        } else if (data_sprite[i] == 62) { /* highlight operator */
           if (data_layerB[i])
-            linedata[i] = data_layerB[i] | 64;  /* highlight */
+            linedata[i] = data_layerB[i] | 64; /* highlight */
           else if (data_layerA[i])
-            linedata[i] = data_layerA[i] | 64;  /* highlight */
+            linedata[i] = data_layerA[i] | 64; /* highlight */
           else
-            linedata[i] = bg | 64;      /* highlight */
+            linedata[i] = bg | 64; /* highlight */
         } else {
           linedata[i] = data_sprite[i]; /* normal */
         }
       } else if (data_layerB[i]) {
-        linedata[i] = data_layerB[i];   /* normal */
+        linedata[i] = data_layerB[i]; /* normal */
       } else if (data_layerA[i]) {
-        linedata[i] = data_layerA[i];   /* normal */
+        linedata[i] = data_layerA[i]; /* normal */
       }
       break;
-    case 14:                   /* s/ten=1, B=0, A=1, S=1 */
+    case 14: /* s/ten=1, B=0, A=1, S=1 */
       if (data_sprite[i]) {
-        if (data_sprite[i] == 63) {     /* shadow operator */
+        if (data_sprite[i] == 63) { /* shadow operator */
           if (data_layerA[i])
             linedata[i] = data_layerA[i] | 128; /* shadow */
           else if (data_layerB[i])
             linedata[i] = data_layerB[i] | 128; /* shadow */
           else
-            linedata[i] = bg | 128;     /* shadow */
-        } else if (data_sprite[i] == 62) {      /* highlight operator */
+            linedata[i] = bg | 128;        /* shadow */
+        } else if (data_sprite[i] == 62) { /* highlight operator */
           if (data_layerA[i])
-            linedata[i] = data_layerA[i] | 64;  /* highlight */
+            linedata[i] = data_layerA[i] | 64; /* highlight */
           else if (data_layerB[i])
-            linedata[i] = data_layerB[i] | 64;  /* highlight */
+            linedata[i] = data_layerB[i] | 64; /* highlight */
           else
-            linedata[i] = bg | 64;      /* highlight */
+            linedata[i] = bg | 64; /* highlight */
         } else {
           linedata[i] = data_sprite[i]; /* normal */
         }
       } else if (data_layerA[i]) {
-        linedata[i] = data_layerA[i];   /* normal */
+        linedata[i] = data_layerA[i]; /* normal */
       } else if (data_layerB[i]) {
-        linedata[i] = data_layerB[i];   /* normal */
+        linedata[i] = data_layerB[i]; /* normal */
       }
       break;
-    case 15:                   /* s/ten=1, B=1, A=1, S=1 */
+    case 15: /* s/ten=1, B=1, A=1, S=1 */
       if (data_sprite[i]) {
-        if (data_sprite[i] == 63) {     /* shadow operator */
+        if (data_sprite[i] == 63) { /* shadow operator */
           if (data_layerA[i])
             linedata[i] = data_layerA[i] | 128; /* shadow */
           else if (data_layerB[i])
             linedata[i] = data_layerB[i] | 128; /* shadow */
           else
-            linedata[i] = bg | 128;     /* shadow */
-        } else if (data_sprite[i] == 62) {      /* highlight operator */
+            linedata[i] = bg | 128;        /* shadow */
+        } else if (data_sprite[i] == 62) { /* highlight operator */
           if (data_layerA[i])
-            linedata[i] = data_layerA[i] | 64;  /* highlight */
+            linedata[i] = data_layerA[i] | 64; /* highlight */
           else if (data_layerB[i])
-            linedata[i] = data_layerB[i] | 64;  /* highlight */
+            linedata[i] = data_layerB[i] | 64; /* highlight */
           else
-            linedata[i] = bg | 64;      /* highlight */
+            linedata[i] = bg | 64; /* highlight */
         } else {
           linedata[i] = data_sprite[i]; /* normal */
         }
       } else if (data_layerA[i]) {
-        linedata[i] = data_layerA[i];   /* normal */
+        linedata[i] = data_layerA[i]; /* normal */
       } else if (data_layerB[i]) {
-        linedata[i] = data_layerB[i];   /* normal */
+        linedata[i] = data_layerB[i]; /* normal */
       }
       break;
     }
@@ -1556,10 +1551,8 @@ void vdp_showregs(void)
       printf("hintreg %04X", vdp_reg[10]);
       break;
     case 11:
-      printf("V-mode %d H-mode %d ", (vdp_reg[11] >> 2) & 1,
-             (vdp_reg[11] & 3));
-      printf("%s",
-             (vdp_reg[11] & 1 << 3) ? "ExtInt-enable" : "ExtInt-disable");
+      printf("V-mode %d H-mode %d ", (vdp_reg[11] >> 2) & 1, (vdp_reg[11] & 3));
+      printf("%s", (vdp_reg[11] & 1 << 3) ? "ExtInt-enable" : "ExtInt-disable");
       break;
     case 12:
       printf("Interlace %d ", (vdp_reg[12] >> 1) & 3);
@@ -1629,8 +1622,8 @@ void vdp_spritelist(void)
     palette = (cellinfo >> 13) & 3;
     vmax = vpos + vsize * 8;
 
-    LOG_REQUEST(("Sprite %d @ %X", link,
-                 (link << 3) | (vdp_reg[5] & 0x7f) << 9));
+    LOG_REQUEST(
+        ("Sprite %d @ %X", link, (link << 3) | (vdp_reg[5] & 0x7f) << 9));
     LOG_REQUEST(("  Pos:  %d,%d", hpos, vpos));
     LOG_REQUEST(("  Size: %d,%d", hsize, vsize));
     LOG_REQUEST(("  Pri: %d, Pal: %d, Vflip: %d, Hflip: %d",
@@ -1640,8 +1633,7 @@ void vdp_spritelist(void)
                  (cellinfo & 0x7FF), (cellinfo & 0x7FF),
                  (cellinfo & 0x7FF) * 32, (cellinfo & 0x7FF) * 32));
     link = sprite[3] & 0x7F;
-  }
-  while (link);
+  } while (link);
 }
 
 void vdp_describe(void)
@@ -1666,8 +1658,8 @@ void vdp_describe(void)
 
   for (layer = 0; layer < 2; layer++) {
     LOG_REQUEST(("  Layer %s:", layer == 0 ? "A" : "B"));
-    o_patterndata = (layer == 0 ? ((vdp_reg[2] & 0x38) << 10) :
-                     ((vdp_reg[4] & 7) << 13));
+    o_patterndata =
+        (layer == 0 ? ((vdp_reg[2] & 0x38) << 10) : ((vdp_reg[4] & 7) << 13));
     o_hscrolldata = layer * 2 + ((vdp_reg[13] & 63) << 10);
     LOG_REQUEST(("    Pattern data @ vram+%08X", o_patterndata));
     LOG_REQUEST(("    Hscroll data @ vram+%08X", o_hscrolldata));
@@ -1675,16 +1667,16 @@ void vdp_describe(void)
     hscrolldata = (uint16 *)(vdp_vram + o_hscrolldata);
     for (line = 0; line < vdp_vislines; line++) {
       switch (hmode) {
-      case 0:                  /* full screen */
+      case 0: /* full screen */
         hoffset = (0x400 - LOCENDIAN16(hscrolldata[0])) & 0x3FF;
         break;
-      case 1:                  /* line scroll with first 8 lines */
+      case 1: /* line scroll with first 8 lines */
         hoffset = (0x400 - LOCENDIAN16(hscrolldata[2 * (line & 7)])) & 0x3FF;
         break;
-      case 2:                  /* cell scroll */
+      case 2: /* cell scroll */
         hoffset = (0x400 - LOCENDIAN16(hscrolldata[2 * (line & ~7)])) & 0x3FF;
         break;
-      case 3:                  /* line scroll */
+      case 3: /* line scroll */
         hoffset = (0x400 - LOCENDIAN16(hscrolldata[2 * line])) & 0x3FF;
         break;
       default:
@@ -1692,14 +1684,14 @@ void vdp_describe(void)
         break;
       }
       raw_hoffset = hoffset;
-      hoffset &= (hwidth << 8) - 1;     /* put offset in range */
+      hoffset &= (hwidth << 8) - 1; /* put offset in range */
       voffset = (line + LOCENDIAN16(((uint16 *)vdp_vsram)[layer])) & 0x3FF;
-      voffset &= (vwidth << 8) - 1;     /* put offset in range */
-      LOG_REQUEST(("     line %d: hoffset=%d=%d, voffset=%d, "
-                   "firstcell=vram+%08X", line, raw_hoffset, hoffset,
-                   voffset,
-                   o_patterndata + 2 * ((hoffset >> 3) +
-                                        hwidth * (voffset >> 3))));
+      voffset &= (vwidth << 8) - 1; /* put offset in range */
+      LOG_REQUEST(
+          ("     line %d: hoffset=%d=%d, voffset=%d, "
+           "firstcell=vram+%08X",
+           line, raw_hoffset, hoffset, voffset,
+           o_patterndata + 2 * ((hoffset >> 3) + hwidth * (voffset >> 3))));
     }
   }
 }
@@ -1742,15 +1734,15 @@ void vdp_endfield(void)
 {
   vdp_line = 0;
   vdp_eventinit();
-  vdp_oddframe ^= 1;            /* toggle */
+  vdp_oddframe ^= 1; /* toggle */
   /* printf("(%d,%d,%d,%d,%d)\n", vdp_event_type,
      vdp_event_startline, vdp_event_hint, vdp_event_vdpplot,
      vdp_event_endline); */
 }
 
 /* C17 migration: removed 'inline' to provide external linkage */
-void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags,
-                  uint8 *cellloc, unsigned int lineoffset)
+void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags, uint8 *cellloc,
+                  unsigned int lineoffset)
 {
   int y, x;
   uint8 value;
@@ -1888,11 +1880,11 @@ void vdp_layer_simple(unsigned int layer, unsigned int priority,
   uint8 vsize = (vdp_reg[16] >> 4) & 3;
   uint8 hmode = vdp_reg[11] & 3;
   uint8 vmode = (vdp_reg[11] >> 2) & 1;
-  uint16 vramoffset = (layer ? ((vdp_reg[4] & 7) << 13) :
-                       ((vdp_reg[2] & (7 << 3)) << 10));
+  uint16 vramoffset =
+      (layer ? ((vdp_reg[4] & 7) << 13) : ((vdp_reg[2] & (7 << 3)) << 10));
   uint16 *patterndata = (uint16 *)(vdp_vram + vramoffset);
-  uint16 *hscrolldata = (uint16 *)(((vdp_reg[13] & 63) << 10)
-                                   + vdp_vram + layer * 2);
+  uint16 *hscrolldata =
+      (uint16 *)(((vdp_reg[13] & 63) << 10) + vdp_vram + layer * 2);
   uint8 screencells = (vdp_reg[12] & 1) ? 40 : 32;
   uint16 hwidth = 32 + hsize * 32;
   uint16 vwidth = 32 + vsize * 32;
@@ -1907,8 +1899,7 @@ void vdp_layer_simple(unsigned int layer, unsigned int priority,
 
   if (layer == 0 &&
       ((vdp_reg[18] == 0x9F && vdp_reg[17] == 0x9F) ||
-       (vdp_reg[18] == 0x9F && vdp_reg[17] == 0x80) ||
-       (vdp_reg[18] == 0x80) ||
+       (vdp_reg[18] == 0x9F && vdp_reg[17] == 0x80) || (vdp_reg[18] == 0x80) ||
        (vdp_reg[18] == 0x00 && vdp_reg[17] > (screencells << 1))))
     /* quick hack to remove layer A when it definitely shouldn't be plotted */
     return;
@@ -1926,14 +1917,14 @@ void vdp_layer_simple(unsigned int layer, unsigned int priority,
     for (ycell = 0; ycell <= 28;
          ycell++, voffset += 8, toploc += lineoffset * 8) {
       switch (hmode) {
-      case 0:                  /* full screen */
-      case 1:                  /* line scroll (first 8 lines) - approximation */
+      case 0: /* full screen */
+      case 1: /* line scroll (first 8 lines) - approximation */
         hscroll = 0;
         break;
-      case 2:                  /* cell scroll */
+      case 2: /* cell scroll */
         hscroll = 2 * (ycell >= 28 ? ycell - 2 : ycell) * 8;
         break;
-      case 3:                  /* line scroll - approximation */
+      case 3: /* line scroll - approximation */
         hscroll = 2 * (ycell >= 28 ? ycell - 2 : ycell) * 8;
         vdp_complex = 1;
         break;
@@ -1945,17 +1936,17 @@ void vdp_layer_simple(unsigned int layer, unsigned int priority,
       hoffset = (0x400 - LOCENDIAN16(hscrolldata[hscroll])) & 0x3FF;
       hoffset = (hoffset + xcell * 8) & ((hwidth * 8) - 1);
       cellinfo =
-        LOCENDIAN16(patterndata[(hoffset >> 3) + hwidth * (voffset >> 3)]);
+          LOCENDIAN16(patterndata[(hoffset >> 3) + hwidth * (voffset >> 3)]);
       if (((uint8)((cellinfo & 1 << 15) ? 1 : 0)) == priority) {
         /* plot cell */
         palette = (cellinfo >> 13) & 3;
         pattern = vdp_vram + ((cellinfo & 2047) << 5);
-        flags = (cellinfo >> 11) & 3;   /* bit0=H flip, bit1=V flip */
+        flags = (cellinfo >> 11) & 3; /* bit0=H flip, bit1=V flip */
         cellloc = toploc - (hoffset & 7) + xcell * 8;
         vdp_plotcell(pattern, palette, flags, cellloc, lineoffset);
       }
-    }                           /* ycell */
-  }                             /* xcell */
+    } /* ycell */
+  } /* xcell */
 }
 
 void vdp_shadow_simple(uint8 *framedata, unsigned int lineoffset)
@@ -1978,8 +1969,7 @@ void vdp_sprites_simple(unsigned int priority, uint8 *framedata,
 {
   uint8 *spritelist = vdp_vram + ((vdp_reg[5] & 0x7F) << 9);
 
-  vdp_sprite_simple(priority, framedata, lineoffset, 1,
-                    spritelist, spritelist);
+  vdp_sprite_simple(priority, framedata, lineoffset, 1, spritelist, spritelist);
 }
 
 int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
@@ -2017,16 +2007,15 @@ int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
     if (hpos == -128)
       /* we do not support 'masking' in simple mode */
       vdp_complex = 1;
-    plotted =
-      vdp_sprite_simple(priority, framedata, lineoffset, number + 1,
-                        spritelist, spritelist + (link << 3));
+    plotted = vdp_sprite_simple(priority, framedata, lineoffset, number + 1,
+                                spritelist, spritelist + (link << 3));
     plotted++;
   }
 
   if (((uint8)((cellinfo & 1 << 15) ? 1 : 0)) != priority)
     return plotted;
-  if (vpos >= 240 || hpos >= 320 || vpos + vsize * 8 <= 0
-      || hpos + hsize * 8 <= 0)
+  if (vpos >= 240 || hpos >= 320 || vpos + vsize * 8 <= 0 ||
+      hpos + hsize * 8 <= 0)
     /* sprite is not on screen */
     return plotted;
   flags = (cellinfo >> 11) & 3; /* bit0=H flip, bit1=V flip */
@@ -2045,8 +2034,8 @@ int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
         if (xcell * 8 + hpos < -7 || xcell * 8 + hpos >= 320)
           /* cell out of plotting area */
           continue;
-        cellloc = framedata + ((vpos + ycell * 8) * lineoffset +
-                               (hpos + xcell * 8));
+        cellloc =
+            framedata + ((vpos + ycell * 8) * lineoffset + (hpos + xcell * 8));
         vdp_plotcell(patloc, palette, flags, cellloc, lineoffset);
       }
     }
@@ -2059,13 +2048,13 @@ int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
         /* cell out of plotting area (remember scrap area) */
         continue;
       patloc =
-        vdp_vram + (pattern << 5) + ycell * 32 + vsize * 32 * (hsize - 1);
+          vdp_vram + (pattern << 5) + ycell * 32 + vsize * 32 * (hsize - 1);
       for (xcell = 0; xcell < hsize; xcell++, patloc -= vsize * 32) {
         if (xcell * 8 + hpos < -7 || xcell * 8 + hpos >= 320)
           /* cell out of plotting area */
           continue;
-        cellloc = framedata + ((vpos + ycell * 8) * lineoffset +
-                               (hpos + xcell * 8));
+        cellloc =
+            framedata + ((vpos + ycell * 8) * lineoffset + (hpos + xcell * 8));
         vdp_plotcell(patloc, palette, flags, cellloc, lineoffset);
       }
     }
@@ -2082,8 +2071,8 @@ int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
         if (xcell * 8 + hpos < -7 || xcell * 8 + hpos >= 320)
           /* cell out of plotting area */
           continue;
-        cellloc = framedata + ((vpos + ycell * 8) * lineoffset +
-                               (hpos + xcell * 8));
+        cellloc =
+            framedata + ((vpos + ycell * 8) * lineoffset + (hpos + xcell * 8));
         vdp_plotcell(patloc, palette, flags, cellloc, lineoffset);
       }
     }
@@ -2095,14 +2084,14 @@ int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
       if (ycell * 8 + vpos < -7 || ycell * 8 + vpos >= 240)
         /* cell out of plotting area (remember scrap area) */
         continue;
-      patloc = vdp_vram + (pattern << 5) + ((vsize - ycell - 1) * 32 +
-                                            vsize * 32 * (hsize - 1));
+      patloc = vdp_vram + (pattern << 5) +
+               ((vsize - ycell - 1) * 32 + vsize * 32 * (hsize - 1));
       for (xcell = 0; xcell < hsize; xcell++, patloc -= vsize * 32) {
         if (xcell * 8 + hpos < -7 || xcell * 8 + hpos >= 320)
           /* cell out of plotting area */
           continue;
-        cellloc = framedata + ((vpos + ycell * 8) * lineoffset +
-                               (hpos + xcell * 8));
+        cellloc =
+            framedata + ((vpos + ycell * 8) * lineoffset + (hpos + xcell * 8));
         vdp_plotcell(patloc, palette, flags, cellloc, lineoffset);
       }
     }
@@ -2129,8 +2118,9 @@ uint8 vdp_gethpos(void)
      this is such a bodge - any changes, check '3 Ninjas kick back'
    */
   LOG_DEBUG1(("gethpos %X: clocks=%X : startofline=%X : hint=%X : "
-              "end=%X", vdp_event, cpu68k_clocks,
-              vdp_event_start, vdp_event_hint, vdp_event_end));
+              "end=%X",
+              vdp_event, cpu68k_clocks, vdp_event_start, vdp_event_hint,
+              vdp_event_end));
   if (vdp_event < 3) {
     percent = ((float)(cpu68k_clocks - vdp_event_start) /
                (float)(vdp_event_hint - vdp_event_start));
@@ -2142,10 +2132,12 @@ uint8 vdp_gethpos(void)
     percent = ((float)(cpu68k_clocks - vdp_event_hint) /
                (float)(vdp_event_end - vdp_event_hint));
     if (vdp_reg[12] & 1)
-      return ((cpu68k_clocks > vdp_event_end) ? 0 :
-              ((uint8)(0xE4 + percent * 28) & 0xff));
+      return ((cpu68k_clocks > vdp_event_end)
+                  ? 0
+                  : ((uint8)(0xE4 + percent * 28) & 0xff));
     else
-      return ((cpu68k_clocks > vdp_event_end) ? 0 :
-              ((uint8)(0xE8 + percent * 24) & 0xff));
+      return ((cpu68k_clocks > vdp_event_end)
+                  ? 0
+                  : ((uint8)(0xE8 + percent * 24) & 0xff));
   }
 }

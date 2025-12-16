@@ -33,11 +33,11 @@
 
 /*** variables externed in generator.h ***/
 
-volatile sig_atomic_t gen_quit = 0;  /* Signal-safe flag for clean shutdown */
+volatile sig_atomic_t gen_quit = 0; /* Signal-safe flag for clean shutdown */
 unsigned int gen_debugmode = 0;
-unsigned int gen_loglevel = 1;  /* 2 = NORMAL, 1 = CRITICAL */
-unsigned int gen_autodetect = 1; /* 0 = no, 1 = yes */
-unsigned int gen_musiclog = 0; /* 0 = no, 1 = GYM, 2 = GNM */
+unsigned int gen_loglevel = 1;    /* 2 = NORMAL, 1 = CRITICAL */
+unsigned int gen_autodetect = 1;  /* 0 = no, 1 = yes */
+unsigned int gen_musiclog = 0;    /* 0 = no, 1 = GYM, 2 = GNM */
 unsigned int gen_modifiedrom = 0; /* 0 = no, 1 = yes */
 t_cartinfo gen_cartinfo;
 char gen_leafname[128];
@@ -62,7 +62,7 @@ void gen_setupcartinfo(void);
  */
 RETSIGTYPE gen_sighandler(int signum)
 {
-  (void)signum;  /* Suppress unused parameter warning */
+  (void)signum; /* Suppress unused parameter warning */
 
   /* Only operation allowed in signal handler: set atomic flag */
   gen_quit = 1;
@@ -85,8 +85,10 @@ int main(int argc, char *argv[])
   test.sr_int = 0;
   test.sr_struct.c = 1;
   if (test.sr_int != 1) {
-    fprintf(stderr, "%s: compilation variable BYTES_HIGHFIRST not set "
-            "correctly\n", argv[0]);
+    fprintf(stderr,
+            "%s: compilation variable BYTES_HIGHFIRST not set "
+            "correctly\n",
+            argv[0]);
     return 1;
   }
 
@@ -198,8 +200,7 @@ char *gen_loadimage(const char *filename)
       break;
     buffer += bytes;
     bytesleft -= bytes;
-  }
-  while (bytesleft >= 0);
+  } while (bytesleft >= 0);
   close(file);
   if (bytes == -1)
     return (strerror(errno));
@@ -210,17 +211,17 @@ char *gen_loadimage(const char *filename)
     return ("Error whilst loading file");
   }
 
-  imagetype = 1;                /* BIN file by default */
+  imagetype = 1; /* BIN file by default */
 
   /* SMD file format check - Richard Bannister */
   if ((cpu68k_rom[8] == 0xAA) && (cpu68k_rom[9] == 0xBB) &&
       cpu68k_rom[10] == 0x06) {
-    imagetype = 2;              /* SMD file */
+    imagetype = 2; /* SMD file */
   }
   /* check for interleaved 'SEGA' */
   if (cpu68k_rom[0x280] == 'E' && cpu68k_rom[0x281] == 'A' &&
       cpu68k_rom[0x2280] == 'S' && cpu68k_rom[0x2281] == 'G') {
-    imagetype = 2;              /* SMD file */
+    imagetype = 2; /* SMD file */
   }
   /* Check extension is not wrong */
   extension = filename + strlen(filename) - 3;
@@ -236,9 +237,9 @@ char *gen_loadimage(const char *filename)
   /* convert to standard BIN file format */
 
   switch (imagetype) {
-  case 1:                      /* BIN */
+  case 1: /* BIN */
     break;
-  case 2:                      /* SMD */
+  case 2: /* SMD */
     blocks = (cpu68k_romlen - 512) / 16384;
     if (blocks * 16384 + 512 != cpu68k_romlen)
       return ("Image is corrupt.");
@@ -281,7 +282,9 @@ char *gen_loadimage(const char *filename)
 
   if (gen_autodetect) {
     vdp_pal = (!gen_cartinfo.flag_usa && !gen_cartinfo.flag_japan &&
-               gen_cartinfo.flag_europe) ? 1 : 0;
+               gen_cartinfo.flag_europe)
+                  ? 1
+                  : 0;
   }
 
   gen_setupcartinfo();
@@ -332,8 +335,8 @@ void gen_setupcartinfo(void)
     gen_cartinfo.prodtype = pt_unknown;
   }
   gen_nicetext(gen_cartinfo.version, (char *)(cpu68k_rom + 0x182), 12);
-  gen_cartinfo.checksum = gen_checksum(((uint8 *)cpu68k_rom) + 0x200,
-                                       cpu68k_romlen - 0x200);
+  gen_cartinfo.checksum =
+      gen_checksum(((uint8 *)cpu68k_rom) + 0x200, cpu68k_romlen - 0x200);
   gen_nicetext(gen_cartinfo.memo, (char *)(cpu68k_rom + 0x1C8), 28);
   for (i = 0x1f0; i < 0x1ff; i++) {
     if (cpu68k_rom[i] == 'J')
@@ -364,8 +367,8 @@ void gen_nicetext(char *out, char *in, unsigned int size)
   int c;
   char *start = out;
 
-  flag = 0;                     /* set if within word, e.g. make lowercase */
-  i = size;                     /* maximum number of chars in input */
+  flag = 0; /* set if within word, e.g. make lowercase */
+  i = size; /* maximum number of chars in input */
   while ((c = *in++) && --i > 0) {
     if (isalpha(c)) {
       if (!flag) {

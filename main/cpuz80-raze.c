@@ -18,7 +18,7 @@ uint32 cpuz80_bank = 0;
 uint8 cpuz80_active = 0;
 uint8 cpuz80_resetting = 0;
 unsigned int cpuz80_pending = 0;
-unsigned int cpuz80_on = 1;     /* z80 turned on? */
+unsigned int cpuz80_on = 1; /* z80 turned on? */
 
 /*** global variables ***/
 
@@ -50,9 +50,9 @@ void cpuz80_reset(void)
   cpuz80_pending = 0;
   z80_init_memmap();
   z80_map_fetch(0x0000, 0x3fff, cpuz80_ram);
-  z80_map_fetch(0x4000, 0x7fff, cpuz80_ram);    /* ok? */
-  z80_map_fetch(0x8000, 0xbfff, cpuz80_ram);    /* ok? */
-  z80_map_fetch(0xc000, 0xffff, cpuz80_ram);    /* ok? */
+  z80_map_fetch(0x4000, 0x7fff, cpuz80_ram); /* ok? */
+  z80_map_fetch(0x8000, 0xbfff, cpuz80_ram); /* ok? */
+  z80_map_fetch(0xc000, 0xffff, cpuz80_ram); /* ok? */
   z80_add_read(0x000, 0x3fff, Z80_MAP_DIRECT, cpuz80_ram);
   z80_add_write(0x000, 0x3fff, Z80_MAP_DIRECT, cpuz80_ram);
   for (i = 1; (memz80_def[i].start != 0) || (memz80_def[i].end != 0); i++) {
@@ -78,7 +78,7 @@ void cpuz80_resetcpu(void)
 {
   cpuz80_sync();
   z80_reset();
-  cpuz80_resetting = 1;         /* suspends execution */
+  cpuz80_resetting = 1; /* suspends execution */
 }
 
 /*** cpuz80_unresetcpu - unreset z80 cpu ***/
@@ -87,7 +87,7 @@ void cpuz80_unresetcpu(void)
 {
   if (cpuz80_resetting)
     cpuz80_sync();
-  cpuz80_resetting = 0;         /* un-suspends execution */
+  cpuz80_resetting = 0; /* un-suspends execution */
 }
 
 /*** cpuz80_bankwrite - data is being written to latch ***/

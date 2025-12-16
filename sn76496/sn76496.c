@@ -43,15 +43,16 @@
 /* bit0 = output */
 
 /* noise feedback for white noise mode */
-#define FB_WNOISE 0x12000       /* bit15.d(16bits) = bit0(out) ^ bit2 */
-//#define FB_WNOISE 0x14000     /* bit15.d(16bits) = bit0(out) ^ bit1 */
-//#define FB_WNOISE 0x28000     /* bit16.d(17bits) = bit0(out) ^ bit2 (same to AY-3-8910) */
-//#define FB_WNOISE 0x50000     /* bit17.d(18bits) = bit0(out) ^ bit2 */
+#define FB_WNOISE 0x12000 /* bit15.d(16bits) = bit0(out) ^ bit2 */
+// #define FB_WNOISE 0x14000     /* bit15.d(16bits) = bit0(out) ^ bit1 */
+// #define FB_WNOISE 0x28000     /* bit16.d(17bits) = bit0(out) ^ bit2 (same to
+// AY-3-8910) */ #define FB_WNOISE 0x50000     /* bit17.d(18bits) = bit0(out) ^
+// bit2 */
 
 /* noise feedback for periodic noise mode */
 /* it is correct maybe (it was in the Megadrive sound manual) */
-//#define FB_PNOISE 0x10000     /* 16bit rorate */
-#define FB_PNOISE 0x08000       /* JH 981127 - fixes Do Run Run */
+// #define FB_PNOISE 0x10000     /* 16bit rorate */
+#define FB_PNOISE 0x08000 /* JH 981127 - fixes Do Run Run */
 
 /* noise generator start preset (for periodic noise) */
 #define NG_PRESET 0x0f35
@@ -71,9 +72,9 @@ void SN76496Write(int chip, int data)
     R->LastRegister = r;
     R->Register[r] = (R->Register[r] & 0x3f0) | (data & 0x0f);
     switch (r) {
-    case 0:                    /* tone 0 : frequency */
-    case 2:                    /* tone 1 : frequency */
-    case 4:                    /* tone 2 : frequency */
+    case 0: /* tone 0 : frequency */
+    case 2: /* tone 1 : frequency */
+    case 4: /* tone 2 : frequency */
       R->Period[c] = R->UpdateStep * R->Register[r];
       if (R->Period[c] == 0)
         R->Period[c] = R->UpdateStep;
@@ -83,35 +84,33 @@ void SN76496Write(int chip, int data)
           R->Period[3] = 2 * R->Period[2];
       }
       break;
-    case 1:                    /* tone 0 : volume */
-    case 3:                    /* tone 1 : volume */
-    case 5:                    /* tone 2 : volume */
-    case 7:                    /* noise  : volume */
+    case 1: /* tone 0 : volume */
+    case 3: /* tone 1 : volume */
+    case 5: /* tone 2 : volume */
+    case 7: /* noise  : volume */
       R->Volume[c] = R->VolTable[data & 0x0f];
       break;
-    case 6:                    /* noise  : frequency, mode */
-      {
-        int n = R->Register[6];
-        R->NoiseFB = (n & 4) ? FB_WNOISE : FB_PNOISE;
-        n &= 3;
-        /* N/512,N/1024,N/2048,Tone #3 output */
-        R->Period[3] =
-          (n == 3) ? 2 * R->Period[2] : (R->UpdateStep << (5 + n));
+    case 6: /* noise  : frequency, mode */
+    {
+      int n = R->Register[6];
+      R->NoiseFB = (n & 4) ? FB_WNOISE : FB_PNOISE;
+      n &= 3;
+      /* N/512,N/1024,N/2048,Tone #3 output */
+      R->Period[3] = (n == 3) ? 2 * R->Period[2] : (R->UpdateStep << (5 + n));
 
-        /* reset noise shifter */
-        R->RNG = NG_PRESET;
-        R->Output[3] = R->RNG & 1;
-      }
-      break;
+      /* reset noise shifter */
+      R->RNG = NG_PRESET;
+      R->Output[3] = R->RNG & 1;
+    } break;
     }
   } else {
     int r = R->LastRegister;
     int c = r / 2;
 
     switch (r) {
-    case 0:                    /* tone 0 : frequency */
-    case 2:                    /* tone 1 : frequency */
-    case 4:                    /* tone 2 : frequency */
+    case 0: /* tone 0 : frequency */
+    case 2: /* tone 1 : frequency */
+    case 4: /* tone 2 : frequency */
       R->Register[r] = (R->Register[r] & 0x0f) | ((data & 0x3f) << 4);
       R->Period[c] = R->UpdateStep * R->Register[r];
       if (R->Period[c] == 0)
@@ -205,7 +204,7 @@ void SN76496Update(int chip, uint16 *buffer, int length)
     } while (left > 0);
 
     out = vol[0] * R->Volume[0] + vol[1] * R->Volume[1] +
-      vol[2] * R->Volume[2] + vol[3] * R->Volume[3];
+          vol[2] * R->Volume[2] + vol[3] * R->Volume[3];
     if (out > MAX_OUTPUT * STEP)
       out = MAX_OUTPUT * STEP;
     *(buffer++) = out / STEP;
@@ -236,7 +235,7 @@ static void SN76496_set_gain(int chip, int gain)
   /* increase max output basing on gain (0.2 dB per step) */
   out = MAX_OUTPUT / 3;
   while (gain-- > 0)
-    out *= 1.023292992;         /* = (10 ^ (0.2/20)) */
+    out *= 1.023292992; /* = (10 ^ (0.2/20)) */
   /* build volume table (2dB per step) */
   for (i = 0; i < 15; i++) {
     /* limit volume to avoid clipping */
@@ -244,7 +243,7 @@ static void SN76496_set_gain(int chip, int gain)
       R->VolTable[i] = MAX_OUTPUT / 3;
     else
       R->VolTable[i] = out;
-    out /= 1.258925412;         /* = 10 ^ (2/20) = 2dB */
+    out /= 1.258925412; /* = 10 ^ (2/20) = 2dB */
   }
   R->VolTable[15] = 0;
 }
@@ -264,7 +263,7 @@ int SN76496Init(int chip, int clock, int gain, int sample_rate)
   R->LastRegister = 0;
   for (i = 0; i < 8; i += 2) {
     R->Register[i] = 0;
-    R->Register[i + 1] = 0x0f;  /* volume = 0 */
+    R->Register[i + 1] = 0x0f; /* volume = 0 */
   }
 
   for (i = 0; i < 4; i++) {

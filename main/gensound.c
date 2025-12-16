@@ -11,22 +11,23 @@
 #include "sn76496.h"
 
 #ifdef JFM
-#  include "jfm.h"
+#include "jfm.h"
 #else
-#  include "support.h"
-#  include "fm.h"
+#include "support.h"
+#include "fm.h"
 #endif
 
 /*** variables externed ***/
 
-int sound_debug = 0;            /* debug mode */
-int sound_feedback = 0;         /* -1, running out of sound
-                                   +0, lots of sound, do something */
-unsigned int sound_minfields = 5;       /* min fields to try to buffer (optimized with g_idle_add architecture) */
-unsigned int sound_maxfields = 10;      /* max fields before blocking */
-unsigned int sound_speed = SOUND_SAMPLERATE;    /* sample rate */
-unsigned int sound_sampsperfield;       /* samples per field */
-unsigned int sound_threshold;   /* samples in buffer aiming for */
+int sound_debug = 0;              /* debug mode */
+int sound_feedback = 0;           /* -1, running out of sound
+                                     +0, lots of sound, do something */
+unsigned int sound_minfields = 5; /* min fields to try to buffer (optimized with
+                                     g_idle_add architecture) */
+unsigned int sound_maxfields = 10;           /* max fields before blocking */
+unsigned int sound_speed = SOUND_SAMPLERATE; /* sample rate */
+unsigned int sound_sampsperfield;            /* samples per field */
+unsigned int sound_threshold;                /* samples in buffer aiming for */
 uint8 sound_regs1[256];
 uint8 sound_regs2[256];
 uint8 sound_address1 = 0;
@@ -49,10 +50,10 @@ static void sound_writetolog(unsigned char c);
 /*** file scoped variables ***/
 
 static int sound_active = 0;
-static uint8 *sound_logdata;    /* log data */
-static unsigned int sound_logdata_size; /* sound_logdata size */
-static unsigned int sound_logdata_p;    /* current log data offset */
-static unsigned int sound_fieldhassamples;      /* flag if field has samples */
+static uint8 *sound_logdata;               /* log data */
+static unsigned int sound_logdata_size;    /* sound_logdata size */
+static unsigned int sound_logdata_p;       /* current log data offset */
+static unsigned int sound_fieldhassamples; /* flag if field has samples */
 
 #ifdef JFM
 static t_jfm_ctx *sound_ctx;
@@ -77,8 +78,8 @@ int sound_init(void)
   if (ret)
     return ret;
 #ifdef JFM
-  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_speed,
-                            nullptr, nullptr)) == nullptr) {
+  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_speed, nullptr,
+                            nullptr)) == nullptr) {
 #else
   if (YM2612Init(1, vdp_clock / 7, sound_speed, nullptr, nullptr)) {
 #endif
@@ -183,8 +184,8 @@ void sound_endfield(void)
         /* we're only removing data, so we're going to write to the buffer
            we're reading from */
         o = sound_logdata + 3;
-        for (p = sound_logdata + 3;
-             p < (sound_logdata + sound_logdata_p); p++) {
+        for (p = sound_logdata + 3; p < (sound_logdata + sound_logdata_p);
+             p++) {
           if ((*p & 0xF0) != 0x00 || *p == 4)
             ui_err("assertion of no samples failed");
           switch (*p) {
@@ -237,8 +238,8 @@ void sound_endfield(void)
     sound_feedback = 0;
 
   if (sound_debug) {
-    LOG_VERBOSE(("End of field - sound system says %d bytes buffered",
-                 pending));
+    LOG_VERBOSE(
+        ("End of field - sound system says %d bytes buffered", pending));
     LOG_VERBOSE(("Threshold %d, therefore feedback = %d ", sound_threshold,
                  sound_feedback));
   }
@@ -355,7 +356,7 @@ static void sound_process(void)
   int s1 = (sound_sampsperfield * (vdp_line)) / vdp_totlines;
   int s2 = (sound_sampsperfield * (vdp_line + 1)) / vdp_totlines;
   /* pal is lowest framerate */
-  uint16 sn76496buf[SOUND_MAXRATE / 50];        /* far too much but who cares */
+  uint16 sn76496buf[SOUND_MAXRATE / 50]; /* far too much but who cares */
   unsigned int samples = s2 - s1;
   unsigned int i;
   static sint32 ll, rr;
@@ -430,7 +431,7 @@ static void sound_writetolog(unsigned char c)
   sound_logdata[sound_logdata_p++] = c;
   if (sound_logdata_p >= sound_logdata_size) {
     LOG_VERBOSE(("sound log buffer limit increased"));
-    sound_logdata_size+= 8192;
+    sound_logdata_size += 8192;
     sound_logdata = realloc(sound_logdata, sound_logdata_size);
     if (!sound_logdata)
       ui_err("out of memory");

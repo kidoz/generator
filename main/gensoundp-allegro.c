@@ -61,8 +61,9 @@ int soundp_start(void)
     }
   }
   /* allocate block capable of holding sound_maxfields frames */
-  if ((soundp_sample = create_sample(16, 1, sound_speed, sound_sampsperfield *
-                                    sound_maxfields)) == nullptr) {
+  if ((soundp_sample = create_sample(16, 1, sound_speed,
+                                     sound_sampsperfield * sound_maxfields)) ==
+      nullptr) {
     LOG_CRITICAL(("Failed to create sample"));
     return 1;
   }
@@ -79,7 +80,7 @@ int soundp_start(void)
   voice_set_pan(soundp_voice, 128);
   voice_set_frequency(soundp_voice, sound_speed);
   voice_start(soundp_voice);
-  soundp_block = sound_maxfields - 1;       /* next block to write to */
+  soundp_block = sound_maxfields - 1; /* next block to write to */
   LOG_VERBOSE(("YM2612 Initialised @ sample rate %d", sound_speed));
   sound_readyblock();
   return 0;
@@ -116,7 +117,7 @@ int soundp_samplesbuffered(void)
 void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 {
   int writepos = soundp_block * sound_sampsperfield;
-  uint16 *buffer = soundp_sample->data + writepos * 2 * 2;  /* 16bit, stereo */
+  uint16 *buffer = soundp_sample->data + writepos * 2 * 2; /* 16bit, stereo */
   unsigned int i;
 
   if (samples != sound_sampsperfield) {
@@ -143,14 +144,14 @@ void sound_readyblock(void)
   if (locked && digi_driver->unlock_voice)
     digi_driver->unlock_voice(soundp_voice);
 
-  while ((voice_get_position(soundp_voice) /
-          sound_sampsperfield) == soundp_block) {
+  while ((voice_get_position(soundp_voice) / sound_sampsperfield) ==
+         soundp_block) {
     /* I used to usleep here, but it breaks on some platforms - then I
        tried uclock() which failed too, so we're just going to busywait */
     if (time(nullptr) > start + 10) {
       LOG_CRITICAL(("Sound error - pos=%d %d=%d",
-                    voice_get_position(soundp_voice),
-                    sound_sampsperfield, soundp_block));
+                    voice_get_position(soundp_voice), sound_sampsperfield,
+                    soundp_block));
       exit(0);
     }
     /* cannot write to the next block until it's played! */

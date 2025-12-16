@@ -27,14 +27,14 @@
 static SDL_Window *uip_window = nullptr;
 static SDL_Renderer *uip_renderer = nullptr;
 static SDL_Texture *uip_texture[2] = {nullptr, nullptr};
-static uint8 uip_vga = 0;                    /* flag for whether in VGA mode */
-static uint8 uip_key[SDL_NUM_SCANCODES];     /* keyboard state */
-static uint8 uip_displaybanknum = 0;         /* view this one, write to other one */
-static t_uipinfo *uip_uipinfo = nullptr;        /* uipinfo */
+static uint8 uip_vga = 0;                /* flag for whether in VGA mode */
+static uint8 uip_key[SDL_NUM_SCANCODES]; /* keyboard state */
+static uint8 uip_displaybanknum = 0;     /* view this one, write to other one */
+static t_uipinfo *uip_uipinfo = nullptr; /* uipinfo */
 static uint8 *uip_screenmem[2] = {nullptr, nullptr}; /* screen memory banks */
-static int uip_forceredshift = -1;           /* if set, forces red shift pos */
-static int uip_forcegreenshift = -1;         /* if set, forces green shift pos */
-static int uip_forceblueshift = -1;          /* if set, forces blue shift pos */
+static int uip_forceredshift = -1;   /* if set, forces red shift pos */
+static int uip_forcegreenshift = -1; /* if set, forces green shift pos */
+static int uip_forceblueshift = -1;  /* if set, forces blue shift pos */
 
 /*** Code ***/
 
@@ -117,14 +117,9 @@ int uip_vgamode(void)
   uip_vga = 1;
 
   /* Create window */
-  uip_window = SDL_CreateWindow(
-    "Generator - Sega Genesis Emulator",
-    SDL_WINDOWPOS_CENTERED,
-    SDL_WINDOWPOS_CENTERED,
-    SCREEN_WIDTH,
-    SCREEN_HEIGHT,
-    SDL_WINDOW_SHOWN
-  );
+  uip_window = SDL_CreateWindow("Generator - Sega Genesis Emulator",
+                                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
 
   if (!uip_window) {
     LOG_CRITICAL(("Failed to create SDL window: %s", SDL_GetError()));
@@ -133,8 +128,8 @@ int uip_vgamode(void)
   }
 
   /* Create renderer with vsync enabled for proper frame timing */
-  uip_renderer = SDL_CreateRenderer(uip_window, -1,
-                                     SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  uip_renderer = SDL_CreateRenderer(
+      uip_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (!uip_renderer) {
     LOG_CRITICAL(("Failed to create SDL renderer: %s", SDL_GetError()));
     uip_textmode();
@@ -148,13 +143,9 @@ int uip_vgamode(void)
 
   /* Create textures for double buffering */
   for (i = 0; i < 2; i++) {
-    uip_texture[i] = SDL_CreateTexture(
-      uip_renderer,
-      pixel_format,
-      SDL_TEXTUREACCESS_STREAMING,
-      SCREEN_WIDTH,
-      SCREEN_HEIGHT
-    );
+    uip_texture[i] = SDL_CreateTexture(uip_renderer, pixel_format,
+                                       SDL_TEXTUREACCESS_STREAMING,
+                                       SCREEN_WIDTH, SCREEN_HEIGHT);
 
     if (!uip_texture[i]) {
       LOG_CRITICAL(("Failed to create SDL texture %d: %s", i, SDL_GetError()));
@@ -173,8 +164,9 @@ int uip_vgamode(void)
   }
 
   /* Query actual texture format created by SDL
-   * IMPORTANT: SDL may create a different format than requested, especially on Wayland!
-   * For example, we request RGB565 but SDL may create BGR565 on Wayland/Mesa systems.
+   * IMPORTANT: SDL may create a different format than requested, especially on
+   * Wayland! For example, we request RGB565 but SDL may create BGR565 on
+   * Wayland/Mesa systems.
    */
   Uint32 actual_format;
   int access, w, h;
@@ -185,8 +177,9 @@ int uip_vgamode(void)
   }
 
   if (actual_format != pixel_format) {
-    LOG_NORMAL(("SDL created texture with format 0x%08X instead of requested 0x%08X",
-                actual_format, pixel_format));
+    LOG_NORMAL(
+        ("SDL created texture with format 0x%08X instead of requested 0x%08X",
+         actual_format, pixel_format));
     pixel_format = actual_format;
   }
 
@@ -207,10 +200,11 @@ int uip_vgamode(void)
   /* Get color shifts and masks from SDL's actual pixel format
    * This works for any format: RGB565, BGR565, RGB555, BGR555, etc.
    * Common formats:
-   *   RGB565 (X11):     R=11, G=5, B=0, Rmask=0xF800, Gmask=0x07E0, Bmask=0x001F
-   *   BGR565 (Wayland): R=0,  G=5, B=11, Rmask=0x001F, Gmask=0x07E0, Bmask=0xF800
-   *   RGB555:           R=10, G=5, B=0, Rmask=0x7C00, Gmask=0x03E0, Bmask=0x001F
-   *   BGR555:           R=0,  G=5, B=10, Rmask=0x001F, Gmask=0x03E0, Bmask=0x7C00
+   *   RGB565 (X11):     R=11, G=5, B=0, Rmask=0xF800, Gmask=0x07E0,
+   * Bmask=0x001F BGR565 (Wayland): R=0,  G=5, B=11, Rmask=0x001F, Gmask=0x07E0,
+   * Bmask=0xF800 RGB555:           R=10, G=5, B=0, Rmask=0x7C00, Gmask=0x03E0,
+   * Bmask=0x001F BGR555:           R=0,  G=5, B=10, Rmask=0x001F, Gmask=0x03E0,
+   * Bmask=0x7C00
    */
   if (uip_forceredshift >= 0) {
     uip_uipinfo->redshift = uip_forceredshift;
@@ -235,15 +229,17 @@ int uip_vgamode(void)
   uip_uipinfo->greenmask = format->Gmask;
   uip_uipinfo->bluemask = format->Bmask;
 
-  LOG_VERBOSE(("SDL texture format: %s (0x%08X)", SDL_GetPixelFormatName(actual_format), actual_format));
-  LOG_VERBOSE(("Pixel format masks: R=0x%04X G=0x%04X B=0x%04X",
-               format->Rmask, format->Gmask, format->Bmask));
+  LOG_VERBOSE(("SDL texture format: %s (0x%08X)",
+               SDL_GetPixelFormatName(actual_format), actual_format));
+  LOG_VERBOSE(("Pixel format masks: R=0x%04X G=0x%04X B=0x%04X", format->Rmask,
+               format->Gmask, format->Bmask));
 
   SDL_FreeFormat(format);
 
-  LOG_VERBOSE(("SDL2 video mode initialized: %dx%d RGB565", SCREEN_WIDTH, SCREEN_HEIGHT));
-  LOG_VERBOSE(("Color shifts: R=%d G=%d B=%d",
-               uip_uipinfo->redshift, uip_uipinfo->greenshift, uip_uipinfo->blueshift));
+  LOG_VERBOSE(("SDL2 video mode initialized: %dx%d RGB565", SCREEN_WIDTH,
+               SCREEN_HEIGHT));
+  LOG_VERBOSE(("Color shifts: R=%d G=%d B=%d", uip_uipinfo->redshift,
+               uip_uipinfo->greenshift, uip_uipinfo->blueshift));
 
   return 0;
 }
@@ -262,7 +258,8 @@ void uip_displaybank(int bank)
   /* Update texture with current screen memory
    * SDL_UpdateTexture is faster and more synchronized than Lock/memcpy/Unlock
    * for streaming textures. It handles proper synchronization with the GPU. */
-  if (SDL_UpdateTexture(uip_texture[bank], nullptr, uip_screenmem[bank], pitch) != 0) {
+  if (SDL_UpdateTexture(uip_texture[bank], nullptr, uip_screenmem[bank],
+                        pitch) != 0) {
     LOG_CRITICAL(("Failed to update texture: %s", SDL_GetError()));
     return;
   }
@@ -325,27 +322,27 @@ int uip_checkkeyboard(void)
 
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
-      case SDL_QUIT:
-        return 1; /* user closed window */
+    case SDL_QUIT:
+      return 1; /* user closed window */
 
-      case SDL_KEYDOWN:
-        uip_keyboardhandler(event.key.keysym.scancode, 1);
-        break;
+    case SDL_KEYDOWN:
+      uip_keyboardhandler(event.key.keysym.scancode, 1);
+      break;
 
-      case SDL_KEYUP:
-        uip_keyboardhandler(event.key.keysym.scancode, 0);
-        break;
+    case SDL_KEYUP:
+      uip_keyboardhandler(event.key.keysym.scancode, 0);
+      break;
 
-      case SDL_WINDOWEVENT:
-        /* Handle window focus changes to pause/resume audio */
-        if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
-          soundp_pause();
-          LOG_VERBOSE(("Window focus lost - audio paused"));
-        } else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
-          soundp_resume();
-          LOG_VERBOSE(("Window focus gained - audio resumed"));
-        }
-        break;
+    case SDL_WINDOWEVENT:
+      /* Handle window focus changes to pause/resume audio */
+      if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+        soundp_pause();
+        LOG_VERBOSE(("Window focus lost - audio paused"));
+      } else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+        soundp_resume();
+        LOG_VERBOSE(("Window focus gained - audio resumed"));
+      }
+      break;
     }
   }
 

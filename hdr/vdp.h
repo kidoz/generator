@@ -1,8 +1,12 @@
 typedef enum {
-  cd_vram_fetch, cd_vram_store,
-  cd_2, cd_cram_store,
-  cd_vsram_fetch, cd_vsram_store,
-  cd_6, cd_7,
+  cd_vram_fetch,
+  cd_vram_store,
+  cd_2,
+  cd_cram_store,
+  cd_vsram_fetch,
+  cd_vsram_store,
+  cd_6,
+  cd_7,
   cd_cram_fetch
 } t_code;
 
@@ -70,15 +74,15 @@ void vdp_fifo_drain(int count);
 
 #define LEN_CRAM 128
 #define LEN_VSRAM 80
-#define LEN_VRAM 64*1024
+#define LEN_VRAM 64 * 1024
 
 /* C11: Verify VDP memory sizes at compile time */
 #ifndef GENERATOR_BUILD_TOOL
-  #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
-    static_assert(LEN_CRAM == 128, "Genesis CRAM must be 128 bytes");
-    static_assert(LEN_VSRAM == 80, "Genesis VSRAM must be 80 bytes");
-    static_assert(LEN_VRAM == 65536, "Genesis VRAM must be 64KB");
-  #endif
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+static_assert(LEN_CRAM == 128, "Genesis CRAM must be 128 bytes");
+static_assert(LEN_VSRAM == 80, "Genesis VSRAM must be 80 bytes");
+static_assert(LEN_VRAM == 65536, "Genesis VRAM must be 64KB");
+#endif
 #endif
 
 /* an estimate of the total cell width including HBLANK, for calculations */

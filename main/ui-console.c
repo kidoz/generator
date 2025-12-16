@@ -44,12 +44,12 @@
 
 uint32 ui_fkeys = 0;
 
-uint8 ui_vdpsimple = 0;         /* 0=raster, 1=cell based plotter */
-uint8 ui_clearnext = 0;         /* flag indicating redraw required */
-uint8 ui_fullscreen = 0;        /* does the user want full screen or not */
-uint8 ui_info = 1;              /* does the user want info onscreen or not */
-uint8 ui_vsync = 0;             /* does the user want us to wait for vsync */
-t_binding ui_bindings[2];       /* keyboard/joystick bindings for players */
+uint8 ui_vdpsimple = 0;   /* 0=raster, 1=cell based plotter */
+uint8 ui_clearnext = 0;   /* flag indicating redraw required */
+uint8 ui_fullscreen = 0;  /* does the user want full screen or not */
+uint8 ui_info = 1;        /* does the user want info onscreen or not */
+uint8 ui_vsync = 0;       /* does the user want us to wait for vsync */
+t_binding ui_bindings[2]; /* keyboard/joystick bindings for players */
 
 t_interlace ui_interlace = DEINTERLACE_WEAVEFILTER;
 
@@ -58,14 +58,13 @@ t_interlace ui_interlace = DEINTERLACE_WEAVEFILTER;
 static void ui_usage(void);
 void ui_exithandler(void);
 void ui_newframe(void);
-void ui_plotsprite_acorn(uint16 *logo, uint16 width, uint16 height,
-                         uint16 x, uint16 y);
+void ui_plotsprite_acorn(uint16 *logo, uint16 width, uint16 height, uint16 x,
+                         uint16 y);
 int ui_unpackfont(void);
 uint16 ui_plotstring(const char *text, uint16 xpos, uint16 ypos);
 uint16 ui_plotint2(uint8 num, uint16 xpos, uint16 ypos);
 void ui_plotsettings(void);
-void ui_drawbox(uint16 colour, uint16 x, uint16 y, uint16 width,
-                uint16 height);
+void ui_drawbox(uint16 colour, uint16 x, uint16 y, uint16 width, uint16 height);
 void ui_rendertoscreen(void);
 void ui_basicbits(void);
 void ui_licensescreen(void);
@@ -76,8 +75,8 @@ void ui_statescreen_main(void);
 int ui_statescreen_loadsavestate(int save);
 void ui_resetscreen(void);
 void ui_resetscreen_main(void);
-int ui_saveimage(const char *type, char *filename, int buflen,
-                 int *xsize, int *ysize);
+int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
+                 int *ysize);
 int ui_setcolourbits(const char *str);
 int ui_setcontrollers(const char *str);
 
@@ -88,28 +87,28 @@ static void ui_simpleplot(void);
 void ui_printlog(void);
 static uint32 ui_logline = 0;
 static char ui_loglines[UI_LOGLINES][UI_LOGLINESIZE];
-static uint16 ui_logcount = 0;  /* log counter */
+static uint16 ui_logcount = 0; /* log counter */
 #endif
 
 /*** static variables ***/
 
-static uint8 ui_vga = 0;        /* flag for whether in VGA more or not */
-static uint8 ui_frameskip = 0;  /* 0 for dynamic */
-static uint8 ui_actualskip = 0; /* the last skip we did (1..) */
-static uint8 ui_state = 0;      /* 0=stop, 1=paused, 2=play */
-static char *ui_initload = nullptr;        /* filename to load on init */
-static uint8 ui_plotfield = 0;  /* flag indicating plotting this field */
-static uint8 ui_plotprevfield = 0;      /* did we plot the previous field? */
-static uint16 *ui_font;         /* unpacked font */
-static uint8 bigbuffer[8192];   /* stupid no-vsnprintf platforms */
-static t_uipinfo ui_uipinfo;    /* uipinfo filled in by uip 'sub-system' */
-static uint16 *ui_screen0;      /* pointer to screen block for bank 0 */
-static uint16 *ui_screen1;      /* pointer to screen block for bank 1 */
-static uint16 *ui_newscreen;    /* pointer to new screen block */
-static int ui_saverom;          /* flag to save rom and quit */
-static int ui_joysticks = 0;    /* number of joysticks */
+static uint8 ui_vga = 0;            /* flag for whether in VGA more or not */
+static uint8 ui_frameskip = 0;      /* 0 for dynamic */
+static uint8 ui_actualskip = 0;     /* the last skip we did (1..) */
+static uint8 ui_state = 0;          /* 0=stop, 1=paused, 2=play */
+static char *ui_initload = nullptr; /* filename to load on init */
+static uint8 ui_plotfield = 0;      /* flag indicating plotting this field */
+static uint8 ui_plotprevfield = 0;  /* did we plot the previous field? */
+static uint16 *ui_font;             /* unpacked font */
+static uint8 bigbuffer[8192];       /* stupid no-vsnprintf platforms */
+static t_uipinfo ui_uipinfo;        /* uipinfo filled in by uip 'sub-system' */
+static uint16 *ui_screen0;          /* pointer to screen block for bank 0 */
+static uint16 *ui_screen1;          /* pointer to screen block for bank 1 */
+static uint16 *ui_newscreen;        /* pointer to new screen block */
+static int ui_saverom;              /* flag to save rom and quit */
+static int ui_joysticks = 0;        /* number of joysticks */
 
-static uint16 ui_screen[3][320 * 240];     /* screen buffers */
+static uint16 ui_screen[3][320 * 240]; /* screen buffers */
 
 /*** Program entry point ***/
 
@@ -119,7 +118,7 @@ int ui_init(int argc, char *argv[])
   int ch;
 
   ui_bindings[0].joystick = -1; /* -1 = use keyboard */
-  ui_bindings[0].keyboard = 0; /* 0 = main keyboard */
+  ui_bindings[0].keyboard = 0;  /* 0 = main keyboard */
   ui_bindings[1].joystick = -1; /* -1 = use keyboard */
   ui_bindings[1].keyboard = -1; /* -1 = no keyboard */
 
@@ -134,14 +133,14 @@ int ui_init(int argc, char *argv[])
   }
   while ((ch = getopt(argc, argv, "i:c:w:f:sd:v:l:j:k:")) != -1) {
     switch (ch) {
-    case 'c':                  /* set colour bit positions */
+    case 'c': /* set colour bit positions */
       if (ui_setcolourbits(optarg)) {
         fprintf(stderr, "-c option not understood, must be "
-                "'red,green,blue'\n");
+                        "'red,green,blue'\n");
         return 1;
       }
       break;
-    case 'i':                  /* de-interlacing mode */
+    case 'i': /* de-interlacing mode */
       if (!strcasecmp(optarg, "bob")) {
         ui_interlace = DEINTERLACE_BOB;
       } else if (!strcasecmp(optarg, "weave")) {
@@ -150,11 +149,11 @@ int ui_init(int argc, char *argv[])
         ui_interlace = DEINTERLACE_WEAVEFILTER;
       } else {
         fprintf(stderr, "-i option not understood, must be "
-                "bob|weave|weave-filter\n");
+                        "bob|weave|weave-filter\n");
         return 1;
       }
       break;
-    case 'd':                  /* enable sound debug mode */
+    case 'd': /* enable sound debug mode */
       /* re-write this to cope with comma separated items later */
       if (!strcasecmp(optarg, "sound"))
         sound_debug = 1;
@@ -165,23 +164,23 @@ int ui_init(int argc, char *argv[])
         return 1;
       }
       break;
-    case 's':                  /* save raw format rom */
+    case 's': /* save raw format rom */
       ui_saverom = 1;
       break;
-    case 'l':                  /* set min fields / audio latency */
+    case 'l': /* set min fields / audio latency */
       sound_minfields = atoi(optarg);
       break;
-    case 'f':                  /* set max fields / audio fragments */
+    case 'f': /* set max fields / audio fragments */
       sound_maxfields = atoi(optarg);
       break;
-    case 'k':                  /* set frame skip */
+    case 'k': /* set frame skip */
       ui_frameskip = atoi(optarg);
       break;
-    case 'v':                  /* set log verbosity level */
+    case 'v': /* set log verbosity level */
       gen_loglevel = atoi(optarg);
       break;
-    case 'w':                  /* saved game work dir */
-      chdir(optarg);            /* for the moment this will do */
+    case 'w':        /* saved game work dir */
+      chdir(optarg); /* for the moment this will do */
       break;
     case '?':
     default:
@@ -251,32 +250,32 @@ int ui_init(int argc, char *argv[])
 void ui_usage(void)
 {
   fprintf(stderr, "Generator is (c) James Ponder 1997-2001, all rights "
-          "reserved. " VERSION "\n\n");
+                  "reserved. " VERSION "\n\n");
   fprintf(stderr, "generator [options] <rom>\n\n");
   fprintf(stderr, "  -v <verbose level> can be: 0 = none, 1 = critical, "
-          "2 = normal, 3 = verbose\n");
+                  "2 = normal, 3 = verbose\n");
   fprintf(stderr, "  -d sound - turns on debug mode for sound\n");
   fprintf(stderr, "  -l <sound latency> is the number of video fields worth "
-          "of sound to\n     try to keep buffered (default 5)\n");
+                  "of sound to\n     try to keep buffered (default 5)\n");
   fprintf(stderr, "  -f <sound fragments> is the number of video fields worth "
-          "of sound to\n     allow buffered (approx) (default 10)\n");
+                  "of sound to\n     allow buffered (approx) (default 10)\n");
   fprintf(stderr, "  -w <work dir> indicates where saved games are stored "
-          "(default is current dir)\n");
+                  "(default is current dir)\n");
   fprintf(stderr, "  -c [<r>,<g>,<b>] sets the colour bit positions of where "
-          "red, green and blue\n     5-bit values should be shifted "
-          "to (default 10,5,0 for 15-bit modes)\n");
+                  "red, green and blue\n     5-bit values should be shifted "
+                  "to (default 10,5,0 for 15-bit modes)\n");
   fprintf(stderr, "  -i <mode> selects de-interlace mode, one of: bob "
-          "weave weave-filter\n");
+                  "weave weave-filter\n");
   fprintf(stderr, "  -k <x> forces the frame step (1=all frames, 2=every other,"
-          " etc.)\n");
+                  " etc.)\n");
   fprintf(stderr, "  -j <pad1>,<pad2> sets the input device for each joypad "
-          "(default key0,none)\n");
+                  "(default key0,none)\n");
   fprintf(stderr, "  -s will save the ROM to the work directory in raw "
-          "format\n\n");
+                  "format\n\n");
   fprintf(stderr, "  ROM types supported: .rom or .smd interleaved "
-          "(autodetected)\n");
+                  "(autodetected)\n");
   fprintf(stderr, "  Sound latency will be kept between -l and -a values. "
-          "If you are having sound\n  problems try -l 20 -f 30\n");
+                  "If you are having sound\n  problems try -l 20 -f 30\n");
   exit(1);
 }
 
@@ -330,8 +329,8 @@ int ui_setcolourbits(const char *str)
   if ((blue = strchr(green, ',')) == nullptr)
     return -1;
   *blue++ = '\0';
-  if ((r = atoi(s)) < 0 || r > 15 ||
-      (g = atoi(green)) < 0 || g > 15 || (b = atoi(blue)) < 0 || b > 15)
+  if ((r = atoi(s)) < 0 || r > 15 || (g = atoi(green)) < 0 || g > 15 ||
+      (b = atoi(blue)) < 0 || b > 15)
     return -1;
   if (uip_setcolourbits(r, g, b))
     return -1;
@@ -388,8 +387,7 @@ int ui_setcontrollers(const char *str)
 
 /*** ui_drawbox - plot a box ***/
 
-void ui_drawbox(uint16 colour, uint16 x, uint16 y, uint16 width,
-                uint16 height)
+void ui_drawbox(uint16 colour, uint16 x, uint16 y, uint16 width, uint16 height)
 {
   uint16 *p, *q;
   unsigned int i;
@@ -417,9 +415,9 @@ int ui_unpackfont(void)
   /* 128 chars, 6x, 10y, 16bit */
   if ((ui_font = malloc(128 * 6 * 10 * 2)) == nullptr)
     return -1;
-  for (c = 0; c < 128; c++) {   /* 128 characters */
+  for (c = 0; c < 128; c++) { /* 128 characters */
     cdata = ui_font + c * 6 * 10;
-    for (y = 0; y < 10; y++) {  /* 10 pixels height */
+    for (y = 0; y < 10; y++) { /* 10 pixels height */
       packed = generator_font[c * 10 + y];
       for (x = 0; x < 6; x++) { /* 6 pixels width */
         *cdata++ = (packed & 1 << (7 - x)) ? 0xffff : 0;
@@ -456,9 +454,8 @@ uint16 ui_plotstring(const char *text, uint16 xpos, uint16 ypos)
     else
       cdata = ui_font + (*p) * 6 * 10;
     for (y = 0; y < 10; y++) {
-      scr =
-        (uint16 *)(ui_uipinfo.screenmem_w +
-                   (ypos + y) * ui_uipinfo.linewidth + xpos * 2);
+      scr = (uint16 *)(ui_uipinfo.screenmem_w +
+                       (ypos + y) * ui_uipinfo.linewidth + xpos * 2);
       for (x = 0; x < 6; x++)
         *scr++ = *cdata++;
     }
@@ -469,8 +466,8 @@ uint16 ui_plotstring(const char *text, uint16 xpos, uint16 ypos)
 
 /*** ui_plotsprite - plot a sprite ***/
 
-void ui_plotsprite_acorn(uint16 *logo, uint16 width, uint16 height,
-                         uint16 x, uint16 y)
+void ui_plotsprite_acorn(uint16 *logo, uint16 width, uint16 height, uint16 x,
+                         uint16 y)
 {
   uint16 a, b;
   uint16 *p;
@@ -478,16 +475,15 @@ void ui_plotsprite_acorn(uint16 *logo, uint16 width, uint16 height,
   uint8 red, green, blue;
 
   for (b = 0; b < height; b++) {
-    p =
-      (uint16 *)(ui_uipinfo.screenmem_w + (y + b) * ui_uipinfo.linewidth +
-                 x * 2);
+    p = (uint16 *)(ui_uipinfo.screenmem_w + (y + b) * ui_uipinfo.linewidth +
+                   x * 2);
     for (a = 0; a < width; a++) {
       word = (((uint8 *)logo)[1] << 8) | ((uint8 *)logo)[0];
       green = (word >> 5) & 0x1f;
       red = word & 0x1f;
       blue = (word >> 10) & 0x1f;
       *p++ = red << ui_uipinfo.redshift | green << ui_uipinfo.greenshift |
-        blue << ui_uipinfo.blueshift;
+             blue << ui_uipinfo.blueshift;
       logo++;
     }
   }
@@ -498,7 +494,7 @@ void ui_plotsprite_acorn(uint16 *logo, uint16 width, uint16 height,
 void ui_setupscreen(void)
 {
   uint16 grey = 24 << ui_uipinfo.redshift | 24 << ui_uipinfo.greenshift |
-    24 << ui_uipinfo.blueshift;
+                24 << ui_uipinfo.blueshift;
   uint16 red = 24 << ui_uipinfo.redshift;
 
   if (!ui_info) {
@@ -531,7 +527,8 @@ void ui_setupscreen(void)
   // ui_drawbox(grey, 192, 120, 256, 240);
   ;
   ui_plotstring("Generator is (c) James Ponder 1997-2001, "
-                "all rights reserved.", 0, 0);
+                "all rights reserved.",
+                0, 0);
   ui_plotstring(VERSION, 640 - (strlen(VERSION) * 6), 0);
   ;
   if (ui_bindings[0].joystick != -1) {
@@ -552,8 +549,7 @@ void ui_setupscreen(void)
       ui_plotstring("[ARROWS]  2) D-pad", 0, 460);
       ui_plotstring("[RETURN]  2) Start", 0, 470);
     }
-  }
-  ;
+  };
   ui_plotstring("FPS:  00", 120, 420);
   ui_plotstring("Skip: 00", 120, 430);
   ui_plotstring(":", 622, 470);
@@ -575,8 +571,8 @@ void ui_setupscreen(void)
   ;
   ui_plotsettings();
   ;
-  sprintf(bigbuffer, "%s %X %s", gen_cartinfo.version,
-          gen_cartinfo.checksum, gen_cartinfo.country);
+  sprintf(bigbuffer, "%s %X %s", gen_cartinfo.version, gen_cartinfo.checksum,
+          gen_cartinfo.country);
   ui_plotstring(bigbuffer, 216, 420);
   ui_plotstring(gen_cartinfo.name_domestic, 216, 430);
   ui_plotstring(gen_cartinfo.name_overseas, 216, 440);
@@ -609,8 +605,8 @@ int ui_loop(void)
       snprintf(bigbuffer, sizeof(bigbuffer) - 1, "%s (%X-%s)",
                gen_cartinfo.name_overseas, gen_cartinfo.checksum,
                gen_cartinfo.country);
-      if ((f = open(bigbuffer, O_CREAT | O_EXCL | O_WRONLY, 0777)) == -1
-          || write(f, cpu68k_rom, cpu68k_romlen) == -1 || close(f) == -1) {
+      if ((f = open(bigbuffer, O_CREAT | O_EXCL | O_WRONLY, 0777)) == -1 ||
+          write(f, cpu68k_rom, cpu68k_romlen) == -1 || close(f) == -1) {
         fprintf(stderr, "Failed to write file: %s\n", strerror(errno));
       }
       printf("Successfully wrote: %s\n", bigbuffer);
@@ -633,11 +629,11 @@ int ui_loop(void)
   gen_quit = 0;
   while (!uip_checkkeyboard()) {
     switch (ui_state) {
-    case 0:                    /* stopped */
+    case 0: /* stopped */
       break;
-    case 1:                    /* paused */
+    case 1: /* paused */
       break;
-    case 2:                    /* playing */
+    case 2: /* playing */
       if (ui_fkeys & 1 << 1)
         ui_licensescreen();
       if (ui_fkeys & 1 << 2)
@@ -684,7 +680,7 @@ void ui_newframe(void)
 {
   static int hmode = 0;
   static int skipcount = 0;
-  static char frameplots[60];   /* 60 for NTSC, 50 for PAL */
+  static char frameplots[60]; /* 60 for NTSC, 50 for PAL */
   static unsigned int frameplots_i = 0;
   unsigned int i;
   int fps;
@@ -738,7 +734,7 @@ void ui_newframe(void)
        borders etc again */
     ui_clearnext--;
     hmode = vdp_reg[12] & 1;
-    memset(uip_whichbank()? ui_screen1 : ui_screen0, 0, sizeof(ui_screen[0]));
+    memset(uip_whichbank() ? ui_screen1 : ui_screen0, 0, sizeof(ui_screen[0]));
     uip_clearscreen();
     ui_setupscreen();
   }
@@ -784,8 +780,8 @@ void ui_line(int line)
     return;
   if (line < 0 || line >= (int)vdp_vislines)
     return;
-  if (ui_vdpsimple) { 
-    if (line == (int)(vdp_vislines >> 1)) 
+  if (ui_vdpsimple) {
+    if (line == (int)(vdp_vislines >> 1))
       /* if we're in simple cell-based mode, plot when half way
        * down screen */
       ui_simpleplot();
@@ -794,12 +790,12 @@ void ui_line(int line)
   /* we are plotting this frame, and we're not doing a simple plot at
      the end of it all */
   switch ((vdp_reg[12] >> 1) & 3) {
-  case 0:                    /* normal */
-  case 1:                    /* interlace simply doubled up */
-  case 2:                    /* invalid */
+  case 0: /* normal */
+  case 1: /* interlace simply doubled up */
+  case 2: /* invalid */
     vdp_renderline(line, gfx, 0);
     break;
-  case 3:                    /* interlace with double resolution */
+  case 3: /* interlace with double resolution */
     vdp_renderline(line, gfx, vdp_oddframe);
     break;
   }
@@ -815,7 +811,7 @@ static void ui_simpleplot(void)
 
   /* cell mode - entire frame done here */
   uiplot_checkpalcache(0);
-  vdp_renderframe(gfx + (8 * (320 + 16)) + 8, 320 + 16);    /* plot frame */
+  vdp_renderframe(gfx + (8 * (320 + 16)) + 8, 320 + 16); /* plot frame */
   for (line = 0; line < vdp_vislines; line++) {
     uiplot_convertdata16(gfx + 8 + (line + 8) * (320 + 16),
                          ui_newscreen + line * 320, width);
@@ -835,7 +831,7 @@ void ui_endfield(void)
   uint32_t delay_needed;
 
   if (ui_plotfield) {
-    ui_rendertoscreen();        /* plot ui_newscreen to screen */
+    ui_rendertoscreen(); /* plot ui_newscreen to screen */
 
     /* Frame rate limiting - ensure we don't run faster than target framerate
        Genesis timing: NTSC = 60 Hz (16.67ms), PAL = 50 Hz (20ms) */
@@ -847,7 +843,8 @@ void ui_endfield(void)
     } else {
       /* Calculate target frame time in milliseconds
          vdp_framerate is set in vdp.c: 60 for NTSC, 50 for PAL */
-      target_frame_time_ms = 1000 / vdp_framerate;  /* 16ms for NTSC, 20ms for PAL */
+      target_frame_time_ms =
+          1000 / vdp_framerate; /* 16ms for NTSC, 20ms for PAL */
 
       elapsed_time = current_time - last_frame_time;
 
@@ -879,7 +876,7 @@ void ui_endfield(void)
 
 void ui_rendertoscreen(void)
 {
-  uint16 **oldscreenpp = uip_whichbank()? &ui_screen1 : &ui_screen0;
+  uint16 **oldscreenpp = uip_whichbank() ? &ui_screen1 : &ui_screen0;
   uint16 *scrtmp;
   uint16 *newlinedata, *oldlinedata;
   unsigned int line;
@@ -887,8 +884,8 @@ void ui_rendertoscreen(void)
   unsigned int yoffset = (vdp_reg[1] & 1 << 3) ? 0 : 8;
   unsigned int xoffset = (vdp_reg[12] & 1) ? 0 : 32;
   uint8 *screen;
-  uint16 *evenscreen;           /* interlace: lines 0,2,etc. */
-  uint16 *oddscreen;            /*            lines 1,3,etc. */
+  uint16 *evenscreen; /* interlace: lines 0,2,etc. */
+  uint16 *oddscreen;  /*            lines 1,3,etc. */
 
   for (line = 0; line < vdp_vislines; line++) {
     newlinedata = ui_newscreen + line * 320;
@@ -906,10 +903,10 @@ void ui_rendertoscreen(void)
         /* work out which buffer contains the odd and even fields */
         if (vdp_oddframe) {
           oddscreen = ui_newscreen;
-          evenscreen = uip_whichbank()? ui_screen0 : ui_screen1;
+          evenscreen = uip_whichbank() ? ui_screen0 : ui_screen1;
         } else {
           evenscreen = ui_newscreen;
-          oddscreen = uip_whichbank()? ui_screen0 : ui_screen1;
+          oddscreen = uip_whichbank() ? ui_screen0 : ui_screen1;
         }
         switch (ui_interlace) {
         case DEINTERLACE_BOB:
@@ -925,13 +922,12 @@ void ui_rendertoscreen(void)
         case DEINTERLACE_WEAVEFILTER:
           /* lines line+0 and line+1 */
           uiplot_irender16_weavefilter(evenscreen + line * 320,
-                                       oddscreen + line * 320,
-                                       screen, nominalwidth);
-          /* lines line+1 and line+2 */
-          uiplot_irender16_weavefilter(oddscreen + line * 320,
-                                       evenscreen + line * 320 + 320,
-                                       screen + ui_uipinfo.linewidth,
+                                       oddscreen + line * 320, screen,
                                        nominalwidth);
+          /* lines line+1 and line+2 */
+          uiplot_irender16_weavefilter(
+              oddscreen + line * 320, evenscreen + line * 320 + 320,
+              screen + ui_uipinfo.linewidth, nominalwidth);
           break;
         }
         break;
@@ -939,8 +935,7 @@ void ui_rendertoscreen(void)
     } else {
       screen = (ui_uipinfo.screenmem_w + 320 + xoffset * 2 +
                 ui_uipinfo.linewidth * (120 + line + yoffset));
-      uiplot_render16_x1(newlinedata, oldlinedata, screen,
-                         nominalwidth);
+      uiplot_render16_x1(newlinedata, oldlinedata, screen, nominalwidth);
     }
   }
   uip_displaybank(-1);
@@ -963,11 +958,12 @@ void ui_rendertoscreen(void)
 void ui_basicbits(void)
 {
   uint16 grey = 24 << ui_uipinfo.redshift | 24 << ui_uipinfo.greenshift |
-    24 << ui_uipinfo.blueshift;
+                24 << ui_uipinfo.blueshift;
   uint16 red = 24 << ui_uipinfo.redshift;
 
   ui_plotstring("Generator is (c) James Ponder 1997-2001, "
-                "all rights reserved.", 0, 0);
+                "all rights reserved.",
+                0, 0);
   ui_plotstring(VERSION, 640 - (strlen(VERSION) * 6), 0);
   ui_drawbox(red, 140, 100, 360, 280);
   ui_drawbox(grey, 141, 101, 358, 278);
@@ -1114,7 +1110,7 @@ int ui_statescreen_loadsavestate(int save)
       return 0;
     if (c >= '1' && c <= '9') {
       /* this is a function call! */
-      if ((save ? state_save : state_load) (c - '0') == 0)
+      if ((save ? state_save : state_load)(c - '0') == 0)
         return 1;
       uip_clearmiddle();
       if (save)
@@ -1158,8 +1154,8 @@ void ui_imagescreen_main(void)
     if (c == '0') {
       return;
     } else if (c == '1' || c == '2') {
-      if (ui_saveimage(c == '1' ? "svga" : "game", filename, 256,
-                       &xsize, &ysize)) {
+      if (ui_saveimage(c == '1' ? "svga" : "game", filename, 256, &xsize,
+                       &ysize)) {
         uip_clearmiddle();
         ui_plotstring("Failed to save image.", 160, 120);
         ui_plotstring("Press any key to continue", 160, 140);
@@ -1168,8 +1164,7 @@ void ui_imagescreen_main(void)
         uip_clearmiddle();
         snprintf(buf, sizeof(buf), "Successfully saved %s", filename);
         ui_plotstring(buf, 160, 120);
-        snprintf(buf, sizeof(buf), "(%d x %d 24 bit raw image)",
-                 xsize, ysize);
+        snprintf(buf, sizeof(buf), "(%d x %d 24 bit raw image)", xsize, ysize);
         ui_plotstring(buf, 160, 130);
         ui_plotstring("Press any key to continue", 160, 150);
         uip_getchar();
@@ -1178,8 +1173,8 @@ void ui_imagescreen_main(void)
   }
 }
 
-int ui_saveimage(const char *type, char *filename, int buflen,
-                 int *xsize, int *ysize)
+int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
+                 int *ysize)
 {
   int i, y;
   int fd = 0;
@@ -1200,8 +1195,9 @@ int ui_saveimage(const char *type, char *filename, int buflen,
     uint8 *scr;
     uint16 *line;
     /* get the bank that we're not writing/reading to now */
-    scr = (ui_uipinfo.screenmem_w == ui_uipinfo.screenmem0) ?
-      ui_uipinfo.screenmem1 : ui_uipinfo.screenmem0;
+    scr = (ui_uipinfo.screenmem_w == ui_uipinfo.screenmem0)
+              ? ui_uipinfo.screenmem1
+              : ui_uipinfo.screenmem0;
     for (y = 0; y < 480; y++) {
       line = (uint16 *)(scr + y * ui_uipinfo.linewidth);
       for (i = 0; i < 640; i++) {
@@ -1225,7 +1221,7 @@ int ui_saveimage(const char *type, char *filename, int buflen,
     *ysize = 480;
   } else if (!strcasecmp(type, "game")) {
     uint16 data;
-    uint16 *scr = uip_whichbank()? ui_screen0 : ui_screen1;
+    uint16 *scr = uip_whichbank() ? ui_screen0 : ui_screen1;
     *xsize = (vdp_reg[12] & 1) ? 320 : 256;
     *ysize = vdp_vislines;
     for (y = 0; y < *ysize; y++) {
@@ -1248,8 +1244,8 @@ int ui_saveimage(const char *type, char *filename, int buflen,
       }
     }
   } else {
-    LOG_CRITICAL(("Invalid image type '%s' passed to image save routine",
-                  type));
+    LOG_CRITICAL(
+        ("Invalid image type '%s' passed to image save routine", type));
     close(fd);
     return -1;
   }
@@ -1266,34 +1262,36 @@ int ui_saveimage(const char *type, char *filename, int buflen,
    whilst battling with macros that can only take fixed numbers of arguments */
 
 #ifdef ALLEGRO
-#define LOG_FUNC(name,level,txt) void ui_log_##name(const char *text, ...) \
-{ \
-  va_list ap; \
-  char *ll = ui_loglines[ui_logline]; \
-  char *p = bigbuffer; \
-  if (gen_loglevel >= level) { \
-    p+= sprintf(p, "%d ", ui_logcount++); \
-    p+= sprintf(p, txt); \
-    va_start(ap, text); \
-    vsprintf(p, text, ap); \
-    va_end(ap); \
-    strncpy(ll, bigbuffer, UI_LOGLINESIZE); \
-    if (++ui_logline >= UI_LOGLINES) \
-      ui_logline = 0; \
-  } \
-}
+#define LOG_FUNC(name, level, txt)            \
+  void ui_log_##name(const char *text, ...)   \
+  {                                           \
+    va_list ap;                               \
+    char *ll = ui_loglines[ui_logline];       \
+    char *p = bigbuffer;                      \
+    if (gen_loglevel >= level) {              \
+      p += sprintf(p, "%d ", ui_logcount++);  \
+      p += sprintf(p, txt);                   \
+      va_start(ap, text);                     \
+      vsprintf(p, text, ap);                  \
+      va_end(ap);                             \
+      strncpy(ll, bigbuffer, UI_LOGLINESIZE); \
+      if (++ui_logline >= UI_LOGLINES)        \
+        ui_logline = 0;                       \
+    }                                         \
+  }
 #else
-#define LOG_FUNC(name,level,txt) void ui_log_##name(const char *text, ...) \
-{ \
-  va_list ap; \
-  if (gen_loglevel >= level) { \
-    printf("[%s] ", txt); \
-    va_start(ap, text); \
-    vprintf(text, ap); \
-    va_end(ap); \
-    putchar(10); \
-  } \
-}
+#define LOG_FUNC(name, level, txt)          \
+  void ui_log_##name(const char *text, ...) \
+  {                                         \
+    va_list ap;                             \
+    if (gen_loglevel >= level) {            \
+      printf("[%s] ", txt);                 \
+      va_start(ap, text);                   \
+      vprintf(text, ap);                    \
+      va_end(ap);                           \
+      putchar(10);                          \
+    }                                       \
+  }
 #endif
 
 LOG_FUNC(debug3, 7, "DEBG ");
@@ -1303,7 +1301,7 @@ LOG_FUNC(user, 4, "USER ");
 LOG_FUNC(verbose, 3, "---- ");
 LOG_FUNC(normal, 2, "---- ");
 LOG_FUNC(critical, 1, "CRIT ");
-LOG_FUNC(request, 0, "---- ");  /* this generates a warning, such is life */
+LOG_FUNC(request, 0, "---- "); /* this generates a warning, such is life */
 
 /*** ui_err - log error message and quit ***/
 
@@ -1317,7 +1315,7 @@ void ui_err(const char *text, ...)
   vfprintf(stderr, text, ap);
   va_end(ap);
   putc(10, stderr);
-  exit(0);                      /* don't exit(1) because windows makes an error then! */
+  exit(0); /* don't exit(1) because windows makes an error then! */
 }
 
 /*** ui_topbit - given an integer return the top most bit set ***/

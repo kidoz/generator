@@ -13,13 +13,13 @@
 /* int n    = chip number        */
 /* int clk  = MasterClock(Hz)    */
 /* int rate = sample rate(Hz) */
-#define SSGClk(chip,clock) AY8910_set_clock(chip,clock)
+#define SSGClk(chip, clock) AY8910_set_clock(chip, clock)
 
 /* SSGWrite : Write SSG port     */
 /* int n    = chip number        */
 /* int a    = address            */
 /* int v    = data               */
-#define SSGWrite(n,a,v) AY8910Write(n,a,v)
+#define SSGWrite(n, a, v) AY8910Write(n, a, v)
 
 /* SSGRead  : Read SSG port */
 /* int n    = chip number   */
@@ -38,7 +38,7 @@
 #if BUILD_YM2203
 INLINE void YM2203UpdateReq(int chip)
 {
-	YM2203UpdateRequest(chip); /* in 2203intf.c */
+  YM2203UpdateRequest(chip); /* in 2203intf.c */
 }
 #endif
 #if BUILD_YM2608
@@ -52,7 +52,7 @@ INLINE void YM2608UpdateReq(int chip)
 #if BUILD_YM2610
 INLINE void YM2610UpdateReq(int chip)
 {
-	YM2610UpdateRequest(chip); /* in 2610intf.c */
+  YM2610UpdateRequest(chip); /* in 2610intf.c */
 }
 #endif
 
@@ -60,14 +60,14 @@ INLINE void YM2610UpdateReq(int chip)
 #if BUILD_YM2612
 INLINE void YM2612UpdateReq(int chip)
 {
-	YM2612UpdateRequest(chip); /* in 2612intf.c */
+  YM2612UpdateRequest(chip); /* in 2612intf.c */
 }
 #endif
 
 #if BUILD_YM2151
 INLINE void YM2151UpdateReq(int chip)
 {
-	YM2151UpdateRequest(chip); /* in 2151intf.c */
+  YM2151UpdateRequest(chip); /* in 2151intf.c */
 }
 #endif /* BUILD_YM2151 */
 

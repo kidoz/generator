@@ -3,16 +3,16 @@
    uip_init() function, but it is setup in uip_vgamode() function */
 
 typedef struct {
-  uint8 redshift;                  /* bit position for 5 bits of red */
-  uint8 greenshift;                /* bit position for 5 bits of green */
-  uint8 blueshift;                 /* bit position for 5 bits of blue */
-  uint32 redmask;                  /* bit mask for red channel */
-  uint32 greenmask;                /* bit mask for green channel */
-  uint32 bluemask;                 /* bit mask for blue channel */
-  uint32 linewidth;                /* line width of mode in bytes */
-  uint8 *screenmem0;        /* start of screen memory bank 0 */
-  uint8 *screenmem1;        /* start of screen memory bank 1 */
-  uint8 *screenmem_w;       /* start of screen bank for writing */
+  uint8 redshift;     /* bit position for 5 bits of red */
+  uint8 greenshift;   /* bit position for 5 bits of green */
+  uint8 blueshift;    /* bit position for 5 bits of blue */
+  uint32 redmask;     /* bit mask for red channel */
+  uint32 greenmask;   /* bit mask for green channel */
+  uint32 bluemask;    /* bit mask for blue channel */
+  uint32 linewidth;   /* line width of mode in bytes */
+  uint8 *screenmem0;  /* start of screen memory bank 0 */
+  uint8 *screenmem1;  /* start of screen memory bank 1 */
+  uint8 *screenmem_w; /* start of screen bank for writing */
 } t_uipinfo;
 
 int uip_init(t_uipinfo *uipinfo);

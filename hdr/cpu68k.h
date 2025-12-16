@@ -1,10 +1,10 @@
 typedef struct _t_ipc {
   void (*function)(struct _t_ipc *ipc);
-  uint8 used;               /* bitmap of XNZVC flags inspected */
-  uint8 set;                /* bitmap of XNZVC flags altered */
+  uint8 used; /* bitmap of XNZVC flags inspected */
+  uint8 set;  /* bitmap of XNZVC flags altered */
   uint16 opcode;
   uint16 wordlen;
-  unsigned int :0;
+  unsigned int : 0;
   uint32 src;
   uint32 dst;
 } t_ipc;
@@ -21,7 +21,7 @@ extern uint8 *cpu68k_rom;
 extern unsigned int cpu68k_romlen;
 extern uint8 *cpu68k_ram;
 extern t_iib *cpu68k_iibtable[65536];
-extern void (*cpu68k_functable[65536*2])(t_ipc *ipc);
+extern void (*cpu68k_functable[65536 * 2])(t_ipc *ipc);
 extern int cpu68k_totalinstr;
 extern int cpu68k_totalfuncs;
 extern unsigned int cpu68k_clocks;
@@ -47,20 +47,20 @@ t_ipclist *cpu68k_makeipclist(uint32 pc);
 void cpu68k_endfield(void);
 void cpu68k_clearcache(void);
 
-#define V_RESETSSP   0
-#define V_RESETPC    1
-#define V_BUSERR     2
-#define V_ADDRESS    3
-#define V_ILLEGAL    4
-#define V_ZERO       5
-#define V_CHK        6
-#define V_TRAPV      7
-#define V_PRIVILEGE  8
-#define V_TRACE      9
-#define V_LINE10    10
-#define V_LINE15    11
-#define V_UNINIT    15
-#define V_SPURIOUS  24
-#define V_AUTO      25
-#define V_TRAP      32
-#define V_USER      64
+#define V_RESETSSP 0
+#define V_RESETPC 1
+#define V_BUSERR 2
+#define V_ADDRESS 3
+#define V_ILLEGAL 4
+#define V_ZERO 5
+#define V_CHK 6
+#define V_TRAPV 7
+#define V_PRIVILEGE 8
+#define V_TRACE 9
+#define V_LINE10 10
+#define V_LINE15 11
+#define V_UNINIT 15
+#define V_SPURIOUS 24
+#define V_AUTO 25
+#define V_TRAP 32
+#define V_USER 64

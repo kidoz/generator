@@ -6,32 +6,32 @@
 #define h_z80stb_h
 
 /* RC hack */
-#define DWORD           UINT32
-#define WORD            UINT16
-#define BYTE            UINT8
-#define LPBYTE          UINT8*
-#define ULONG           unsigned long
-#define BOOL            UINT8
+#define DWORD UINT32
+#define WORD UINT16
+#define BYTE UINT8
+#define LPBYTE UINT8 *
+#define ULONG unsigned long
+#define BOOL UINT8
 
 /* accessors */
-#define LOWORD(x)       ( x & 0xFFFF )
-#define HIWORD(x)       ( x >> 16 )
-#define LOBYTE(x)       ( x & 0xFF )
-#define HIBYTE(x)       ( x >> 8 )
-#define MAKEWORD(lo,hi) ( lo | ( hi << 8 ) )
+#define LOWORD(x) (x & 0xFFFF)
+#define HIWORD(x) (x >> 16)
+#define LOBYTE(x) (x & 0xFF)
+#define HIBYTE(x) (x >> 8)
+#define MAKEWORD(lo, hi) (lo | (hi << 8))
 
 /* execz80.h */
-#define S_FLAG          0x80
-#define Z_FLAG          0x40
-#define H_FLAG          0x10
-#define V_FLAG          0x04
-#define N_FLAG          0x02
-#define C_FLAG          0x01
+#define S_FLAG 0x80
+#define Z_FLAG 0x40
+#define H_FLAG 0x10
+#define V_FLAG 0x04
+#define N_FLAG 0x02
+#define C_FLAG 0x01
 
 typedef struct {
-  WORD AF,BC,DE,HL,IX,IY,PC,SP;
-  WORD AF2,BC2,DE2,HL2;
-  unsigned IFF1,IFF2,HALT,IM,I,R,R2;
+  WORD AF, BC, DE, HL, IX, IY, PC, SP;
+  WORD AF2, BC2, DE2, HL2;
+  unsigned IFF1, IFF2, HALT, IM, I, R, R2;
 } EXECZ80_CONTEXT;
 
 // typedef BYTE (*EXECZ80_MEMREAD_PROC)(WORD);
@@ -85,7 +85,7 @@ int Exec(int cCyclesArg);
 /* inline */ WORD Pop(void);
 /* inline */ WORD GetSP(void);
 /* inline */ void SetSP(WORD wAddr);
-	
+
 /* inline */ int Jr0(int f);
 /* inline */ int Jr1(int f);
 /* inline */ int Call0(int f);
@@ -94,7 +94,7 @@ int Exec(int cCyclesArg);
 /* inline */ int Ret1(int f);
 /* inline */ int Jp0(int f);
 /* inline */ int Jp1(int f);
-	
+
 /* inline */ void Rst(WORD wAddr);
 /* inline */ WORD MemReadWord(WORD wAddr);
 /* inline */ BYTE MemReadByte(WORD wAddr);
@@ -104,7 +104,7 @@ WORD CallbackMemReadWord(WORD wAddr);
 BYTE CallbackMemReadByte(WORD wAddr);
 void CallbackMemWriteByte(WORD wAddr, BYTE bVal);
 void CallbackMemWriteWord(WORD wAddr, WORD wVal);
-	
+
 /* inline */ void Add_1(BYTE b);
 /* inline */ void Adc_1(BYTE b);
 /* inline */ void Sub(BYTE b);
@@ -113,9 +113,9 @@ void CallbackMemWriteWord(WORD wAddr, WORD wVal);
 /* inline */ void Or(BYTE b);
 /* inline */ void Xor(BYTE b);
 /* inline */ void Cp(BYTE b);
-/* inline */ BYTE Set(BYTE b,int);
-/* inline */ BYTE Res(BYTE b,int);
-/* inline */ void Bit(BYTE b,int);
+/* inline */ BYTE Set(BYTE b, int);
+/* inline */ BYTE Res(BYTE b, int);
+/* inline */ void Bit(BYTE b, int);
 /* inline */ void Rlca(void);
 /* inline */ void Rrca(void);
 /* inline */ void Rla(void);
@@ -166,11 +166,11 @@ extern BYTE rgfInc[256];
 extern BYTE rgfDec[256];
 extern BYTE rgfBit[256][8];
 
-#define ISF_PENDING   0x00000008
+#define ISF_PENDING 0x00000008
 #define ISF_MODE_MASK 0x00000003
-#define ISF_HALT      0x00000004
-#define ISF_IFF1      0x00000010
-#define ISF_IFF2      0x00000020
+#define ISF_HALT 0x00000004
+#define ISF_IFF1 0x00000010
+#define ISF_IFF2 0x00000020
 #define ISF_IREG_MASK 0x00000F00
 
 #endif

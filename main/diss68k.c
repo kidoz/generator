@@ -9,11 +9,11 @@
 
 /* forward references */
 
-void diss68k_getoperand(char *text, t_ipc * ipc, t_iib * iib, t_type type);
+void diss68k_getoperand(char *text, t_ipc *ipc, t_iib *iib, t_type type);
 
 /* functions */
 
-int diss68k_gettext(t_ipc * ipc, char *text)
+int diss68k_gettext(t_ipc *ipc, char *text)
 {
   t_iib *iib;
   char *p, *c;
@@ -66,7 +66,7 @@ int diss68k_gettext(t_ipc * ipc, char *text)
   return 1;
 }
 
-void diss68k_getoperand(char *text, t_ipc * ipc, t_iib * iib, t_type type)
+void diss68k_getoperand(char *text, t_ipc *ipc, t_iib *iib, t_type type)
 {
   int bitpos;
   uint32 val;

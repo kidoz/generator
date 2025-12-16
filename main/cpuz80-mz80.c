@@ -20,7 +20,7 @@ uint8 *cpuz80_ram = nullptr;
 uint32 cpuz80_bank = 0;
 uint8 cpuz80_resetting = 0;
 uint8 cpuz80_active = 0;
-unsigned int cpuz80_on = 1;     /* z80 turned on? */
+unsigned int cpuz80_on = 1; /* z80 turned on? */
 CONTEXTMZ80 cpuz80_z80;
 
 /*** global variables ***/
@@ -28,24 +28,18 @@ CONTEXTMZ80 cpuz80_z80;
 static unsigned int cpuz80_lastsync = 0;
 
 static struct MemoryReadByte cpuz80_read[] = {
-  {0x0000, 0xFFFF, cpuz80_read_actual, nullptr},
-  {-1, -1, nullptr, nullptr}
-};
+    {0x0000, 0xFFFF, cpuz80_read_actual, nullptr}, {-1, -1, nullptr, nullptr}};
 
 static struct MemoryWriteByte cpuz80_write[] = {
-  {0x0000, 0xFFFF, cpuz80_write_actual, nullptr},
-  {-1, -1, nullptr, nullptr}
-};
+    {0x0000, 0xFFFF, cpuz80_write_actual, nullptr}, {-1, -1, nullptr, nullptr}};
 
 static struct z80PortRead cpuz80_ioread[] = {
-  {0x0000, 0x00FF, cpuz80_ioread_actual, nullptr},
-  {-1, -1, nullptr, nullptr}
-};
+    {0x0000, 0x00FF, cpuz80_ioread_actual, nullptr},
+    {-1, -1, nullptr, nullptr}};
 
 static struct z80PortWrite cpuz80_iowrite[] = {
-  {0x0000, 0x00FF, cpuz80_iowrite_actual, nullptr},
-  {-1, -1, nullptr, nullptr}
-};
+    {0x0000, 0x00FF, cpuz80_iowrite_actual, nullptr},
+    {-1, -1, nullptr, nullptr}};
 
 UINT8 cpuz80_read_actual(UINT32 addr, struct MemoryReadByte *me)
 {
@@ -117,14 +111,14 @@ void cpuz80_updatecontext(void)
 void cpuz80_resetcpu(void)
 {
   mz80reset();
-  cpuz80_resetting = 1;         /* suspends execution */
+  cpuz80_resetting = 1; /* suspends execution */
 }
 
 /*** cpuz80_unresetcpu - unreset z80 cpu ***/
 
 void cpuz80_unresetcpu(void)
 {
-  cpuz80_resetting = 0;         /* un-suspends execution */
+  cpuz80_resetting = 0; /* un-suspends execution */
 }
 
 /*** cpuz80_bankwrite - data is being written to latch ***/

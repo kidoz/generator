@@ -14,10 +14,8 @@ int main(int argc, char *argv[])
 {
   uint16 a[3];
 
-  if (argc < 3 ||
-      sscanf(argv[1], "%x", &a[0]) == 0 ||
-      sscanf(argv[2], "%x", &a[1]) == 0 ||
-      sscanf(argv[3], "%x", &a[2]) == 0) {
+  if (argc < 3 || sscanf(argv[1], "%x", &a[0]) == 0 ||
+      sscanf(argv[2], "%x", &a[1]) == 0 || sscanf(argv[3], "%x", &a[2]) == 0) {
     printf("Syntax: <hexval> <hexval> <xflag>\n");
     exit(1);
   }
@@ -34,9 +32,9 @@ int main(int argc, char *argv[])
   sint16 outdata_tmp = precalc;
 
   if (outdata_low < 0)
-    outdata_tmp-= 0x06;
+    outdata_tmp -= 0x06;
   if (outdata_tmp < 0) {
-    outdata_tmp-= 0x60;
+    outdata_tmp -= 0x60;
     CFLAG = 1;
     XFLAG = 1;
   } else {
@@ -44,9 +42,10 @@ int main(int argc, char *argv[])
     XFLAG = 0;
   }
   outdata = outdata_tmp;
-  if (outdata) printf("ZFLAG = 0\n");
+  if (outdata)
+    printf("ZFLAG = 0\n");
   NFLAG = ((sint8)outdata) < 0;
-  VFLAG = (precalc & 1<<7) && ((outdata & 1<<7) == 0);
+  VFLAG = (precalc & 1 << 7) && ((outdata & 1 << 7) == 0);
   printf("CFLAG = %d\n", CFLAG);
   printf("XFLAG = %d\n", XFLAG);
   printf("NFLAG = %d\n", NFLAG);

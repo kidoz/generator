@@ -45,9 +45,8 @@ GenUI *gen_ui = nullptr;
 t_interlace ui_interlace = DEINTERLACE_WEAVEFILTER;
 
 /* Key names for configuration */
-const char *ui_gtk4_keys[] = {
-  "a", "b", "c", "start", "left", "right", "up", "down"
-};
+const char *ui_gtk4_keys[] = {"a",    "b",     "c",  "start",
+                              "left", "right", "up", "down"};
 
 /*** Forward declarations ***/
 static void ui_usage(void);
@@ -56,19 +55,28 @@ static void ui_startup(GtkApplication *app, gpointer user_data);
 static void ui_shutdown(GtkApplication *app, gpointer user_data);
 static void ui_create_main_window(GtkApplication *app);
 static void ui_setup_actions(GtkApplication *app);
-static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data);
-static gboolean ui_key_pressed(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
-static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
+static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width,
+                             int height, gpointer user_data);
+static gboolean ui_key_pressed(GtkEventControllerKey *controller, guint keyval,
+                               guint keycode, GdkModifierType state,
+                               gpointer user_data);
+static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval,
+                                guint keycode, GdkModifierType state,
+                                gpointer user_data);
 static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data);
-static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data);
+static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
+                                 gpointer user_data);
 static void ui_newframe(void);
 static void ui_simpleplot(void);
 static void ui_sdl_events(void);
 static void ui_rendertoscreen(void);
-static gboolean ui_gtk4_apply_audio_driver(const char *requested, gboolean restart_audio, gboolean persist_config);
+static gboolean ui_gtk4_apply_audio_driver(const char *requested,
+                                           gboolean restart_audio,
+                                           gboolean persist_config);
 static void ui_gtk4_update_audio_backend_subtitle(void);
 static void ui_gtk4_ensure_preferences_window(void);
-static void ui_gtk4_on_audio_driver_changed(GObject *row, GParamSpec *pspec, gpointer user_data);
+static void ui_gtk4_on_audio_driver_changed(GObject *row, GParamSpec *pspec,
+                                            gpointer user_data);
 static void ui_gtk4_rebuild_audio_driver_model(void);
 static guint ui_gtk4_find_driver_index(const char *driver_id);
 static gboolean ui_gtk4_driver_is_available(const char *driver_id);
@@ -86,7 +94,7 @@ int ui_init(int argc, char *argv[])
   const char *name;
 
   fprintf(stderr, "Generator is (c) James Ponder 1997-2003, all rights "
-          "reserved. v" VERSION "\n\n");
+                  "reserved. v" VERSION "\n\n");
   fprintf(stderr, "GTK4/libadwaita UI version\n\n");
 
   /* Allocate UI structure */
@@ -95,19 +103,21 @@ int ui_init(int argc, char *argv[])
   gen_ui->vborder = VBORDER_DEFAULT;
   gen_ui->statusbar_enabled = TRUE;
   gen_ui->frameskip = 0;
-  gen_ui->filter_type = FILTER_SCALE2X;  /* Default to Scale2x (fast, good quality, <1ms overhead) */
-  gen_ui->scale_factor = 2;              /* Default to 2x scale */
+  gen_ui->filter_type = FILTER_SCALE2X; /* Default to Scale2x (fast, good
+                                           quality, <1ms overhead) */
+  gen_ui->scale_factor = 2;             /* Default to 2x scale */
 
-  /* Initialize controller mappings to zero (will use defaults in ui_update_controller_from_keys) */
+  /* Initialize controller mappings to zero (will use defaults in
+   * ui_update_controller_from_keys) */
   memset(&gen_ui->controllers, 0, sizeof(gen_ui->controllers));
 
   /* Initialize Genesis controller state to all buttons released */
   memset(mem68k_cont, 0, sizeof(mem68k_cont));
 
   /* Initialize dynamic rate control */
-  gen_ui->dynamic_rate_control = TRUE;   /* Enable by default */
-  gen_ui->rate_adjust = 1.0;             /* Normal speed */
-  gen_ui->rate_delta = 0.03;             /* ±3% default adjustment window */
+  gen_ui->dynamic_rate_control = TRUE; /* Enable by default */
+  gen_ui->rate_adjust = 1.0;           /* Normal speed */
+  gen_ui->rate_delta = 0.03;           /* ±3% default adjustment window */
   gen_ui->fps_index = 0;
   gen_ui->measured_fps = 0.0;
   gen_ui->frames_recorded = 0;
@@ -118,8 +128,10 @@ int ui_init(int argc, char *argv[])
   /* Pre-allocate upscaling buffers to avoid malloc/free per frame
      Maximum size needed: 320x240 @ 4x scale = 1280x960 pixels */
   gen_ui->upscale_buffer_size = 1280 * 960;
-  gen_ui->upscale_src_buffer = g_malloc(gen_ui->upscale_buffer_size * sizeof(guint32));
-  gen_ui->upscale_dst_buffer = g_malloc(gen_ui->upscale_buffer_size * sizeof(guint32));
+  gen_ui->upscale_src_buffer =
+      g_malloc(gen_ui->upscale_buffer_size * sizeof(guint32));
+  gen_ui->upscale_dst_buffer =
+      g_malloc(gen_ui->upscale_buffer_size * sizeof(guint32));
 
   /* Allocate screen buffers */
   gen_ui->screen_buffers[0] = g_malloc0(4 * HMAXSIZE * VMAXSIZE);
@@ -209,16 +221,18 @@ int ui_init(int argc, char *argv[])
   /* Set up color conversion for Cairo CAIRO_FORMAT_RGB24
      Format: 32-bit value 0xXXRRGGBB (XX=unused, RR=red, GG=green, BB=blue)
      Red in bits 16-23, Green in bits 8-15, Blue in bits 0-7 */
-  uiplot_setshifts(16, 8, 0);  /* red=16, green=8, blue=0 */
-  uiplot_setmasks(0x00FF0000, 0x0000FF00, 0x000000FF);  /* 8-bit per channel */
+  uiplot_setshifts(16, 8, 0); /* red=16, green=8, blue=0 */
+  uiplot_setmasks(0x00FF0000, 0x0000FF00, 0x000000FF); /* 8-bit per channel */
 
   /* Create GTK application with NON_UNIQUE flag to allow multiple instances */
-  gen_ui->app = adw_application_new("net.squish.generator", G_APPLICATION_NON_UNIQUE);
+  gen_ui->app =
+      adw_application_new("net.squish.generator", G_APPLICATION_NON_UNIQUE);
   g_signal_connect(gen_ui->app, "activate", G_CALLBACK(ui_activate), nullptr);
   g_signal_connect(gen_ui->app, "startup", G_CALLBACK(ui_startup), nullptr);
   g_signal_connect(gen_ui->app, "shutdown", G_CALLBACK(ui_shutdown), nullptr);
 
-  fprintf(stderr, "GTK4/libadwaita UI initialized. Use the menu to quit properly.\n");
+  fprintf(stderr,
+          "GTK4/libadwaita UI initialized. Use the menu to quit properly.\n");
   return 0;
 }
 
@@ -228,7 +242,8 @@ static void ui_usage(void)
   fprintf(stderr, "  -d                     debug mode\n");
   fprintf(stderr, "  -w <work dir>          set work directory\n");
   fprintf(stderr, "  -c <config file>       use alternative config file\n\n");
-  fprintf(stderr, "  ROM types supported: .rom or .smd interleaved (autodetected)\n");
+  fprintf(stderr,
+          "  ROM types supported: .rom or .smd interleaved (autodetected)\n");
   exit(1);
 }
 
@@ -322,47 +337,54 @@ static void ui_shutdown(GtkApplication *app, gpointer user_data)
 static void ui_setup_actions(GtkApplication *app)
 {
   static const GActionEntry app_entries[] = {
-    { "open-rom", ui_action_open_rom, nullptr, nullptr, nullptr },
-    { "save-rom", ui_action_save_rom, nullptr, nullptr, nullptr },
-    { "load-state", ui_action_load_state, nullptr, nullptr, nullptr },
-    { "save-state", ui_action_save_state, nullptr, nullptr, nullptr },
-    { "reset", ui_action_reset, nullptr, nullptr, nullptr },
-    { "soft-reset", ui_action_soft_reset, nullptr, nullptr, nullptr },
-    { "pause", ui_action_pause, nullptr, "false", nullptr },
-    { "preferences", ui_action_preferences, nullptr, nullptr, nullptr },
-    { "about", ui_action_about, nullptr, nullptr, nullptr },
-    { "quit", ui_action_quit, nullptr, nullptr, nullptr }
-  };
+      {"open-rom", ui_action_open_rom, nullptr, nullptr, nullptr},
+      {"save-rom", ui_action_save_rom, nullptr, nullptr, nullptr},
+      {"load-state", ui_action_load_state, nullptr, nullptr, nullptr},
+      {"save-state", ui_action_save_state, nullptr, nullptr, nullptr},
+      {"reset", ui_action_reset, nullptr, nullptr, nullptr},
+      {"soft-reset", ui_action_soft_reset, nullptr, nullptr, nullptr},
+      {"pause", ui_action_pause, nullptr, "false", nullptr},
+      {"preferences", ui_action_preferences, nullptr, nullptr, nullptr},
+      {"about", ui_action_about, nullptr, nullptr, nullptr},
+      {"quit", ui_action_quit, nullptr, nullptr, nullptr}};
 
   g_action_map_add_action_entries(G_ACTION_MAP(app), app_entries,
-                                   G_N_ELEMENTS(app_entries), app);
+                                  G_N_ELEMENTS(app_entries), app);
 
   /* Set keyboard accelerators */
-  const char *open_accels[] = { "<Ctrl>O", nullptr };
-  const char *load_state_accels[] = { "<Ctrl>L", nullptr };
-  const char *save_state_accels[] = { "<Ctrl>S", nullptr };
-  const char *reset_accels[] = { "F5", nullptr };
-  const char *pause_accels[] = { "space", nullptr };
-  const char *quit_accels[] = { "<Ctrl>Q", nullptr };
+  const char *open_accels[] = {"<Ctrl>O", nullptr};
+  const char *load_state_accels[] = {"<Ctrl>L", nullptr};
+  const char *save_state_accels[] = {"<Ctrl>S", nullptr};
+  const char *reset_accels[] = {"F5", nullptr};
+  const char *pause_accels[] = {"space", nullptr};
+  const char *quit_accels[] = {"<Ctrl>Q", nullptr};
 
-  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.open-rom", open_accels);
-  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.load-state", load_state_accels);
-  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.save-state", save_state_accels);
-  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.reset", reset_accels);
-  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.pause", pause_accels);
-  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.quit", quit_accels);
+  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.open-rom",
+                                        open_accels);
+  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.load-state",
+                                        load_state_accels);
+  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.save-state",
+                                        save_state_accels);
+  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.reset",
+                                        reset_accels);
+  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.pause",
+                                        pause_accels);
+  gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.quit",
+                                        quit_accels);
 }
 
 /*** Main window creation ***/
 
 static void ui_create_main_window(GtkApplication *app)
 {
-  GtkWidget *toolbar_view, *content_box, *menu_button, *open_button, *pause_button;
+  GtkWidget *toolbar_view, *content_box, *menu_button, *open_button,
+      *pause_button;
   GMenu *primary_menu;
   GtkEventController *key_controller;
 
   /* Create main window */
-  gen_ui->window = ADW_APPLICATION_WINDOW(adw_application_window_new(GTK_APPLICATION(app)));
+  gen_ui->window =
+      ADW_APPLICATION_WINDOW(adw_application_window_new(GTK_APPLICATION(app)));
   gtk_window_set_title(GTK_WINDOW(gen_ui->window), "Generator");
   gtk_window_set_default_size(GTK_WINDOW(gen_ui->window), 640, 480);
 
@@ -371,8 +393,10 @@ static void ui_create_main_window(GtkApplication *app)
 
   /* Create header bar */
   gen_ui->header_bar = adw_header_bar_new();
-  adw_header_bar_set_show_back_button(ADW_HEADER_BAR(gen_ui->header_bar), FALSE);
-  adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar_view), gen_ui->header_bar);
+  adw_header_bar_set_show_back_button(ADW_HEADER_BAR(gen_ui->header_bar),
+                                      FALSE);
+  adw_toolbar_view_add_top_bar(ADW_TOOLBAR_VIEW(toolbar_view),
+                               gen_ui->header_bar);
 
   /* Add primary action button (Open ROM) to header bar start */
   open_button = gtk_button_new_with_label("Open ROM");
@@ -382,7 +406,8 @@ static void ui_create_main_window(GtkApplication *app)
 
   /* Add pause/resume toggle button */
   pause_button = gtk_toggle_button_new();
-  gtk_button_set_icon_name(GTK_BUTTON(pause_button), "media-playback-pause-symbolic");
+  gtk_button_set_icon_name(GTK_BUTTON(pause_button),
+                           "media-playback-pause-symbolic");
   gtk_actionable_set_action_name(GTK_ACTIONABLE(pause_button), "app.pause");
   gtk_widget_set_tooltip_text(pause_button, "Pause (Space)");
   adw_header_bar_pack_start(ADW_HEADER_BAR(gen_ui->header_bar), pause_button);
@@ -399,13 +424,15 @@ static void ui_create_main_window(GtkApplication *app)
   GMenu *state_section = g_menu_new();
   g_menu_append(state_section, "_Load State…", "app.load-state");
   g_menu_append(state_section, "_Save State…", "app.save-state");
-  g_menu_append_section(primary_menu, "Save States", G_MENU_MODEL(state_section));
+  g_menu_append_section(primary_menu, "Save States",
+                        G_MENU_MODEL(state_section));
 
   /* Emulation control section */
   GMenu *emulation_section = g_menu_new();
   g_menu_append(emulation_section, "_Reset", "app.reset");
   g_menu_append(emulation_section, "_Soft Reset", "app.soft-reset");
-  g_menu_append_section(primary_menu, "Emulation", G_MENU_MODEL(emulation_section));
+  g_menu_append_section(primary_menu, "Emulation",
+                        G_MENU_MODEL(emulation_section));
 
   /* App section (preferences, about, quit) */
   GMenu *app_section = g_menu_new();
@@ -415,8 +442,10 @@ static void ui_create_main_window(GtkApplication *app)
 
   /* Add primary menu button to header bar end */
   menu_button = gtk_menu_button_new();
-  gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(menu_button), "open-menu-symbolic");
-  gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu_button), G_MENU_MODEL(primary_menu));
+  gtk_menu_button_set_icon_name(GTK_MENU_BUTTON(menu_button),
+                                "open-menu-symbolic");
+  gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(menu_button),
+                                 G_MENU_MODEL(primary_menu));
   gtk_menu_button_set_primary(GTK_MENU_BUTTON(menu_button), TRUE);
   gtk_widget_set_tooltip_text(menu_button, "Main Menu");
   adw_header_bar_pack_end(ADW_HEADER_BAR(gen_ui->header_bar), menu_button);
@@ -430,7 +459,7 @@ static void ui_create_main_window(GtkApplication *app)
   gtk_widget_set_vexpand(gen_ui->drawing_area, TRUE);
   gtk_widget_set_size_request(gen_ui->drawing_area, 320, 224);
   gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(gen_ui->drawing_area),
-                                   ui_draw_callback, nullptr, nullptr);
+                                 ui_draw_callback, nullptr, nullptr);
   gtk_box_append(GTK_BOX(content_box), gen_ui->drawing_area);
 
   /* Create status bar using AdwActionRow for better styling */
@@ -457,18 +486,19 @@ static void ui_create_main_window(GtkApplication *app)
 
   /* Setup keyboard input */
   key_controller = gtk_event_controller_key_new();
-  g_signal_connect(key_controller, "key-pressed", G_CALLBACK(ui_key_pressed), nullptr);
-  g_signal_connect(key_controller, "key-released", G_CALLBACK(ui_key_released), nullptr);
+  g_signal_connect(key_controller, "key-pressed", G_CALLBACK(ui_key_pressed),
+                   nullptr);
+  g_signal_connect(key_controller, "key-released", G_CALLBACK(ui_key_released),
+                   nullptr);
   gtk_widget_add_controller(GTK_WIDGET(gen_ui->window), key_controller);
 
   /* Connect window close signal to properly cleanup when window is closed */
-  g_signal_connect(gen_ui->window, "close-request", G_CALLBACK(ui_window_close_request), nullptr);
+  g_signal_connect(gen_ui->window, "close-request",
+                   G_CALLBACK(ui_window_close_request), nullptr);
 
   /* Drive the emulation loop from the GTK frame clock so we receive a steady
      pulse that matches the window's refresh rate (typically vblank). */
-  gtk_widget_add_tick_callback(gen_ui->drawing_area,
-                               ui_tick_callback,
-                               nullptr,
+  gtk_widget_add_tick_callback(gen_ui->drawing_area, ui_tick_callback, nullptr,
                                nullptr);
 
   /* Show window */
@@ -477,7 +507,8 @@ static void ui_create_main_window(GtkApplication *app)
 
 /*** File dialog callbacks ***/
 
-static void on_open_rom_response(GObject *source, GAsyncResult *result, gpointer data)
+static void on_open_rom_response(GObject *source, GAsyncResult *result,
+                                 gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
   GFile *file = gtk_file_dialog_open_finish(dialog, result, nullptr);
@@ -505,7 +536,8 @@ static void on_open_rom_response(GObject *source, GAsyncResult *result, gpointer
   }
 }
 
-static void on_save_rom_response(GObject *source, GAsyncResult *result, gpointer data)
+static void on_save_rom_response(GObject *source, GAsyncResult *result,
+                                 gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
   GFile *file = gtk_file_dialog_save_finish(dialog, result, nullptr);
@@ -517,7 +549,8 @@ static void on_save_rom_response(GObject *source, GAsyncResult *result, gpointer
   }
 }
 
-static void on_load_state_response(GObject *source, GAsyncResult *result, gpointer data)
+static void on_load_state_response(GObject *source, GAsyncResult *result,
+                                   gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
   GFile *file = gtk_file_dialog_open_finish(dialog, result, nullptr);
@@ -531,7 +564,8 @@ static void on_load_state_response(GObject *source, GAsyncResult *result, gpoint
   }
 }
 
-static void on_save_state_response(GObject *source, GAsyncResult *result, gpointer data)
+static void on_save_state_response(GObject *source, GAsyncResult *result,
+                                   gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
   GFile *file = gtk_file_dialog_save_finish(dialog, result, nullptr);
@@ -547,7 +581,8 @@ static void on_save_state_response(GObject *source, GAsyncResult *result, gpoint
 
 /*** Action implementations ***/
 
-void ui_action_open_rom(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_open_rom(GSimpleAction *action, GVariant *parameter,
+                        gpointer user_data)
 {
   GtkFileDialog *dialog;
 
@@ -555,10 +590,11 @@ void ui_action_open_rom(GSimpleAction *action, GVariant *parameter, gpointer use
   gtk_file_dialog_set_title(dialog, "Open ROM");
 
   gtk_file_dialog_open(dialog, GTK_WINDOW(gen_ui->window), nullptr,
-                        on_open_rom_response, nullptr);
+                       on_open_rom_response, nullptr);
 }
 
-void ui_action_save_rom(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_save_rom(GSimpleAction *action, GVariant *parameter,
+                        gpointer user_data)
 {
   GtkFileDialog *dialog;
 
@@ -566,10 +602,11 @@ void ui_action_save_rom(GSimpleAction *action, GVariant *parameter, gpointer use
   gtk_file_dialog_set_title(dialog, "Save ROM");
 
   gtk_file_dialog_save(dialog, GTK_WINDOW(gen_ui->window), nullptr,
-                        on_save_rom_response, nullptr);
+                       on_save_rom_response, nullptr);
 }
 
-void ui_action_load_state(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_load_state(GSimpleAction *action, GVariant *parameter,
+                          gpointer user_data)
 {
   GtkFileDialog *dialog;
 
@@ -577,10 +614,11 @@ void ui_action_load_state(GSimpleAction *action, GVariant *parameter, gpointer u
   gtk_file_dialog_set_title(dialog, "Load State");
 
   gtk_file_dialog_open(dialog, GTK_WINDOW(gen_ui->window), nullptr,
-                        on_load_state_response, nullptr);
+                       on_load_state_response, nullptr);
 }
 
-void ui_action_save_state(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_save_state(GSimpleAction *action, GVariant *parameter,
+                          gpointer user_data)
 {
   GtkFileDialog *dialog;
 
@@ -588,20 +626,23 @@ void ui_action_save_state(GSimpleAction *action, GVariant *parameter, gpointer u
   gtk_file_dialog_set_title(dialog, "Save State");
 
   gtk_file_dialog_save(dialog, GTK_WINDOW(gen_ui->window), nullptr,
-                        on_save_state_response, nullptr);
+                       on_save_state_response, nullptr);
 }
 
-void ui_action_reset(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_reset(GSimpleAction *action, GVariant *parameter,
+                     gpointer user_data)
 {
   gen_reset();
 }
 
-void ui_action_soft_reset(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_soft_reset(GSimpleAction *action, GVariant *parameter,
+                          gpointer user_data)
 {
   gen_softreset();
 }
 
-void ui_action_pause(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_pause(GSimpleAction *action, GVariant *parameter,
+                     gpointer user_data)
 {
   GVariant *state = g_action_get_state(G_ACTION(action));
   gboolean paused = g_variant_get_boolean(state);
@@ -620,7 +661,8 @@ void ui_action_pause(GSimpleAction *action, GVariant *parameter, gpointer user_d
   g_simple_action_set_state(action, g_variant_new_boolean(paused));
 }
 
-void ui_action_preferences(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_preferences(GSimpleAction *action, GVariant *parameter,
+                           gpointer user_data)
 {
   (void)action;
   (void)parameter;
@@ -634,14 +676,20 @@ void ui_action_preferences(GSimpleAction *action, GVariant *parameter, gpointer 
   else {
     ui_gtk4_rebuild_audio_driver_model();
     if (gen_ui->audio_driver_row && gen_ui->audio_driver_model) {
-      g_signal_handlers_block_by_func(G_OBJECT(gen_ui->audio_driver_row), ui_gtk4_on_audio_driver_changed, nullptr);
+      g_signal_handlers_block_by_func(G_OBJECT(gen_ui->audio_driver_row),
+                                      ui_gtk4_on_audio_driver_changed, nullptr);
       adw_combo_row_set_model(ADW_COMBO_ROW(gen_ui->audio_driver_row),
                               G_LIST_MODEL(gen_ui->audio_driver_model));
-      guint index = ui_gtk4_find_driver_index(gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto");
+      guint index = ui_gtk4_find_driver_index(
+          gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection
+                                         : "auto");
       if (index != GTK_INVALID_LIST_POSITION) {
-        adw_combo_row_set_selected(ADW_COMBO_ROW(gen_ui->audio_driver_row), index);
+        adw_combo_row_set_selected(ADW_COMBO_ROW(gen_ui->audio_driver_row),
+                                   index);
       }
-      g_signal_handlers_unblock_by_func(G_OBJECT(gen_ui->audio_driver_row), ui_gtk4_on_audio_driver_changed, nullptr);
+      g_signal_handlers_unblock_by_func(G_OBJECT(gen_ui->audio_driver_row),
+                                        ui_gtk4_on_audio_driver_changed,
+                                        nullptr);
     }
   }
 
@@ -652,21 +700,20 @@ void ui_action_preferences(GSimpleAction *action, GVariant *parameter, gpointer 
   gtk_window_present(GTK_WINDOW(gen_ui->prefs_window));
 }
 
-void ui_action_about(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_about(GSimpleAction *action, GVariant *parameter,
+                     gpointer user_data)
 {
-  adw_show_about_dialog((GtkWidget *)gen_ui->window,
-                         "application-name", "Generator",
-                         "application-icon", "applications-games",
-                         "version", VERSION,
-                         "developer-name", "James Ponder",
-                         "website", "http://www.squish.net/generator/",
-                         "copyright", "© 1997-2003 James Ponder",
-                         "license-type", GTK_LICENSE_GPL_2_0,
-                         "comments", "Sega Genesis / Mega Drive Emulator",
-                         nullptr);
+  adw_show_about_dialog((GtkWidget *)gen_ui->window, "application-name",
+                        "Generator", "application-icon", "applications-games",
+                        "version", VERSION, "developer-name", "James Ponder",
+                        "website", "http://www.squish.net/generator/",
+                        "copyright", "© 1997-2003 James Ponder", "license-type",
+                        GTK_LICENSE_GPL_2_0, "comments",
+                        "Sega Genesis / Mega Drive Emulator", nullptr);
 }
 
-void ui_action_quit(GSimpleAction *action, GVariant *parameter, gpointer user_data)
+void ui_action_quit(GSimpleAction *action, GVariant *parameter,
+                    gpointer user_data)
 {
   gen_quit = 1;
   g_application_quit(G_APPLICATION(gen_ui->app));
@@ -674,7 +721,8 @@ void ui_action_quit(GSimpleAction *action, GVariant *parameter, gpointer user_da
 
 /*** Drawing and rendering ***/
 
-static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int height, gpointer user_data)
+static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width,
+                             int height, gpointer user_data)
 {
   cairo_surface_t *surface;
   uint8 *screen_data;
@@ -701,22 +749,23 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int h
   /* Create Cairo image surface from emulator buffer
      Format: CAIRO_FORMAT_RGB24 which is 32-bit with unused alpha */
   surface = cairo_image_surface_create_for_data(
-    screen_data + (scaled_yoffset * HMAXSIZE + scaled_xoffset) * 4,  /* offset into buffer */
-    CAIRO_FORMAT_RGB24,
-    display_width,
-    display_height,
-    HMAXSIZE * 4  /* stride: full buffer width including borders */
+      screen_data + (scaled_yoffset * HMAXSIZE + scaled_xoffset) *
+                        4, /* offset into buffer */
+      CAIRO_FORMAT_RGB24, display_width, display_height,
+      HMAXSIZE * 4 /* stride: full buffer width including borders */
   );
 
   /* Scale to fit drawing area while maintaining aspect ratio */
-  cairo_scale(cr, (double)width / display_width, (double)height / display_height);
+  cairo_scale(cr, (double)width / display_width,
+              (double)height / display_height);
 
   /* Draw the emulator screen */
   cairo_set_source_surface(cr, surface, 0, 0);
 
   /* Use bilinear filtering for smooth scaling to window size
-     The upscaling filter (Scale2x/3x/4x) has already been applied to the buffer,
-     so Cairo only needs to scale from the upscaled buffer to the window size */
+     The upscaling filter (Scale2x/3x/4x) has already been applied to the
+     buffer, so Cairo only needs to scale from the upscaled buffer to the window
+     size */
   cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
   cairo_paint(cr);
 
@@ -745,14 +794,13 @@ static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data)
    Player 2: WASD + J/K/L/Space */
 static const struct {
   guint up, down, left, right, a, b, c, start;
-} default_keys[2] = {
-  {GDK_KEY_Up, GDK_KEY_Down, GDK_KEY_Left, GDK_KEY_Right,
-   GDK_KEY_z, GDK_KEY_x, GDK_KEY_c, GDK_KEY_Return},
-  {GDK_KEY_w, GDK_KEY_s, GDK_KEY_a, GDK_KEY_d,
-   GDK_KEY_j, GDK_KEY_k, GDK_KEY_l, GDK_KEY_space}
-};
+} default_keys[2] = {{GDK_KEY_Up, GDK_KEY_Down, GDK_KEY_Left, GDK_KEY_Right,
+                      GDK_KEY_z, GDK_KEY_x, GDK_KEY_c, GDK_KEY_Return},
+                     {GDK_KEY_w, GDK_KEY_s, GDK_KEY_a, GDK_KEY_d, GDK_KEY_j,
+                      GDK_KEY_k, GDK_KEY_l, GDK_KEY_space}};
 
-static void ui_update_controller_from_keys(int player, guint keyval, gboolean pressed)
+static void ui_update_controller_from_keys(int player, guint keyval,
+                                           gboolean pressed)
 {
   if (player < 0 || player > 1)
     return;
@@ -781,18 +829,21 @@ static void ui_update_controller_from_keys(int player, guint keyval, gboolean pr
 }
 
 static gboolean ui_key_pressed(GtkEventControllerKey *controller, guint keyval,
-                                guint keycode, GdkModifierType state, gpointer user_data)
+                               guint keycode, GdkModifierType state,
+                               gpointer user_data)
 {
   /* Update controller state for both players */
   ui_update_controller_from_keys(0, keyval, TRUE);
   ui_update_controller_from_keys(1, keyval, TRUE);
 
-  /* Don't consume the event - allow GTK to handle it for menu accelerators, etc. */
+  /* Don't consume the event - allow GTK to handle it for menu accelerators,
+   * etc. */
   return FALSE;
 }
 
 static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval,
-                                 guint keycode, GdkModifierType state, gpointer user_data)
+                                guint keycode, GdkModifierType state,
+                                gpointer user_data)
 {
   /* Update controller state for both players */
   ui_update_controller_from_keys(0, keyval, FALSE);
@@ -803,7 +854,8 @@ static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval,
 
 /*** Emulation loop ***/
 
-static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data)
+static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
+                                 gpointer user_data)
 {
   gint64 current_time;
   gint64 elapsed_us;
@@ -832,9 +884,10 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, 
     return G_SOURCE_CONTINUE;
   }
 
-  /* Process SDL events with non-blocking SDL_PollEvent (called in ui_sdl_events)
-     This is the recommended pattern for GTK+SDL2 integration to avoid blocking
-     the GTK event loop, which would starve the SDL2 audio thread */
+  /* Process SDL events with non-blocking SDL_PollEvent (called in
+     ui_sdl_events) This is the recommended pattern for GTK+SDL2 integration to
+     avoid blocking the GTK event loop, which would starve the SDL2 audio thread
+   */
   ui_sdl_events();
 
   /* Get current time in microseconds for frame timing */
@@ -847,7 +900,8 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, 
      PAL:  50Hz = 20000 microseconds per frame
      Apply dynamic rate adjustment if enabled */
   if (gen_ui->dynamic_rate_control) {
-    /* Apply rate adjustment: higher rate_adjust means slower emulation (longer frame time) */
+    /* Apply rate adjustment: higher rate_adjust means slower emulation (longer
+     * frame time) */
     frame_duration_us = (vdp_pal ? 20000 : 16667) * gen_ui->rate_adjust;
   } else {
     frame_duration_us = vdp_pal ? 20000 : 16667;
@@ -862,7 +916,9 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, 
     min_pending = pending_samples;
   frames_tracked++;
   if (frames_tracked >= 120) {
-    fprintf(stderr, "GTK4 audio telemetry: min_buffer=%d threshold=%u feedback=%d rate=%.4f\n",
+    fprintf(stderr,
+            "GTK4 audio telemetry: min_buffer=%d threshold=%u feedback=%d "
+            "rate=%.4f\n",
             min_pending, sound_threshold, sound_feedback, gen_ui->rate_adjust);
     min_pending = INT_MAX;
     frames_tracked = 0;
@@ -923,14 +979,16 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, 
       if (gen_ui->frames_recorded >= 60) {
         int oldest_idx = gen_ui->fps_index;
         int newest_idx = (gen_ui->fps_index + 59) % 60;
-        gint64 time_span = gen_ui->fps_times[newest_idx] - gen_ui->fps_times[oldest_idx];
+        gint64 time_span =
+            gen_ui->fps_times[newest_idx] - gen_ui->fps_times[oldest_idx];
 
         if (time_span > 1000) {
           gen_ui->measured_fps = 59.0 * 1000000.0 / (double)time_span;
 
           double target_fps = vdp_pal ? 50.0 : 59.94;
           double fps_error = (gen_ui->measured_fps - target_fps) / target_fps;
-          double buffer_ratio = (double)pending_samples / (double)sound_threshold;
+          double buffer_ratio =
+              (double)pending_samples / (double)sound_threshold;
           double buffer_error = buffer_ratio - 1.0;
           double total_error = (fps_error * 0.25) + (buffer_error * 0.75);
 
@@ -943,20 +1001,26 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, 
             adaptive_delta = 0.05;
           }
 
-          double new_rate_adjust = gen_ui->rate_adjust * (1.0 + total_error * 0.25);
+          double new_rate_adjust =
+              gen_ui->rate_adjust * (1.0 + total_error * 0.25);
 
           double min_rate = 1.0 - adaptive_delta;
           double max_rate = 1.0 + adaptive_delta;
-          if (new_rate_adjust < min_rate) new_rate_adjust = min_rate;
-          if (new_rate_adjust > max_rate) new_rate_adjust = max_rate;
+          if (new_rate_adjust < min_rate)
+            new_rate_adjust = min_rate;
+          if (new_rate_adjust > max_rate)
+            new_rate_adjust = max_rate;
 
-          gen_ui->rate_adjust = gen_ui->rate_adjust * 0.9 + new_rate_adjust * 0.1;
+          gen_ui->rate_adjust =
+              gen_ui->rate_adjust * 0.9 + new_rate_adjust * 0.1;
 
           gen_ui->debug_counter++;
           if (gen_ui->debug_counter >= 60) {
-            fprintf(stderr, "DRC: FPS=%.2f (target=%.2f) buffer=%d/%d ratio=%.2f rate_adjust=%.4f\n",
-                    gen_ui->measured_fps, target_fps, pending_samples, sound_threshold,
-                    buffer_ratio, gen_ui->rate_adjust);
+            fprintf(stderr,
+                    "DRC: FPS=%.2f (target=%.2f) buffer=%d/%d ratio=%.2f "
+                    "rate_adjust=%.4f\n",
+                    gen_ui->measured_fps, target_fps, pending_samples,
+                    sound_threshold, buffer_ratio, gen_ui->rate_adjust);
             gen_ui->debug_counter = 0;
           }
         }
@@ -964,7 +1028,8 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, 
     }
   }
 
-  /* GTK's frame clock will invoke us again next refresh, keeping pacing steady. */
+  /* GTK's frame clock will invoke us again next refresh, keeping pacing steady.
+   */
   return G_SOURCE_CONTINUE;
 }
 
@@ -1003,7 +1068,8 @@ static void ui_newframe(void)
     /* Not in interlace mode, or in interlace mode on even field */
     gen_ui->plotfield = FALSE;
     if (gen_ui->frameskip == 0) {
-      /* Hold rendering when audio buffer is starving to let emulation catch up */
+      /* Hold rendering when audio buffer is starving to let emulation catch up
+       */
       if (sound_feedback != -1)
         gen_ui->plotfield = TRUE;
     } else {
@@ -1059,19 +1125,20 @@ void ui_line(int line)
 
   /* We are plotting this frame, and we're not doing a simple plot */
   switch ((vdp_reg[12] >> 1) & 3) {
-  case 0:                    /* normal */
-  case 1:                    /* interlace simply doubled up */
-  case 2:                    /* invalid */
+  case 0: /* normal */
+  case 1: /* interlace simply doubled up */
+  case 2: /* invalid */
     vdp_renderline(line, gfx, 0);
     break;
-  case 3:                    /* interlace with double resolution */
+  case 3: /* interlace with double resolution */
     vdp_renderline(line, gfx, vdp_oddframe);
     break;
   }
 
   uiplot_checkpalcache(0);
   /* Convert 8-bit palette indices to 32-bit RGBA and write to newscreen */
-  uiplot_convertdata32(gfx, (uint32 *)(gen_ui->newscreen + line * 384 * 4), width);
+  uiplot_convertdata32(gfx, (uint32 *)(gen_ui->newscreen + line * 384 * 4),
+                       width);
 }
 
 void ui_endfield(void)
@@ -1079,18 +1146,20 @@ void ui_endfield(void)
   static int counter = 0;
 
   if (gen_ui->plotfield) {
-    ui_rendertoscreen();        /* plot newscreen to screen */
+    ui_rendertoscreen(); /* plot newscreen to screen */
 
-    /* NOTE: Frame rate limiting is handled by ui_tick_callback() using GdkFrameClock.
+    /* NOTE: Frame rate limiting is handled by ui_tick_callback() using
+       GdkFrameClock.
 
        IMPORTANT: Do NOT add g_usleep() or any blocking delays here!
 
-       GTK4 uses an event-driven architecture. Blocking the main thread with g_usleep()
-       prevents audio sample generation, GTK event processing, and causes stuttering.
+       GTK4 uses an event-driven architecture. Blocking the main thread with
+       g_usleep() prevents audio sample generation, GTK event processing, and
+       causes stuttering.
 
        The console UI can use SDL_Delay() because it has a simple polling loop,
-       but GTK4's GdkFrameClock provides VSync-aware timing via ui_tick_callback(),
-       so additional delays here would be harmful. */
+       but GTK4's GdkFrameClock provides VSync-aware timing via
+       ui_tick_callback(), so additional delays here would be harmful. */
   }
 
   if (gen_ui->frameskip == 0) {
@@ -1113,10 +1182,10 @@ static void ui_rendertoscreen(void)
   unsigned int yoffset = (vdp_reg[1] & (1 << 3)) ? 0 : 8;
   unsigned int xoffset = (vdp_reg[12] & 1) ? 0 : 32;
   uint8 *screen;
-  uint8 *write_buffer;          /* buffer to write to (opposite of display) */
-  uint8 *display_buffer;        /* buffer currently being displayed */
-  uint32 *evenscreen;           /* interlace: lines 0,2,etc. */
-  uint32 *oddscreen;            /*            lines 1,3,etc. */
+  uint8 *write_buffer;   /* buffer to write to (opposite of display) */
+  uint8 *display_buffer; /* buffer currently being displayed */
+  uint32 *evenscreen;    /* interlace: lines 0,2,etc. */
+  uint32 *oddscreen;     /*            lines 1,3,etc. */
 
   /* Double buffering: write to the buffer NOT currently being displayed
    * whichbank indicates which buffer is being displayed:
@@ -1132,41 +1201,55 @@ static void ui_rendertoscreen(void)
 
   /* Render based on interlace mode */
   switch ((vdp_reg[12] >> 1) & 3) {
-  case 0:                    /* normal */
-  case 1:                    /* interlace simply doubled up */
-  case 2:                    /* invalid */
+  case 0: /* normal */
+  case 1: /* interlace simply doubled up */
+  case 2: /* invalid */
     /* Apply upscaling if enabled, otherwise simple copy */
     if (gen_ui->filter_type != FILTER_NONE && gen_ui->scale_factor > 1) {
       /* Use pre-allocated buffers instead of malloc/free per frame
          Extract source pixels from newscreen (remove stride) */
       for (line = 0; line < vdp_vislines; line++) {
         newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
-        memcpy(gen_ui->upscale_src_buffer + line * nominalwidth, newlinedata, nominalwidth * sizeof(uint32));
+        memcpy(gen_ui->upscale_src_buffer + line * nominalwidth, newlinedata,
+               nominalwidth * sizeof(uint32));
       }
 
       /* Calculate scaled dimensions */
       unsigned int scaled_width = nominalwidth * gen_ui->scale_factor;
       unsigned int scaled_height = vdp_vislines * gen_ui->scale_factor;
 
-      /* Apply the selected upscaling filter using pre-allocated destination buffer */
+      /* Apply the selected upscaling filter using pre-allocated destination
+       * buffer */
       switch (gen_ui->filter_type) {
       case FILTER_SCALE2X:
-        uiplot_scale2x_frame32(gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+        uiplot_scale2x_frame32(gen_ui->upscale_src_buffer,
+                               gen_ui->upscale_dst_buffer, nominalwidth,
+                               vdp_vislines, scaled_width * 4);
         break;
       case FILTER_SCALE3X:
-        uiplot_scale3x_frame32(gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+        uiplot_scale3x_frame32(gen_ui->upscale_src_buffer,
+                               gen_ui->upscale_dst_buffer, nominalwidth,
+                               vdp_vislines, scaled_width * 4);
         break;
       case FILTER_SCALE4X:
-        uiplot_scale4x_frame32(gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+        uiplot_scale4x_frame32(gen_ui->upscale_src_buffer,
+                               gen_ui->upscale_dst_buffer, nominalwidth,
+                               vdp_vislines, scaled_width * 4);
         break;
       case FILTER_XBRZ2X:
-        uiplot_xbrz_frame32(2, gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines);
+        uiplot_xbrz_frame32(2, gen_ui->upscale_src_buffer,
+                            gen_ui->upscale_dst_buffer, nominalwidth,
+                            vdp_vislines);
         break;
       case FILTER_XBRZ3X:
-        uiplot_xbrz_frame32(3, gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines);
+        uiplot_xbrz_frame32(3, gen_ui->upscale_src_buffer,
+                            gen_ui->upscale_dst_buffer, nominalwidth,
+                            vdp_vislines);
         break;
       case FILTER_XBRZ4X:
-        uiplot_xbrz_frame32(4, gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines);
+        uiplot_xbrz_frame32(4, gen_ui->upscale_src_buffer,
+                            gen_ui->upscale_dst_buffer, nominalwidth,
+                            vdp_vislines);
         break;
       default:
         /* Fallback: simple copy without scaling */
@@ -1182,8 +1265,10 @@ static void ui_rendertoscreen(void)
       unsigned int scaled_yoffset = yoffset * gen_ui->scale_factor;
       unsigned int scaled_xoffset = xoffset * gen_ui->scale_factor;
       for (line = 0; line < scaled_height; line++) {
-        screen = write_buffer + ((line + scaled_yoffset) * HMAXSIZE + scaled_xoffset) * 4;
-        memcpy(screen, gen_ui->upscale_dst_buffer + line * scaled_width, scaled_width * sizeof(uint32));
+        screen = write_buffer +
+                 ((line + scaled_yoffset) * HMAXSIZE + scaled_xoffset) * 4;
+        memcpy(screen, gen_ui->upscale_dst_buffer + line * scaled_width,
+               scaled_width * sizeof(uint32));
       }
     } else {
       /* No upscaling - simple rendering */
@@ -1195,11 +1280,13 @@ static void ui_rendertoscreen(void)
     }
     break;
 
-  case 3:                    /* interlace with double resolution */
-    /* Handle interlaced display - need data from display buffer for interlacing */
+  case 3: /* interlace with double resolution */
+    /* Handle interlaced display - need data from display buffer for interlacing
+     */
     for (line = 0; line < vdp_vislines; line++) {
       newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
-      oldlinedata = (uint32 *)(display_buffer + ((line + yoffset) * 384 + xoffset) * 4);
+      oldlinedata =
+          (uint32 *)(display_buffer + ((line + yoffset) * 384 + xoffset) * 4);
 
       if (vdp_oddframe) {
         oddscreen = newlinedata;
@@ -1214,7 +1301,8 @@ static void ui_rendertoscreen(void)
       /* Apply interlace filter */
       switch (ui_interlace) {
       case DEINTERLACE_WEAVEFILTER:
-        uiplot_irender32_weavefilter(evenscreen, oddscreen, screen, nominalwidth);
+        uiplot_irender32_weavefilter(evenscreen, oddscreen, screen,
+                                     nominalwidth);
         break;
       case DEINTERLACE_BOB:
       case DEINTERLACE_WEAVE:
@@ -1228,7 +1316,8 @@ static void ui_rendertoscreen(void)
 
   /* Swap buffers: the buffer we just wrote to becomes the display buffer
    * This ensures Cairo reads from a complete, stable frame while we render
-   * the next frame to the other buffer. This eliminates tearing and stuttering. */
+   * the next frame to the other buffer. This eliminates tearing and stuttering.
+   */
   gen_ui->whichbank = (gen_ui->whichbank == 0) ? 1 : 0;
 }
 
@@ -1240,7 +1329,7 @@ static void ui_simpleplot(void)
 
   /* cell mode - entire frame done here */
   uiplot_checkpalcache(0);
-  vdp_renderframe(gfx + (8 * (320 + 16)) + 8, 320 + 16);    /* plot frame */
+  vdp_renderframe(gfx + (8 * (320 + 16)) + 8, 320 + 16); /* plot frame */
 
   for (line = 0; line < vdp_vislines; line++) {
     uiplot_convertdata32(gfx + 8 + (line + 8) * (320 + 16),
@@ -1254,94 +1343,95 @@ static void ui_sdl_events(void)
 
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
-      case SDL_JOYAXISMOTION:
-        /* Handle joystick axis movement (D-pad or analog stick)
-           SDL joystick axes: 0 = left/right, 1 = up/down
-           Values: -32768 (left/up) to +32767 (right/down) */
-        {
-          int player = event.jaxis.which;  /* Joystick index (0 or 1) */
-          if (player > 1)
-            break;  /* Only support 2 players */
+    case SDL_JOYAXISMOTION:
+      /* Handle joystick axis movement (D-pad or analog stick)
+         SDL joystick axes: 0 = left/right, 1 = up/down
+         Values: -32768 (left/up) to +32767 (right/down) */
+      {
+        int player = event.jaxis.which; /* Joystick index (0 or 1) */
+        if (player > 1)
+          break; /* Only support 2 players */
 
-          /* Use deadzone to avoid drift */
-          const int deadzone = 8000;
+        /* Use deadzone to avoid drift */
+        const int deadzone = 8000;
 
-          if (event.jaxis.axis == 0) {
-            /* Horizontal axis */
-            if (event.jaxis.value < -deadzone) {
-              mem68k_cont[player].left = 1;
-              mem68k_cont[player].right = 0;
-            } else if (event.jaxis.value > deadzone) {
-              mem68k_cont[player].left = 0;
-              mem68k_cont[player].right = 1;
-            } else {
-              mem68k_cont[player].left = 0;
-              mem68k_cont[player].right = 0;
-            }
-          } else if (event.jaxis.axis == 1) {
-            /* Vertical axis */
-            if (event.jaxis.value < -deadzone) {
-              mem68k_cont[player].up = 1;
-              mem68k_cont[player].down = 0;
-            } else if (event.jaxis.value > deadzone) {
-              mem68k_cont[player].up = 0;
-              mem68k_cont[player].down = 1;
-            } else {
-              mem68k_cont[player].up = 0;
-              mem68k_cont[player].down = 0;
-            }
+        if (event.jaxis.axis == 0) {
+          /* Horizontal axis */
+          if (event.jaxis.value < -deadzone) {
+            mem68k_cont[player].left = 1;
+            mem68k_cont[player].right = 0;
+          } else if (event.jaxis.value > deadzone) {
+            mem68k_cont[player].left = 0;
+            mem68k_cont[player].right = 1;
+          } else {
+            mem68k_cont[player].left = 0;
+            mem68k_cont[player].right = 0;
+          }
+        } else if (event.jaxis.axis == 1) {
+          /* Vertical axis */
+          if (event.jaxis.value < -deadzone) {
+            mem68k_cont[player].up = 1;
+            mem68k_cont[player].down = 0;
+          } else if (event.jaxis.value > deadzone) {
+            mem68k_cont[player].up = 0;
+            mem68k_cont[player].down = 1;
+          } else {
+            mem68k_cont[player].up = 0;
+            mem68k_cont[player].down = 0;
           }
         }
-        break;
+      }
+      break;
 
-      case SDL_JOYBUTTONDOWN:
-      case SDL_JOYBUTTONUP:
-        /* Handle joystick button presses
-           Standard Genesis controller mapping:
-           Button 0 = A, Button 1 = B, Button 2 = C
-           Button 3 = Start, Button 4 = X (6-button), Button 5 = Y, Button 6 = Z */
-        {
-          int player = event.jbutton.which;
-          if (player > 1)
-            break;
+    case SDL_JOYBUTTONDOWN:
+    case SDL_JOYBUTTONUP:
+      /* Handle joystick button presses
+         Standard Genesis controller mapping:
+         Button 0 = A, Button 1 = B, Button 2 = C
+         Button 3 = Start, Button 4 = X (6-button), Button 5 = Y, Button 6 = Z
+       */
+      {
+        int player = event.jbutton.which;
+        if (player > 1)
+          break;
 
-          gboolean pressed = (event.type == SDL_JOYBUTTONDOWN);
+        gboolean pressed = (event.type == SDL_JOYBUTTONDOWN);
 
-          switch (event.jbutton.button) {
-            case 0:  /* Button A */
-              mem68k_cont[player].a = pressed ? 1 : 0;
-              break;
-            case 1:  /* Button B */
-              mem68k_cont[player].b = pressed ? 1 : 0;
-              break;
-            case 2:  /* Button C */
-            case 4:  /* Alternative C button */
-              mem68k_cont[player].c = pressed ? 1 : 0;
-              break;
-            case 3:  /* Start button */
-            case 7:  /* Alternative start button */
-              mem68k_cont[player].start = pressed ? 1 : 0;
-              break;
-          }
+        switch (event.jbutton.button) {
+        case 0: /* Button A */
+          mem68k_cont[player].a = pressed ? 1 : 0;
+          break;
+        case 1: /* Button B */
+          mem68k_cont[player].b = pressed ? 1 : 0;
+          break;
+        case 2: /* Button C */
+        case 4: /* Alternative C button */
+          mem68k_cont[player].c = pressed ? 1 : 0;
+          break;
+        case 3: /* Start button */
+        case 7: /* Alternative start button */
+          mem68k_cont[player].start = pressed ? 1 : 0;
+          break;
         }
-        break;
+      }
+      break;
 
-      case SDL_JOYHATMOTION:
-        /* Handle D-pad hat switch (alternative to analog axis)
-           Hat values: SDL_HAT_CENTERED, SDL_HAT_UP, SDL_HAT_DOWN, SDL_HAT_LEFT, SDL_HAT_RIGHT
-           and combinations like SDL_HAT_LEFTUP */
-        {
-          int player = event.jhat.which;
-          if (player > 1)
-            break;
+    case SDL_JOYHATMOTION:
+      /* Handle D-pad hat switch (alternative to analog axis)
+         Hat values: SDL_HAT_CENTERED, SDL_HAT_UP, SDL_HAT_DOWN, SDL_HAT_LEFT,
+         SDL_HAT_RIGHT and combinations like SDL_HAT_LEFTUP */
+      {
+        int player = event.jhat.which;
+        if (player > 1)
+          break;
 
-          uint8 hat = event.jhat.value;
-          mem68k_cont[player].up = (hat & SDL_HAT_UP) ? 1 : 0;
-          mem68k_cont[player].down = (hat & SDL_HAT_DOWN) ? 1 : 0;
-          mem68k_cont[player].left = (hat & SDL_HAT_LEFT) ? 1 : 0;
-          mem68k_cont[player].right = (hat & SDL_HAT_RIGHT) ? 1 : 0;
-        }
-        break;
+        uint8 hat = event.jhat.value;
+        mem68k_cont[player].up = (hat & SDL_HAT_UP) ? 1 : 0;
+        mem68k_cont[player].down = (hat & SDL_HAT_DOWN) ? 1 : 0;
+        mem68k_cont[player].left = (hat & SDL_HAT_LEFT) ? 1 : 0;
+        mem68k_cont[player].right = (hat & SDL_HAT_RIGHT) ? 1 : 0;
+      }
+      break;
     }
   }
 }
@@ -1517,7 +1607,9 @@ static void ui_gtk4_update_audio_backend_subtitle(void)
   g_free(subtitle);
 }
 
-static gboolean ui_gtk4_apply_audio_driver(const char *requested, gboolean restart_audio, gboolean persist_config)
+static gboolean ui_gtk4_apply_audio_driver(const char *requested,
+                                           gboolean restart_audio,
+                                           gboolean persist_config)
 {
   if (!gen_ui)
     return FALSE;
@@ -1527,12 +1619,16 @@ static gboolean ui_gtk4_apply_audio_driver(const char *requested, gboolean resta
     target = g_strdup("auto");
 
   if (g_strcmp0(target, "auto") != 0 && !ui_gtk4_driver_is_available(target)) {
-    fprintf(stderr, "Requested audio backend '%s' is not available; falling back to SDL default.\n", target);
+    fprintf(stderr,
+            "Requested audio backend '%s' is not available; falling back to "
+            "SDL default.\n",
+            target);
     g_free(target);
     target = g_strdup("auto");
   }
 
-  const char *current = gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto";
+  const char *current =
+      gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto";
   gboolean driver_changed = (g_ascii_strcasecmp(current, target) != 0);
 
   if (!driver_changed) {
@@ -1573,7 +1669,8 @@ static gboolean ui_gtk4_apply_audio_driver(const char *requested, gboolean resta
     if (sound_on) {
       SDL_QuitSubSystem(SDL_INIT_AUDIO);
       if (sound_start() != 0) {
-        ui_gtk4_messageerror("Failed to recover audio after backend change. Sound output may be unavailable until restart.");
+        ui_gtk4_messageerror("Failed to recover audio after backend change. "
+                             "Sound output may be unavailable until restart.");
       } else if (!gen_ui->running) {
         soundp_pause();
       }
@@ -1605,7 +1702,9 @@ static gboolean ui_gtk4_apply_audio_driver(const char *requested, gboolean resta
   return TRUE;
 }
 
-static void ui_gtk4_on_audio_driver_changed(GObject *row_object, GParamSpec *pspec, gpointer user_data)
+static void ui_gtk4_on_audio_driver_changed(GObject *row_object,
+                                            GParamSpec *pspec,
+                                            gpointer user_data)
 {
   (void)pspec;
   (void)user_data;
@@ -1619,18 +1718,21 @@ static void ui_gtk4_on_audio_driver_changed(GObject *row_object, GParamSpec *psp
     return;
 
   const char *selected_id = g_ptr_array_index(gen_ui->audio_driver_ids, index);
-  const char *current = gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto";
+  const char *current =
+      gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto";
 
   if (g_ascii_strcasecmp(selected_id, current) == 0)
     return;
 
   if (!ui_gtk4_apply_audio_driver(selected_id, TRUE, TRUE)) {
     guint fallback = ui_gtk4_find_driver_index(current);
-    g_signal_handlers_block_by_func(G_OBJECT(row), ui_gtk4_on_audio_driver_changed, nullptr);
+    g_signal_handlers_block_by_func(G_OBJECT(row),
+                                    ui_gtk4_on_audio_driver_changed, nullptr);
     if (fallback != GTK_INVALID_LIST_POSITION) {
       adw_combo_row_set_selected(row, fallback);
     }
-    g_signal_handlers_unblock_by_func(G_OBJECT(row), ui_gtk4_on_audio_driver_changed, nullptr);
+    g_signal_handlers_unblock_by_func(G_OBJECT(row),
+                                      ui_gtk4_on_audio_driver_changed, nullptr);
   } else {
     ui_gtk4_update_audio_backend_subtitle();
   }
@@ -1644,7 +1746,8 @@ static void ui_gtk4_ensure_preferences_window(void)
   if (gen_ui->prefs_window)
     return;
 
-  AdwPreferencesWindow *prefs = ADW_PREFERENCES_WINDOW(adw_preferences_window_new());
+  AdwPreferencesWindow *prefs =
+      ADW_PREFERENCES_WINDOW(adw_preferences_window_new());
   gtk_window_set_title(GTK_WINDOW(prefs), "Preferences");
   gtk_window_set_transient_for(GTK_WINDOW(prefs), GTK_WINDOW(gen_ui->window));
   gtk_window_set_modal(GTK_WINDOW(prefs), TRUE);
@@ -1656,8 +1759,8 @@ static void ui_gtk4_ensure_preferences_window(void)
   GtkWidget *audio_group = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(audio_group), "Output");
   adw_preferences_group_set_description(
-    ADW_PREFERENCES_GROUP(audio_group),
-    "Select the SDL audio backend. Changes take effect immediately.");
+      ADW_PREFERENCES_GROUP(audio_group),
+      "Select the SDL audio backend. Changes take effect immediately.");
 
   ui_gtk4_rebuild_audio_driver_model();
 
@@ -1668,15 +1771,19 @@ static void ui_gtk4_ensure_preferences_window(void)
 
   gen_ui->audio_driver_row = GTK_WIDGET(row);
 
-  guint selected = ui_gtk4_find_driver_index(gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto");
+  guint selected = ui_gtk4_find_driver_index(
+      gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto");
   if (selected != GTK_INVALID_LIST_POSITION) {
     adw_combo_row_set_selected(row, selected);
   }
 
-  g_signal_connect(row, "notify::selected", G_CALLBACK(ui_gtk4_on_audio_driver_changed), nullptr);
+  g_signal_connect(row, "notify::selected",
+                   G_CALLBACK(ui_gtk4_on_audio_driver_changed), nullptr);
 
-  adw_preferences_group_add(ADW_PREFERENCES_GROUP(audio_group), GTK_WIDGET(row));
-  adw_preferences_page_add(ADW_PREFERENCES_PAGE(audio_page), ADW_PREFERENCES_GROUP(audio_group));
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(audio_group),
+                            GTK_WIDGET(row));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(audio_page),
+                           ADW_PREFERENCES_GROUP(audio_group));
   adw_preferences_window_add(prefs, ADW_PREFERENCES_PAGE(audio_page));
 
   gen_ui->prefs_window = GTK_WIDGET(prefs);
@@ -1721,9 +1828,15 @@ gboolean ui_gtk4_question(const char *msg)
 
 /*** Logging functions (required by ui.h interface) ***/
 
-void ui_log_debug3(const char *text, ...) { }
-void ui_log_debug2(const char *text, ...) { }
-void ui_log_debug1(const char *text, ...) { }
+void ui_log_debug3(const char *text, ...)
+{
+}
+void ui_log_debug2(const char *text, ...)
+{
+}
+void ui_log_debug1(const char *text, ...)
+{
+}
 
 void ui_log_user(const char *text, ...)
 {

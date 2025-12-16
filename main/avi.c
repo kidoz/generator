@@ -15,7 +15,7 @@
 #include "avi.h"
 
 #ifdef JPEG
-#  include "jpeglib.h"
+#include "jpeglib.h"
 #endif
 
 /* From vfw.h */
@@ -25,18 +25,18 @@
  *
  * An AVI file is the following RIFF form:
  *
- *  RIFF('AVI' 
+ *  RIFF('AVI'
  *        LIST('hdrl'
  *        avih(<MainAVIHeader>)
  *                  LIST ('strl'
  *                      strh(<Stream header>)
  *                      strf(<Stream format>)
  *                      ... additional header data
- *            LIST('movi'  
- *          { LIST('rec' 
+ *            LIST('movi'
+ *          { LIST('rec'
  *                SubChunk...
  *             )
- *              | SubChunk } ....     
+ *              | SubChunk } ....
  *            )
  *            [ <AVIIndex> ]
  *      )
@@ -48,7 +48,7 @@
  *  be a BITMAPINFO structure, including palette.  For an audio stream,
  *  this should be a WAVEFORMAT (or PCMWAVEFORMAT) structure.
  *
- *  The actual data is contained in subchunks within the 'movi' LIST 
+ *  The actual data is contained in subchunks within the 'movi' LIST
  *  chunk.  The first two characters of each data chunk are the
  *  stream number with which that data is associated.
  *
@@ -63,17 +63,17 @@
  *
  * The grouping into LIST 'rec' chunks implies only that the contents of
  *   the chunk should be read into memory at the same time.  This
- *   grouping is used for files specifically intended to be played from 
+ *   grouping is used for files specifically intended to be played from
  *   CD-ROM.
  *
- * The index chunk at the end of the file should contain one entry for 
+ * The index chunk at the end of the file should contain one entry for
  *   each data chunk in the file.
- *       
+ *
  * Limitations for the current software:
  *  Only one video stream and one audio stream are allowed.
  *  The streams must start at the beginning of the file.
  *
- * 
+ *
  * To register codec types please obtain a copy of the Multimedia
  * Developer Registration Kit from:
  *
@@ -121,8 +121,8 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
   avi->off_audiolength = (char *)&h.hdrl.strl_audio.strh.Length - (char *)&h;
 
   rate = 0;
-  rate+= info->width * info->height * 3; /* 24 bit bmp */
-  rate+= 2 * 2 * info->sampspersec * info->fps / 1000; /* stereo, 16 bit */
+  rate += info->width * info->height * 3;               /* 24 bit bmp */
+  rate += 2 * 2 * info->sampspersec * info->fps / 1000; /* stereo, 16 bit */
   usperframe = (long long)1000000000 / info->fps;
   memcpy(h.riff, "RIFF", 4);
   h.length = 0; /* to be filled in later */
@@ -150,7 +150,7 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
   memcpy(h.hdrl.strl_video.strl, "strl", 4);
   memcpy(h.hdrl.strl_video.strh.strh, "strh", 4);
   h.hdrl.strl_video.strh.length =
-    LOCENDIAN32L(sizeof(h.hdrl.strl_video.strh) - 8);
+      LOCENDIAN32L(sizeof(h.hdrl.strl_video.strh) - 8);
   memcpy(h.hdrl.strl_video.strh.Type, "vids", 4);
   memset(&h.hdrl.strl_video.strh.Handler, 0, 4);
   h.hdrl.strl_video.strh.Flags = LOCENDIAN32L(0);
@@ -162,7 +162,7 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
   h.hdrl.strl_video.strh.Start = LOCENDIAN32L(0);
   h.hdrl.strl_video.strh.Length = 0; /* to be filled in later */
   h.hdrl.strl_video.strh.SuggestedBufferSize = LOCENDIAN32L(rate * 2);
-  h.hdrl.strl_video.strh.Quality = LOCENDIAN32L(0); /* this or 10,000? */
+  h.hdrl.strl_video.strh.Quality = LOCENDIAN32L(0);    /* this or 10,000? */
   h.hdrl.strl_video.strh.SampleSize = LOCENDIAN32L(0); /* n/a XXX: Check */
   h.hdrl.strl_video.strh.rcFrame.left = LOCENDIAN32L(0);
   h.hdrl.strl_video.strh.rcFrame.top = LOCENDIAN32L(0);
@@ -192,7 +192,7 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
   memcpy(h.hdrl.strl_audio.strl, "strl", 4);
   memcpy(h.hdrl.strl_audio.strh.strh, "strh", 4);
   h.hdrl.strl_audio.strh.length =
-    LOCENDIAN32L(sizeof(h.hdrl.strl_audio.strh) - 8);
+      LOCENDIAN32L(sizeof(h.hdrl.strl_audio.strh) - 8);
   memcpy(h.hdrl.strl_audio.strh.Type, "auds", 4);
   memset(&h.hdrl.strl_audio.strh.Handler, 0, 4);
   h.hdrl.strl_audio.strh.Flags = LOCENDIAN32L(0);
@@ -202,13 +202,13 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
   h.hdrl.strl_audio.strh.Scale = LOCENDIAN32L(1);
   h.hdrl.strl_audio.strh.Rate = LOCENDIAN32L(info->sampspersec);
   h.hdrl.strl_audio.strh.Start = LOCENDIAN32L(0);
-  h.hdrl.strl_audio.strh.Length = 0; /* to be filled in later */
-  h.hdrl.strl_audio.strh.SuggestedBufferSize = 0; /* XXX: ok? */
+  h.hdrl.strl_audio.strh.Length = 0;                /* to be filled in later */
+  h.hdrl.strl_audio.strh.SuggestedBufferSize = 0;   /* XXX: ok? */
   h.hdrl.strl_audio.strh.Quality = LOCENDIAN32L(0); /* this or 10,000? */
-  h.hdrl.strl_audio.strh.SampleSize = LOCENDIAN32L(4); /* stereo 16 bit */
-  h.hdrl.strl_audio.strh.rcFrame.left = LOCENDIAN32L(0); /* n/a */
-  h.hdrl.strl_audio.strh.rcFrame.top = LOCENDIAN32L(0); /* n/a */
-  h.hdrl.strl_audio.strh.rcFrame.right = LOCENDIAN32L(0); /* n/a */
+  h.hdrl.strl_audio.strh.SampleSize = LOCENDIAN32L(4);     /* stereo 16 bit */
+  h.hdrl.strl_audio.strh.rcFrame.left = LOCENDIAN32L(0);   /* n/a */
+  h.hdrl.strl_audio.strh.rcFrame.top = LOCENDIAN32L(0);    /* n/a */
+  h.hdrl.strl_audio.strh.rcFrame.right = LOCENDIAN32L(0);  /* n/a */
   h.hdrl.strl_audio.strh.rcFrame.bottom = LOCENDIAN32L(0); /* n/a */
   memcpy(h.hdrl.strl_audio.strf.strf, "strf", 4);
   h.hdrl.strl_audio.strf.length =
@@ -347,8 +347,8 @@ int avi_video_jpeg(t_avi *avi, uint8 *video)
   if (fseek(avi->fd, 0, SEEK_END) != 0)
     return -1;
 
-  avi->frames+= 1;
-  avi->movilength+= pos2 - pos1 + pad;
+  avi->frames += 1;
+  avi->movilength += pos2 - pos1 + pad;
   return 0;
 }
 
@@ -379,7 +379,7 @@ int avi_video_raw(t_avi *avi, uint8 *video)
       *p++ = v[2];
       *p++ = v[1];
       *p++ = v[0];
-      v+= 3;
+      v += 3;
     }
     /* we should have avi->linebytes of data - pad with zeros */
     for (x = 0; x < (avi->linebytes - (avi->info.width * 3)); x++)
@@ -389,8 +389,8 @@ int avi_video_raw(t_avi *avi, uint8 *video)
       return -1;
     }
   }
-  avi->frames+= 1;
-  avi->movilength+= 8 + avi->linebytes * avi->info.height;
+  avi->frames += 1;
+  avi->movilength += 8 + avi->linebytes * avi->info.height;
   return 0;
 }
 
@@ -413,8 +413,7 @@ int avi_audio(t_avi *avi, uint8 *audio, uint32 samples)
     errno = EIO;
     return -1;
   }
-  avi->audiolength+= samples;
-  avi->movilength+= 8 + 4 * samples;
+  avi->audiolength += samples;
+  avi->movilength += 8 + 4 * samples;
   return 0;
 }
-
