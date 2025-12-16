@@ -110,7 +110,7 @@ unsigned int reg68k_external_execute(unsigned int clocks)
           cpu68k_clocks += step_piib->clocks;
         }
         while (!step_piib->flags.endblk);
-        list = NULL;            /* stop compiler warning ;(  */
+        list = nullptr;            /* stop compiler warning ;(  */
       } else {
         index = (pc24 >> 1) & (LEN_IPCLISTTABLE - 1);
         list = ipclist[index];

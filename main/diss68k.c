@@ -24,7 +24,7 @@ int diss68k_gettext(t_ipc * ipc, char *text)
 
   iib = cpu68k_iibtable[ipc->opcode];
 
-  if (iib == NULL)
+  if (iib == nullptr)
     return 0;
 
   diss68k_getoperand(dst, ipc, iib, tp_dst);
@@ -37,7 +37,7 @@ int diss68k_gettext(t_ipc * ipc, char *text)
 
   strcpy(mnemonic, mnemonic_table[iib->mnemonic].name);
 
-  if ((p = strstr(mnemonic, "cc")) != NULL) {
+  if ((p = strstr(mnemonic, "cc")) != nullptr) {
     if (iib->mnemonic == i_Bcc && iib->cc == 0) {
       p[0] = 'R';
       p[1] = 'A';

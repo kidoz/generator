@@ -67,7 +67,7 @@ int main(int argc, char *argv[])
     sprintf(tmp, FNAME_GEN68K_CPU_OUT, i);
 
     /* open output file */
-    if ((output = fopen(tmp, "w")) == NULL) {
+    if ((output = fopen(tmp, "w")) == nullptr) {
       perror("fopen output");
       exit(1);
     }
@@ -623,7 +623,7 @@ void generate(FILE *output, int topnibble)
 
       case i_MOVEFSR:
 	generate_ea(output, iib, tp_src, 1);
-	generate_outdata(output, iib, NULL);
+	generate_outdata(output, iib, nullptr);
 	OUT("\n");
 	OUT("  outdata = SR;\n");
 	generate_eastore(output, iib, tp_src);
@@ -914,7 +914,7 @@ void generate(FILE *output, int topnibble)
 	generate_eaval(output, iib, tp_src);
 	generate_ea(output, iib, tp_dst, 1);
 	generate_eaval(output, iib, tp_dst);
-	generate_outdata(output, iib, NULL);
+	generate_outdata(output, iib, nullptr);
 	OUT("\n");
 	OUT("  uint8 outdata_low = (dstdata & 0xF) + (srcdata & 0xF) ");
 	OUT("+ XFLAG;\n");
@@ -950,7 +950,7 @@ void generate(FILE *output, int topnibble)
 	generate_eaval(output, iib, tp_src);
 	generate_ea(output, iib, tp_dst, 1);
 	generate_eaval(output, iib, tp_dst);
-	generate_outdata(output, iib, NULL);
+	generate_outdata(output, iib, nullptr);
 	OUT("\n");
 	OUT("  sint8 outdata_low = (dstdata & 0xF) - (srcdata & 0xF) ");
 	OUT("- XFLAG;\n");
@@ -984,7 +984,7 @@ void generate(FILE *output, int topnibble)
       case i_NBCD:
 	generate_ea(output, iib, tp_src, 1);
 	generate_eaval(output, iib, tp_src);
-	generate_outdata(output, iib, NULL);
+	generate_outdata(output, iib, nullptr);
 	OUT("\n");
 	OUT("  sint8 outdata_low = - (srcdata & 0xF) - XFLAG;\n");
         OUT("  sint16 precalc = - srcdata - XFLAG;\n");

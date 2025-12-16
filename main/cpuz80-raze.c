@@ -13,7 +13,7 @@
 
 /*** variables externed ***/
 
-uint8 *cpuz80_ram = NULL;
+uint8 *cpuz80_ram = nullptr;
 uint32 cpuz80_bank = 0;
 uint8 cpuz80_active = 0;
 uint8 cpuz80_resetting = 0;
@@ -37,7 +37,7 @@ void cpuz80_reset(void)
   int i;
 
   if (!cpuz80_ram) {
-    if ((cpuz80_ram = malloc(LEN_SRAM)) == NULL) {
+    if ((cpuz80_ram = malloc(LEN_SRAM)) == nullptr) {
       fprintf(stderr, "Out of memory\n");
       exit(1);
     }

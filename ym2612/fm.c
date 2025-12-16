@@ -1379,7 +1379,7 @@ static void OPNWriteMode(FM_OPN *OPN, int r, int v)
 		if( OPN->type & TYPE_LFOPAN )
 		{
 			OPN->LFOIncr = (v&0x08) ? OPN->LFO_FREQ[v&7] : 0;
-			cur_chip = NULL;
+			cur_chip = nullptr;
 		}
 		break;
 	case 0x24:	/* timer A High 8*/
@@ -1607,7 +1607,7 @@ typedef struct ym2203_f {
 	FM_CH CH[3];			/* channel state     */
 } YM2203;
 
-static YM2203 *FM2203=NULL;	/* array of YM2203's */
+static YM2203 *FM2203=nullptr;	/* array of YM2203's */
 static int YM2203NumChips;	/* number of chips */
 
 /* ---------- update one of chip ----------- */
@@ -1720,7 +1720,7 @@ static void YM2203_postload(void)
 		/* channels */
 		/*FM_channel_postload(FM2203[num].CH,3);*/
 	}
-	cur_chip = NULL;
+	cur_chip = nullptr;
 }
 
 static void YM2203_save_state(void)
@@ -1752,12 +1752,12 @@ int YM2203Init(int num, int clock, int rate,
 	int i;
 
 	if (FM2203) return (-1);	/* duplicate init. */
-	cur_chip = NULL;	/* hiro-shi!! */
+	cur_chip = nullptr;	/* hiro-shi!! */
 
 	YM2203NumChips = num;
 
 	/* allocate ym2203 state space */
-	if( (FM2203 = (YM2203 *)malloc(sizeof(YM2203) * YM2203NumChips))==NULL)
+	if( (FM2203 = (YM2203 *)malloc(sizeof(YM2203) * YM2203NumChips))==nullptr)
 		return (-1);
 	/* clear */
 	memset(FM2203,0,sizeof(YM2203) * YM2203NumChips);
@@ -1794,7 +1794,7 @@ void YM2203Shutdown(void)
 
 	FMCloseTable();
 	free(FM2203);
-	FM2203 = NULL;
+	FM2203 = nullptr;
 }
 
 /* ---------- YM2203 I/O interface ---------- */
@@ -2054,7 +2054,7 @@ static void FM_ADPCMAWrite(YM2610 *F2610,int r,int v)
 					adpcm[c].adpcm_step= 0;
 					adpcm[c].adpcm_out = 0;
 					adpcm[c].flag      = 1;
-					if(F2610->pcmbuf==NULL){					/* Check ROM Mapped */
+					if(F2610->pcmbuf==nullptr){					/* Check ROM Mapped */
 						LOG(LOG_WAR,("YM2610: ADPCM-A rom not mapped\n"));
 						adpcm[c].flag = 0;
 					} else{
@@ -2169,7 +2169,7 @@ static void FMsave_state_adpcma(const char *name,int num,ADPCM_CH *adpcm)
 /*******************************************************************************/
 /*		YM2608 local section                                                   */
 /*******************************************************************************/
-static YM2608 *FM2608=NULL;	/* array of YM2608's */
+static YM2608 *FM2608=nullptr;	/* array of YM2608's */
 static int YM2608NumChips;	/* total chip */
 
 /* YM2608 Rhythm Number */
@@ -2448,7 +2448,7 @@ static void YM2608_postload(void)
 		/* Delta-T ADPCM unit */
 		YM_DELTAT_postload(&F2608->deltaT , &F2608->REGS[0x100] );
 	}
-	cur_chip = NULL;
+	cur_chip = nullptr;
 }
 
 static void YM2608_save_state(void)
@@ -2486,12 +2486,12 @@ int YM2608Init(int num, int clock, int rate,
 	int i,j;
 
     if (FM2608) return (-1);	/* duplicate init. */
-    cur_chip = NULL;	/* hiro-shi!! */
+    cur_chip = nullptr;	/* hiro-shi!! */
 
 	YM2608NumChips = num;
 
 	/* allocate extend state space */
-	if( (FM2608 = (YM2608 *)malloc(sizeof(YM2608) * YM2608NumChips))==NULL)
+	if( (FM2608 = (YM2608 *)malloc(sizeof(YM2608) * YM2608NumChips))==nullptr)
 		return (-1);
 	/* clear */
 	memset(FM2608,0,sizeof(YM2608) * YM2608NumChips);
@@ -2550,7 +2550,7 @@ void YM2608Shutdown()
 
 	FMCloseTable();
 	free(FM2608);
-	FM2608 = NULL;
+	FM2608 = nullptr;
 }
 
 /* ---------- reset one of chips ---------- */
@@ -2764,7 +2764,7 @@ int YM2608TimerOver(int n,int c)
 
 #if BUILD_OPNB
 /* -------------------------- YM2610(OPNB) ---------------------------------- */
-static YM2610 *FM2610=NULL;	/* array of YM2610's */
+static YM2610 *FM2610=nullptr;	/* array of YM2610's */
 static int YM2610NumChips;	/* total chip */
 
 /* ---------- update one of chip (YM2610 FM4: ADPCM-A6: ADPCM-B1) ----------- */
@@ -3082,7 +3082,7 @@ static void YM2610_postload(void)
 		/* Delta-T ADPCM unit */
 		YM_DELTAT_postload(&F2610->deltaT , &F2610->REGS[0x100] );
 	}
-	cur_chip = NULL;
+	cur_chip = nullptr;
 }
 
 static void YM2610_save_state(void)
@@ -3121,12 +3121,12 @@ int YM2610Init(int num, int clock, int rate,
 	int i;
 
     if (FM2610) return (-1);	/* duplicate init. */
-    cur_chip = NULL;	/* hiro-shi!! */
+    cur_chip = nullptr;	/* hiro-shi!! */
 
 	YM2610NumChips = num;
 
 	/* allocate extend state space */
-	if( (FM2610 = (YM2610 *)malloc(sizeof(YM2610) * YM2610NumChips))==NULL)
+	if( (FM2610 = (YM2610 *)malloc(sizeof(YM2610) * YM2610NumChips))==nullptr)
 		return (-1);
 	/* clear */
 	memset(FM2610,0,sizeof(YM2610) * YM2610NumChips);
@@ -3175,7 +3175,7 @@ void YM2610Shutdown()
 
 	FMCloseTable();
 	free(FM2610);
-	FM2610 = NULL;
+	FM2610 = nullptr;
 }
 
 /* ---------- reset one of chip ---------- */
@@ -3383,7 +3383,7 @@ typedef struct ym2612_f {
 } YM2612;
 
 static int YM2612NumChips;	/* total chip */
-static YM2612 *FM2612=NULL;	/* array of YM2612's */
+static YM2612 *FM2612=nullptr;	/* array of YM2612's */
 
 static int dacen;
 
@@ -3535,7 +3535,7 @@ static void YM2612_postload(void)
 		/* channels */
 		/*FM_channel_postload(FM2612[num].CH,6);*/
 	}
-	cur_chip = NULL;
+	cur_chip = nullptr;
 }
 
 /* James Ponder: removed static */
@@ -3567,12 +3567,12 @@ int YM2612Init(int num, int clock, int rate,
 	int i;
 
     if (FM2612) return (-1);	/* duplicate init. */
-    cur_chip = NULL;	/* hiro-shi!! */
+    cur_chip = nullptr;	/* hiro-shi!! */
 
 	YM2612NumChips = num;
 
 	/* allocate extend state space */
-	if( (FM2612 = (YM2612 *)malloc(sizeof(YM2612) * YM2612NumChips))==NULL)
+	if( (FM2612 = (YM2612 *)malloc(sizeof(YM2612) * YM2612NumChips))==nullptr)
 		return (-1);
 	/* clear */
 	memset(FM2612,0,sizeof(YM2612) * YM2612NumChips);
@@ -3612,7 +3612,7 @@ void YM2612Shutdown()
 
 	FMCloseTable();
 	free(FM2612);
-	FM2612 = NULL;
+	FM2612 = nullptr;
 }
 
 /* ---------- reset one of chip ---------- */
@@ -3675,7 +3675,7 @@ int YM2612Write(int n, int a,UINT8 v)
 			case 0x2b:	/* DAC Sel  (YM2612) */
 				/* b7 = dac enable */
 				F2612->dacen = v & 0x80;
-				cur_chip = NULL;
+				cur_chip = nullptr;
 				break;
 			default:	/* OPN section */
 				YM2612UpdateReq(n);
@@ -3780,7 +3780,7 @@ typedef struct ym2151_f {
 	mem_write_handler PortWrite;/*  callback when write CT0/CT1 */
 } YM2151;
 
-static YM2151 *FMOPM=NULL;	/* array of YM2151's */
+static YM2151 *FMOPM=nullptr;	/* array of YM2151's */
 static int YM2151NumChips;	/* total chip */
 
 static INT32 OPM_LFO_waves[LFO_ENT*4];	/* LFO wave tabel    */
@@ -3966,7 +3966,7 @@ static void OPMWriteReg(int n, int r, int v)
 			if( (OPM->testreg&(OPM->testreg^v))&0x02 ) /* fall eggge */
 			{	/* reset LFO counter */
 				OPM->LFOCnt = 0;
-				cur_chip = NULL;
+				cur_chip = nullptr;
 			}
 			OPM->testreg = v;
 			break;
@@ -3986,7 +3986,7 @@ static void OPMWriteReg(int n, int r, int v)
 			OPM->NoiseIncr = !(v&0x80) ? 0 :
 				/* !!!!! unknown noise freqency rate !!!!! */
 				(UINT32)((1<<FREQ_BITS) / 65536 * (v&0x1f) * OPM->ST.freqbase);
-			cur_chip = NULL;
+			cur_chip = nullptr;
 #if 1
 			if( v & 0x80 ){
 				LOG(LOG_WAR,("OPM Noise mode selelted\n"));
@@ -4016,7 +4016,7 @@ static void OPMWriteReg(int n, int r, int v)
 					1.681792831,1.75625216 ,1.834008086,1.915206561};
 				double rate = pow(2.0,v/16)*drate[v&0x0f] / 4295000000.0;
 				OPM->LFOIncr = (UINT32)((double)LFO_ENT*(1<<LFO_SH) * (OPM->ST.freqbase*64) * rate);
-				cur_chip = NULL;
+				cur_chip = nullptr;
 			}
 			break;
 		case 0x19:	/* PMD/AMD */
@@ -4038,7 +4038,7 @@ static void OPMWriteReg(int n, int r, int v)
 			if( OPM->wavetype != &OPM_LFO_waves[(v&3)*LFO_ENT])
 			{
 				OPM->wavetype = &OPM_LFO_waves[(v&3)*LFO_ENT];
-				cur_chip = NULL;
+				cur_chip = nullptr;
 			}
 			break;
 		}
@@ -4171,7 +4171,7 @@ static void YM2151_postload(void)
 		/* channels */
 		/*FM_channel_postload(F2151->CH,8);*/
 	}
-	cur_chip = NULL;
+	cur_chip = nullptr;
 }
 
 static void YM2151_save_state(void)
@@ -4209,12 +4209,12 @@ int OPMInit(int num, int clock, int rate,
     int i;
 
     if (FMOPM) return (-1);	/* duplicate init. */
-    cur_chip = NULL;	/* hiro-shi!! */
+    cur_chip = nullptr;	/* hiro-shi!! */
 
 	YM2151NumChips = num;
 
 	/* allocate ym2151 state space */
-	if( (FMOPM = (YM2151 *)malloc(sizeof(YM2151) * YM2151NumChips))==NULL)
+	if( (FMOPM = (YM2151 *)malloc(sizeof(YM2151) * YM2151NumChips))==nullptr)
 		return (-1);
 
 	/* clear */
@@ -4255,7 +4255,7 @@ void OPMShutdown()
 
 	FMCloseTable();
 	free(FMOPM);
-	FMOPM = NULL;
+	FMOPM = nullptr;
 }
 
 UINT8 YM2151Read(int n,int a)

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <limits.h>
 #include <pwd.h>
 
 #include <gtk/gtk.h>
@@ -29,6 +30,7 @@
 #include "cpu68k.h"
 #include "mem68k.h"
 #include "cpuz80.h"
+#include <gdk/gdkkeysyms.h>
 #include "event.h"
 #include "state.h"
 #include "initcart.h"
@@ -37,7 +39,7 @@
 #include "avi.h"
 
 /* Global UI instance */
-GenUI *gen_ui = NULL;
+GenUI *gen_ui = nullptr;
 
 /* Interlace mode */
 t_interlace ui_interlace = DEINTERLACE_WEAVEFILTER;
@@ -58,13 +60,20 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width, int h
 static gboolean ui_key_pressed(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
 static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval, guint keycode, GdkModifierType state, gpointer user_data);
 static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data);
-static gboolean ui_idle_callback(gpointer user_data);
+static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data);
 static void ui_newframe(void);
 static void ui_simpleplot(void);
 static void ui_sdl_events(void);
 static void ui_rendertoscreen(void);
-static void ui_load_config(void);
-static void ui_save_config(void);
+static gboolean ui_gtk4_apply_audio_driver(const char *requested, gboolean restart_audio, gboolean persist_config);
+static void ui_gtk4_update_audio_backend_subtitle(void);
+static void ui_gtk4_ensure_preferences_window(void);
+static void ui_gtk4_on_audio_driver_changed(GObject *row, GParamSpec *pspec, gpointer user_data);
+static void ui_gtk4_rebuild_audio_driver_model(void);
+static guint ui_gtk4_find_driver_index(const char *driver_id);
+static gboolean ui_gtk4_driver_is_available(const char *driver_id);
+static char *ui_gtk4_normalize_audio_driver(const char *driver);
+static char *ui_gtk4_format_driver_label(const char *driver_id);
 
 /*** Program entry point ***/
 
@@ -86,16 +95,31 @@ int ui_init(int argc, char *argv[])
   gen_ui->vborder = VBORDER_DEFAULT;
   gen_ui->statusbar_enabled = TRUE;
   gen_ui->frameskip = 0;
-  gen_ui->filter_type = FILTER_XBRZ2X;  /* Default to xBRZ 2x upscaling (highest quality) */
+  gen_ui->filter_type = FILTER_SCALE2X;  /* Default to Scale2x (fast, good quality, <1ms overhead) */
   gen_ui->scale_factor = 2;              /* Default to 2x scale */
+
+  /* Initialize controller mappings to zero (will use defaults in ui_update_controller_from_keys) */
+  memset(&gen_ui->controllers, 0, sizeof(gen_ui->controllers));
+
+  /* Initialize Genesis controller state to all buttons released */
+  memset(mem68k_cont, 0, sizeof(mem68k_cont));
 
   /* Initialize dynamic rate control */
   gen_ui->dynamic_rate_control = TRUE;   /* Enable by default */
   gen_ui->rate_adjust = 1.0;             /* Normal speed */
-  gen_ui->rate_delta = 0.005;            /* ±0.5% maximum adjustment */
+  gen_ui->rate_delta = 0.03;             /* ±3% default adjustment window */
   gen_ui->fps_index = 0;
   gen_ui->measured_fps = 0.0;
+  gen_ui->frames_recorded = 0;
+  gen_ui->debug_counter = 0;
+  gen_ui->last_frame_time = 0;
   /* fps_times array is zero-initialized by g_new0 */
+
+  /* Pre-allocate upscaling buffers to avoid malloc/free per frame
+     Maximum size needed: 320x240 @ 4x scale = 1280x960 pixels */
+  gen_ui->upscale_buffer_size = 1280 * 960;
+  gen_ui->upscale_src_buffer = g_malloc(gen_ui->upscale_buffer_size * sizeof(guint32));
+  gen_ui->upscale_dst_buffer = g_malloc(gen_ui->upscale_buffer_size * sizeof(guint32));
 
   /* Allocate screen buffers */
   gen_ui->screen_buffers[0] = g_malloc0(4 * HMAXSIZE * VMAXSIZE);
@@ -134,9 +158,9 @@ int ui_init(int argc, char *argv[])
     ui_usage();
 
   /* Determine config file location */
-  if (gen_ui->configfile == NULL) {
+  if (gen_ui->configfile == nullptr) {
     passwd = getpwuid(getuid());
-    if (passwd == NULL) {
+    if (passwd == nullptr) {
       fprintf(stderr, "Who are you? (getpwent failed)\n");
       exit(1);
     }
@@ -151,6 +175,9 @@ int ui_init(int argc, char *argv[])
       fprintf(stderr, "Error loading configuration file, using defaults.\n");
     }
   }
+
+  /* Apply preferred audio backend before SDL initialises audio */
+  ui_gtk4_apply_audio_driver(gtkopts_getvalue("audio_driver"), FALSE, TRUE);
 
   /* Initialize SDL for video and joystick */
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) < 0) {
@@ -187,9 +214,9 @@ int ui_init(int argc, char *argv[])
 
   /* Create GTK application with NON_UNIQUE flag to allow multiple instances */
   gen_ui->app = adw_application_new("net.squish.generator", G_APPLICATION_NON_UNIQUE);
-  g_signal_connect(gen_ui->app, "activate", G_CALLBACK(ui_activate), NULL);
-  g_signal_connect(gen_ui->app, "startup", G_CALLBACK(ui_startup), NULL);
-  g_signal_connect(gen_ui->app, "shutdown", G_CALLBACK(ui_shutdown), NULL);
+  g_signal_connect(gen_ui->app, "activate", G_CALLBACK(ui_activate), nullptr);
+  g_signal_connect(gen_ui->app, "startup", G_CALLBACK(ui_startup), nullptr);
+  g_signal_connect(gen_ui->app, "shutdown", G_CALLBACK(ui_shutdown), nullptr);
 
   fprintf(stderr, "GTK4/libadwaita UI initialized. Use the menu to quit properly.\n");
   return 0;
@@ -208,11 +235,27 @@ static void ui_usage(void)
 void ui_final(void)
 {
   if (gen_ui) {
+    if (gen_ui->prefs_window) {
+      gtk_window_destroy(GTK_WINDOW(gen_ui->prefs_window));
+      gen_ui->prefs_window = nullptr;
+      gen_ui->audio_driver_row = nullptr;
+    }
+    g_clear_object(&gen_ui->audio_driver_model);
+    if (gen_ui->audio_driver_ids) {
+      g_ptr_array_free(gen_ui->audio_driver_ids, TRUE);
+      gen_ui->audio_driver_ids = nullptr;
+    }
+    g_clear_pointer(&gen_ui->audio_driver_selection, g_free);
     SDL_Quit();
+    g_free(gen_ui->screen_buffers[0]);
+    g_free(gen_ui->screen_buffers[1]);
+    g_free(gen_ui->screen_buffers[2]);
+    g_free(gen_ui->upscale_src_buffer);
+    g_free(gen_ui->upscale_dst_buffer);
     g_free(gen_ui->configfile);
     g_free(gen_ui->initload);
     g_free(gen_ui);
-    gen_ui = NULL;
+    gen_ui = nullptr;
   }
 }
 
@@ -230,13 +273,13 @@ int ui_loop(void)
       gen_ui->running = TRUE;
     }
   } else {
-    gen_loadmemrom(initcart, initcart_len);
+    gen_loadmemrom((const char *)initcart, initcart_len);
     /* Default ROM loaded, start emulation */
     gen_ui->running = TRUE;
   }
 
   /* Run GTK application */
-  int status = g_application_run(G_APPLICATION(gen_ui->app), 0, NULL);
+  int status = g_application_run(G_APPLICATION(gen_ui->app), 0, nullptr);
   g_object_unref(gen_ui->app);
   return status;
 }
@@ -252,7 +295,7 @@ static void ui_startup(GtkApplication *app, gpointer user_data)
 static void ui_activate(GtkApplication *app, gpointer user_data)
 {
   /* Create and show main window */
-  if (gen_ui->window == NULL) {
+  if (gen_ui->window == nullptr) {
     ui_create_main_window(app);
   }
   gtk_window_present(GTK_WINDOW(gen_ui->window));
@@ -279,28 +322,28 @@ static void ui_shutdown(GtkApplication *app, gpointer user_data)
 static void ui_setup_actions(GtkApplication *app)
 {
   static const GActionEntry app_entries[] = {
-    { "open-rom", ui_action_open_rom, NULL, NULL, NULL },
-    { "save-rom", ui_action_save_rom, NULL, NULL, NULL },
-    { "load-state", ui_action_load_state, NULL, NULL, NULL },
-    { "save-state", ui_action_save_state, NULL, NULL, NULL },
-    { "reset", ui_action_reset, NULL, NULL, NULL },
-    { "soft-reset", ui_action_soft_reset, NULL, NULL, NULL },
-    { "pause", ui_action_pause, NULL, "false", NULL },
-    { "preferences", ui_action_preferences, NULL, NULL, NULL },
-    { "about", ui_action_about, NULL, NULL, NULL },
-    { "quit", ui_action_quit, NULL, NULL, NULL }
+    { "open-rom", ui_action_open_rom, nullptr, nullptr, nullptr },
+    { "save-rom", ui_action_save_rom, nullptr, nullptr, nullptr },
+    { "load-state", ui_action_load_state, nullptr, nullptr, nullptr },
+    { "save-state", ui_action_save_state, nullptr, nullptr, nullptr },
+    { "reset", ui_action_reset, nullptr, nullptr, nullptr },
+    { "soft-reset", ui_action_soft_reset, nullptr, nullptr, nullptr },
+    { "pause", ui_action_pause, nullptr, "false", nullptr },
+    { "preferences", ui_action_preferences, nullptr, nullptr, nullptr },
+    { "about", ui_action_about, nullptr, nullptr, nullptr },
+    { "quit", ui_action_quit, nullptr, nullptr, nullptr }
   };
 
   g_action_map_add_action_entries(G_ACTION_MAP(app), app_entries,
                                    G_N_ELEMENTS(app_entries), app);
 
   /* Set keyboard accelerators */
-  const char *open_accels[] = { "<Ctrl>O", NULL };
-  const char *load_state_accels[] = { "<Ctrl>L", NULL };
-  const char *save_state_accels[] = { "<Ctrl>S", NULL };
-  const char *reset_accels[] = { "F5", NULL };
-  const char *pause_accels[] = { "space", NULL };
-  const char *quit_accels[] = { "<Ctrl>Q", NULL };
+  const char *open_accels[] = { "<Ctrl>O", nullptr };
+  const char *load_state_accels[] = { "<Ctrl>L", nullptr };
+  const char *save_state_accels[] = { "<Ctrl>S", nullptr };
+  const char *reset_accels[] = { "F5", nullptr };
+  const char *pause_accels[] = { "space", nullptr };
+  const char *quit_accels[] = { "<Ctrl>Q", nullptr };
 
   gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.open-rom", open_accels);
   gtk_application_set_accels_for_action(GTK_APPLICATION(app), "app.load-state", load_state_accels);
@@ -350,7 +393,7 @@ static void ui_create_main_window(GtkApplication *app)
   /* File operations section */
   GMenu *file_section = g_menu_new();
   g_menu_append(file_section, "_Save ROM As…", "app.save-rom");
-  g_menu_append_section(primary_menu, NULL, G_MENU_MODEL(file_section));
+  g_menu_append_section(primary_menu, nullptr, G_MENU_MODEL(file_section));
 
   /* State management section */
   GMenu *state_section = g_menu_new();
@@ -368,7 +411,7 @@ static void ui_create_main_window(GtkApplication *app)
   GMenu *app_section = g_menu_new();
   g_menu_append(app_section, "_Preferences", "app.preferences");
   g_menu_append(app_section, "_About Generator", "app.about");
-  g_menu_append_section(primary_menu, NULL, G_MENU_MODEL(app_section));
+  g_menu_append_section(primary_menu, nullptr, G_MENU_MODEL(app_section));
 
   /* Add primary menu button to header bar end */
   menu_button = gtk_menu_button_new();
@@ -387,7 +430,7 @@ static void ui_create_main_window(GtkApplication *app)
   gtk_widget_set_vexpand(gen_ui->drawing_area, TRUE);
   gtk_widget_set_size_request(gen_ui->drawing_area, 320, 224);
   gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(gen_ui->drawing_area),
-                                   ui_draw_callback, NULL, NULL);
+                                   ui_draw_callback, nullptr, nullptr);
   gtk_box_append(GTK_BOX(content_box), gen_ui->drawing_area);
 
   /* Create status bar using AdwActionRow for better styling */
@@ -414,17 +457,19 @@ static void ui_create_main_window(GtkApplication *app)
 
   /* Setup keyboard input */
   key_controller = gtk_event_controller_key_new();
-  g_signal_connect(key_controller, "key-pressed", G_CALLBACK(ui_key_pressed), NULL);
-  g_signal_connect(key_controller, "key-released", G_CALLBACK(ui_key_released), NULL);
+  g_signal_connect(key_controller, "key-pressed", G_CALLBACK(ui_key_pressed), nullptr);
+  g_signal_connect(key_controller, "key-released", G_CALLBACK(ui_key_released), nullptr);
   gtk_widget_add_controller(GTK_WIDGET(gen_ui->window), key_controller);
 
   /* Connect window close signal to properly cleanup when window is closed */
-  g_signal_connect(gen_ui->window, "close-request", G_CALLBACK(ui_window_close_request), NULL);
+  g_signal_connect(gen_ui->window, "close-request", G_CALLBACK(ui_window_close_request), nullptr);
 
-  /* Add idle callback for emulation loop
-     Using g_idle_add instead of gtk_widget_add_tick_callback provides
-     better thread scheduling with SDL2 audio thread, preventing priority conflicts */
-  g_idle_add(ui_idle_callback, NULL);
+  /* Drive the emulation loop from the GTK frame clock so we receive a steady
+     pulse that matches the window's refresh rate (typically vblank). */
+  gtk_widget_add_tick_callback(gen_ui->drawing_area,
+                               ui_tick_callback,
+                               nullptr,
+                               nullptr);
 
   /* Show window */
   gtk_window_present(GTK_WINDOW(gen_ui->window));
@@ -435,14 +480,24 @@ static void ui_create_main_window(GtkApplication *app)
 static void on_open_rom_response(GObject *source, GAsyncResult *result, gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
-  GFile *file = gtk_file_dialog_open_finish(dialog, result, NULL);
+  GFile *file = gtk_file_dialog_open_finish(dialog, result, nullptr);
   if (file) {
     char *filename = g_file_get_path(file);
+
+    /* Stop currently running game before loading new ROM */
+    gen_ui->running = FALSE;
+    soundp_stop();
+
     char *error = gen_loadimage(filename);
     if (error) {
       ui_gtk4_messageerror(error);
+      /* ROM load failed - restart previous ROM and audio */
+      soundp_start();
+      gen_ui->running = TRUE;
     } else {
-      /* ROM loaded successfully, start emulation */
+      /* ROM loaded successfully - restart sound and emulation */
+      soundp_start();
+      gen_reset();
       gen_ui->running = TRUE;
     }
     g_free(filename);
@@ -453,7 +508,7 @@ static void on_open_rom_response(GObject *source, GAsyncResult *result, gpointer
 static void on_save_rom_response(GObject *source, GAsyncResult *result, gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
-  GFile *file = gtk_file_dialog_save_finish(dialog, result, NULL);
+  GFile *file = gtk_file_dialog_save_finish(dialog, result, nullptr);
   if (file) {
     char *filename = g_file_get_path(file);
     /* TODO: Implement ROM save functionality */
@@ -465,7 +520,7 @@ static void on_save_rom_response(GObject *source, GAsyncResult *result, gpointer
 static void on_load_state_response(GObject *source, GAsyncResult *result, gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
-  GFile *file = gtk_file_dialog_open_finish(dialog, result, NULL);
+  GFile *file = gtk_file_dialog_open_finish(dialog, result, nullptr);
   if (file) {
     char *filename = g_file_get_path(file);
     if (state_loadfile(filename) != 0) {
@@ -479,7 +534,7 @@ static void on_load_state_response(GObject *source, GAsyncResult *result, gpoint
 static void on_save_state_response(GObject *source, GAsyncResult *result, gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
-  GFile *file = gtk_file_dialog_save_finish(dialog, result, NULL);
+  GFile *file = gtk_file_dialog_save_finish(dialog, result, nullptr);
   if (file) {
     char *filename = g_file_get_path(file);
     if (state_savefile(filename) != 0) {
@@ -499,8 +554,8 @@ void ui_action_open_rom(GSimpleAction *action, GVariant *parameter, gpointer use
   dialog = gtk_file_dialog_new();
   gtk_file_dialog_set_title(dialog, "Open ROM");
 
-  gtk_file_dialog_open(dialog, GTK_WINDOW(gen_ui->window), NULL,
-                        on_open_rom_response, NULL);
+  gtk_file_dialog_open(dialog, GTK_WINDOW(gen_ui->window), nullptr,
+                        on_open_rom_response, nullptr);
 }
 
 void ui_action_save_rom(GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -510,8 +565,8 @@ void ui_action_save_rom(GSimpleAction *action, GVariant *parameter, gpointer use
   dialog = gtk_file_dialog_new();
   gtk_file_dialog_set_title(dialog, "Save ROM");
 
-  gtk_file_dialog_save(dialog, GTK_WINDOW(gen_ui->window), NULL,
-                        on_save_rom_response, NULL);
+  gtk_file_dialog_save(dialog, GTK_WINDOW(gen_ui->window), nullptr,
+                        on_save_rom_response, nullptr);
 }
 
 void ui_action_load_state(GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -521,8 +576,8 @@ void ui_action_load_state(GSimpleAction *action, GVariant *parameter, gpointer u
   dialog = gtk_file_dialog_new();
   gtk_file_dialog_set_title(dialog, "Load State");
 
-  gtk_file_dialog_open(dialog, GTK_WINDOW(gen_ui->window), NULL,
-                        on_load_state_response, NULL);
+  gtk_file_dialog_open(dialog, GTK_WINDOW(gen_ui->window), nullptr,
+                        on_load_state_response, nullptr);
 }
 
 void ui_action_save_state(GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -532,8 +587,8 @@ void ui_action_save_state(GSimpleAction *action, GVariant *parameter, gpointer u
   dialog = gtk_file_dialog_new();
   gtk_file_dialog_set_title(dialog, "Save State");
 
-  gtk_file_dialog_save(dialog, GTK_WINDOW(gen_ui->window), NULL,
-                        on_save_state_response, NULL);
+  gtk_file_dialog_save(dialog, GTK_WINDOW(gen_ui->window), nullptr,
+                        on_save_state_response, nullptr);
 }
 
 void ui_action_reset(GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -554,13 +609,47 @@ void ui_action_pause(GSimpleAction *action, GVariant *parameter, gpointer user_d
 
   paused = !paused;
   gen_ui->running = !paused;
+
+  /* Pause or resume audio playback */
+  if (paused) {
+    soundp_pause();
+  } else {
+    soundp_resume();
+  }
+
   g_simple_action_set_state(action, g_variant_new_boolean(paused));
 }
 
 void ui_action_preferences(GSimpleAction *action, GVariant *parameter, gpointer user_data)
 {
-  /* TODO: Implement preferences dialog */
-  ui_gtk4_messageinfo("Preferences dialog not yet implemented");
+  (void)action;
+  (void)parameter;
+  (void)user_data;
+
+  if (!gen_ui || !gen_ui->window)
+    return;
+
+  if (!gen_ui->prefs_window)
+    ui_gtk4_ensure_preferences_window();
+  else {
+    ui_gtk4_rebuild_audio_driver_model();
+    if (gen_ui->audio_driver_row && gen_ui->audio_driver_model) {
+      g_signal_handlers_block_by_func(G_OBJECT(gen_ui->audio_driver_row), ui_gtk4_on_audio_driver_changed, nullptr);
+      adw_combo_row_set_model(ADW_COMBO_ROW(gen_ui->audio_driver_row),
+                              G_LIST_MODEL(gen_ui->audio_driver_model));
+      guint index = ui_gtk4_find_driver_index(gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto");
+      if (index != GTK_INVALID_LIST_POSITION) {
+        adw_combo_row_set_selected(ADW_COMBO_ROW(gen_ui->audio_driver_row), index);
+      }
+      g_signal_handlers_unblock_by_func(G_OBJECT(gen_ui->audio_driver_row), ui_gtk4_on_audio_driver_changed, nullptr);
+    }
+  }
+
+  if (!gen_ui->prefs_window)
+    return;
+
+  ui_gtk4_update_audio_backend_subtitle();
+  gtk_window_present(GTK_WINDOW(gen_ui->prefs_window));
 }
 
 void ui_action_about(GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -574,7 +663,7 @@ void ui_action_about(GSimpleAction *action, GVariant *parameter, gpointer user_d
                          "copyright", "© 1997-2003 James Ponder",
                          "license-type", GTK_LICENSE_GPL_2_0,
                          "comments", "Sega Genesis / Mega Drive Emulator",
-                         NULL);
+                         nullptr);
 }
 
 void ui_action_quit(GSimpleAction *action, GVariant *parameter, gpointer user_data)
@@ -651,34 +740,97 @@ static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data)
 
 /*** Input handling ***/
 
+/* Default keyboard mappings for two players
+   Player 1: Arrow keys + Z/X/C/Enter
+   Player 2: WASD + J/K/L/Space */
+static const struct {
+  guint up, down, left, right, a, b, c, start;
+} default_keys[2] = {
+  {GDK_KEY_Up, GDK_KEY_Down, GDK_KEY_Left, GDK_KEY_Right,
+   GDK_KEY_z, GDK_KEY_x, GDK_KEY_c, GDK_KEY_Return},
+  {GDK_KEY_w, GDK_KEY_s, GDK_KEY_a, GDK_KEY_d,
+   GDK_KEY_j, GDK_KEY_k, GDK_KEY_l, GDK_KEY_space}
+};
+
+static void ui_update_controller_from_keys(int player, guint keyval, gboolean pressed)
+{
+  if (player < 0 || player > 1)
+    return;
+
+  /* Get configured keys or use defaults */
+  t_gtk4keys *keys = &gen_ui->controllers[player];
+
+  /* Check which button this key corresponds to and update mem68k_cont */
+  if (keyval == keys->up || keyval == default_keys[player].up) {
+    mem68k_cont[player].up = pressed ? 1 : 0;
+  } else if (keyval == keys->down || keyval == default_keys[player].down) {
+    mem68k_cont[player].down = pressed ? 1 : 0;
+  } else if (keyval == keys->left || keyval == default_keys[player].left) {
+    mem68k_cont[player].left = pressed ? 1 : 0;
+  } else if (keyval == keys->right || keyval == default_keys[player].right) {
+    mem68k_cont[player].right = pressed ? 1 : 0;
+  } else if (keyval == keys->a || keyval == default_keys[player].a) {
+    mem68k_cont[player].a = pressed ? 1 : 0;
+  } else if (keyval == keys->b || keyval == default_keys[player].b) {
+    mem68k_cont[player].b = pressed ? 1 : 0;
+  } else if (keyval == keys->c || keyval == default_keys[player].c) {
+    mem68k_cont[player].c = pressed ? 1 : 0;
+  } else if (keyval == keys->start || keyval == default_keys[player].start) {
+    mem68k_cont[player].start = pressed ? 1 : 0;
+  }
+}
+
 static gboolean ui_key_pressed(GtkEventControllerKey *controller, guint keyval,
                                 guint keycode, GdkModifierType state, gpointer user_data)
 {
-  /* TODO: Implement emulator key handling */
+  /* Update controller state for both players */
+  ui_update_controller_from_keys(0, keyval, TRUE);
+  ui_update_controller_from_keys(1, keyval, TRUE);
+
+  /* Don't consume the event - allow GTK to handle it for menu accelerators, etc. */
   return FALSE;
 }
 
 static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval,
                                  guint keycode, GdkModifierType state, gpointer user_data)
 {
-  /* TODO: Implement emulator key handling */
+  /* Update controller state for both players */
+  ui_update_controller_from_keys(0, keyval, FALSE);
+  ui_update_controller_from_keys(1, keyval, FALSE);
+
   return FALSE;
 }
 
 /*** Emulation loop ***/
 
-static gboolean ui_idle_callback(gpointer user_data)
+static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock, gpointer user_data)
 {
-  static gint64 last_frame_time = 0;
   gint64 current_time;
   gint64 elapsed_us;
   gint64 frame_duration_us;
   int pending_samples;
+  static int min_pending = INT_MAX;
+  static int frames_tracked = 0;
 
-  /* Stop the idle callback if quitting or not running
-     Return G_SOURCE_REMOVE to stop being called, not G_SOURCE_CONTINUE */
-  if (!gen_ui->running || gen_quit)
+  (void)widget;
+  (void)user_data;
+
+  if (frame_clock) {
+    current_time = gdk_frame_clock_get_frame_time(frame_clock);
+  } else {
+    current_time = g_get_monotonic_time();
+  }
+
+  if (gen_quit)
     return G_SOURCE_REMOVE;
+
+  if (!gen_ui->running) {
+    /* Keep timestamps in sync so we don't try to "catch up" when resuming. */
+    gen_ui->last_frame_time = 0;
+    gen_ui->frames_recorded = 0;
+    gen_ui->fps_index = 0;
+    return G_SOURCE_CONTINUE;
+  }
 
   /* Process SDL events with non-blocking SDL_PollEvent (called in ui_sdl_events)
      This is the recommended pattern for GTK+SDL2 integration to avoid blocking
@@ -686,10 +838,8 @@ static gboolean ui_idle_callback(gpointer user_data)
   ui_sdl_events();
 
   /* Get current time in microseconds for frame timing */
-  current_time = g_get_monotonic_time();
-
-  if (last_frame_time == 0) {
-    last_frame_time = current_time;
+  if (gen_ui->last_frame_time == 0) {
+    gen_ui->last_frame_time = current_time;
   }
 
   /* Calculate frame duration based on Genesis timing
@@ -703,11 +853,20 @@ static gboolean ui_idle_callback(gpointer user_data)
     frame_duration_us = vdp_pal ? 20000 : 16667;
   }
 
-  elapsed_us = current_time - last_frame_time;
+  elapsed_us = current_time - gen_ui->last_frame_time;
 
   /* Check sound buffer status to prevent overflow
      This provides backpressure to maintain audio/video sync */
   pending_samples = soundp_samplesbuffered();
+  if (pending_samples < min_pending)
+    min_pending = pending_samples;
+  frames_tracked++;
+  if (frames_tracked >= 120) {
+    fprintf(stderr, "GTK4 audio telemetry: min_buffer=%d threshold=%u feedback=%d rate=%.4f\n",
+            min_pending, sound_threshold, sound_feedback, gen_ui->rate_adjust);
+    min_pending = INT_MAX;
+    frames_tracked = 0;
+  }
 
   /* If sound buffer is too full (more than 2x threshold), skip this frame
      to let audio catch up and prevent buffer overflow */
@@ -715,95 +874,97 @@ static gboolean ui_idle_callback(gpointer user_data)
     return G_SOURCE_CONTINUE;
   }
 
-  /* Only execute frame if enough time has elapsed
-     Using g_idle_add provides better integration with SDL2 audio thread
-     compared to GdkFrameClock, avoiding thread priority conflicts */
-  if (elapsed_us >= frame_duration_us) {
+  int frames_to_run = 0;
+  if (elapsed_us >= frame_duration_us)
+    frames_to_run = 1;
+
+  if (pending_samples < (int)sound_threshold) {
+    if (frames_to_run == 0)
+      frames_to_run = 1;
+    if (pending_samples < (int)(sound_threshold * 0.60))
+      frames_to_run += 2;
+    else if (pending_samples < (int)(sound_threshold * 0.80))
+      frames_to_run += 1;
+  }
+
+  if (frames_to_run > 3)
+    frames_to_run = 3;
+
+  for (int frame_iter = 0; frame_iter < frames_to_run; frame_iter++) {
+    if (frame_iter > 0) {
+      current_time = g_get_monotonic_time();
+      elapsed_us = current_time - gen_ui->last_frame_time;
+    }
+
+    /* Skip if we're already caught up and buffer is healthy */
+    if (frame_iter > 0 && pending_samples >= (int)(sound_threshold * 1.05))
+      break;
+
     ui_newframe();
     event_doframe();
     gtk_widget_queue_draw(gen_ui->drawing_area);
 
-    /* Update last frame time
-       Using current_time rather than += frame_duration_us
-       avoids accumulating timing errors over long sessions */
-    last_frame_time = current_time;
+    /* Update last frame time */
+    gen_ui->last_frame_time = current_time;
+
+    /* Re-sample buffer occupancy after producing audio */
+    pending_samples = soundp_samplesbuffered();
 
     /* Record frame timestamp for FPS measurement (dynamic rate control) */
     if (gen_ui->dynamic_rate_control) {
       gen_ui->fps_times[gen_ui->fps_index] = current_time;
 
-      /* Track how many frames we've recorded */
-      static int frames_recorded = 0;
-      if (frames_recorded < 60) {
-        frames_recorded++;
+      if (gen_ui->frames_recorded < 60) {
+        gen_ui->frames_recorded++;
       }
 
       gen_ui->fps_index = (gen_ui->fps_index + 1) % 60;
 
-      /* Calculate measured FPS from last 60 frames
-         Only calculate after we have filled the buffer (60 frames) */
-      if (frames_recorded >= 60) {
-        /* Find oldest and newest timestamps */
-        int oldest_idx = gen_ui->fps_index; /* Next slot to write is oldest data */
-        int newest_idx = (gen_ui->fps_index + 59) % 60; /* Previous slot */
-
+      if (gen_ui->frames_recorded >= 60) {
+        int oldest_idx = gen_ui->fps_index;
+        int newest_idx = (gen_ui->fps_index + 59) % 60;
         gint64 time_span = gen_ui->fps_times[newest_idx] - gen_ui->fps_times[oldest_idx];
 
-        /* Calculate FPS: 59 frame intervals over time_span microseconds
-           FPS = (59 frames) / (time_span / 1,000,000 seconds) */
-        if (time_span > 0) {
+        if (time_span > 1000) {
           gen_ui->measured_fps = 59.0 * 1000000.0 / (double)time_span;
 
-          /* Dynamic rate calculation: adjust emulation speed to maintain sync
-             This is simpler than audio resampling and works well for emulators */
-
-          /* Get target FPS based on PAL/NTSC mode */
           double target_fps = vdp_pal ? 50.0 : 59.94;
-
-          /* Calculate how far off we are from target */
           double fps_error = (gen_ui->measured_fps - target_fps) / target_fps;
-
-          /* Check audio buffer status for additional adjustment
-             Target: maintain buffer at sound_threshold level */
           double buffer_ratio = (double)pending_samples / (double)sound_threshold;
-          double buffer_error = buffer_ratio - 1.0; /* >0 means too full, <0 means too empty */
+          double buffer_error = buffer_ratio - 1.0;
+          double total_error = (fps_error * 0.25) + (buffer_error * 0.75);
 
-          /* Combine both errors: fps_error tells us emulation speed,
-             buffer_error tells us audio sync status
-             Weight buffer_error more heavily (2x) as audio is the master clock */
-          double total_error = (fps_error * 0.3) + (buffer_error * 0.7);
+          double adaptive_delta = gen_ui->rate_delta;
+          if (buffer_error < -0.40) {
+            adaptive_delta = 0.08;
+          } else if (buffer_error < -0.20 && adaptive_delta < 0.05) {
+            adaptive_delta = 0.05;
+          } else if (buffer_error > 0.50 && adaptive_delta < 0.05) {
+            adaptive_delta = 0.05;
+          }
 
-          /* Apply rate adjustment with limiting to ±rate_delta
-             If total_error > 0: we're running too fast or buffer too full → slow down
-             If total_error < 0: we're running too slow or buffer too empty → speed up */
-          double new_rate_adjust = gen_ui->rate_adjust * (1.0 - total_error * 0.1);
+          double new_rate_adjust = gen_ui->rate_adjust * (1.0 + total_error * 0.25);
 
-          /* Clamp to ±rate_delta (default ±0.5%) */
-          double min_rate = 1.0 - gen_ui->rate_delta;
-          double max_rate = 1.0 + gen_ui->rate_delta;
+          double min_rate = 1.0 - adaptive_delta;
+          double max_rate = 1.0 + adaptive_delta;
           if (new_rate_adjust < min_rate) new_rate_adjust = min_rate;
           if (new_rate_adjust > max_rate) new_rate_adjust = max_rate;
 
-          /* Smooth the adjustment with exponential moving average
-             This prevents rapid oscillations */
           gen_ui->rate_adjust = gen_ui->rate_adjust * 0.9 + new_rate_adjust * 0.1;
 
-          /* Debug logging every 60 frames (about once per second) */
-          static int debug_counter = 0;
-          debug_counter++;
-          if (debug_counter >= 60) {
+          gen_ui->debug_counter++;
+          if (gen_ui->debug_counter >= 60) {
             fprintf(stderr, "DRC: FPS=%.2f (target=%.2f) buffer=%d/%d ratio=%.2f rate_adjust=%.4f\n",
                     gen_ui->measured_fps, target_fps, pending_samples, sound_threshold,
                     buffer_ratio, gen_ui->rate_adjust);
-            debug_counter = 0;
+            gen_ui->debug_counter = 0;
           }
         }
       }
     }
   }
 
-  /* Callback will be invoked again when idle, allowing GTK events
-     and SDL2 audio thread to run without blocking */
+  /* GTK's frame clock will invoke us again next refresh, keeping pacing steady. */
   return G_SOURCE_CONTINUE;
 }
 
@@ -842,9 +1003,9 @@ static void ui_newframe(void)
     /* Not in interlace mode, or in interlace mode on even field */
     gen_ui->plotfield = FALSE;
     if (gen_ui->frameskip == 0) {
-      /* Dynamic frameskip: always plot unless sound is way ahead
-         sound_feedback: -1 = need more sound, 0 = have enough sound */
-      gen_ui->plotfield = TRUE;  /* Always render in dynamic mode */
+      /* Hold rendering when audio buffer is starving to let emulation catch up */
+      if (sound_feedback != -1)
+        gen_ui->plotfield = TRUE;
     } else {
       if (cpu68k_frames % (gen_ui->frameskip + 1) == 0)
         gen_ui->plotfield = TRUE;
@@ -976,63 +1137,53 @@ static void ui_rendertoscreen(void)
   case 2:                    /* invalid */
     /* Apply upscaling if enabled, otherwise simple copy */
     if (gen_ui->filter_type != FILTER_NONE && gen_ui->scale_factor > 1) {
-      /* Allocate temporary buffer for source data (compact, no stride) */
-      uint32 *src_buffer = malloc(nominalwidth * vdp_vislines * sizeof(uint32));
-      if (src_buffer) {
-        /* Extract source pixels from newscreen (remove stride) */
+      /* Use pre-allocated buffers instead of malloc/free per frame
+         Extract source pixels from newscreen (remove stride) */
+      for (line = 0; line < vdp_vislines; line++) {
+        newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
+        memcpy(gen_ui->upscale_src_buffer + line * nominalwidth, newlinedata, nominalwidth * sizeof(uint32));
+      }
+
+      /* Calculate scaled dimensions */
+      unsigned int scaled_width = nominalwidth * gen_ui->scale_factor;
+      unsigned int scaled_height = vdp_vislines * gen_ui->scale_factor;
+
+      /* Apply the selected upscaling filter using pre-allocated destination buffer */
+      switch (gen_ui->filter_type) {
+      case FILTER_SCALE2X:
+        uiplot_scale2x_frame32(gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+        break;
+      case FILTER_SCALE3X:
+        uiplot_scale3x_frame32(gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+        break;
+      case FILTER_SCALE4X:
+        uiplot_scale4x_frame32(gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
+        break;
+      case FILTER_XBRZ2X:
+        uiplot_xbrz_frame32(2, gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines);
+        break;
+      case FILTER_XBRZ3X:
+        uiplot_xbrz_frame32(3, gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines);
+        break;
+      case FILTER_XBRZ4X:
+        uiplot_xbrz_frame32(4, gen_ui->upscale_src_buffer, gen_ui->upscale_dst_buffer, nominalwidth, vdp_vislines);
+        break;
+      default:
+        /* Fallback: simple copy without scaling */
         for (line = 0; line < vdp_vislines; line++) {
-          newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
-          memcpy(src_buffer + line * nominalwidth, newlinedata, nominalwidth * sizeof(uint32));
+          memcpy(gen_ui->upscale_dst_buffer + line * scaled_width,
+                 gen_ui->upscale_src_buffer + line * nominalwidth,
+                 nominalwidth * sizeof(uint32));
         }
+        break;
+      }
 
-        /* Calculate scaled dimensions */
-        unsigned int scaled_width = nominalwidth * gen_ui->scale_factor;
-        unsigned int scaled_height = vdp_vislines * gen_ui->scale_factor;
-
-        /* Allocate temporary scaled buffer */
-        uint32 *scaled_buffer = malloc(scaled_width * scaled_height * sizeof(uint32));
-        if (scaled_buffer) {
-          /* Apply the selected upscaling filter */
-          switch (gen_ui->filter_type) {
-          case FILTER_SCALE2X:
-            uiplot_scale2x_frame32(src_buffer, scaled_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
-            break;
-          case FILTER_SCALE3X:
-            uiplot_scale3x_frame32(src_buffer, scaled_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
-            break;
-          case FILTER_SCALE4X:
-            uiplot_scale4x_frame32(src_buffer, scaled_buffer, nominalwidth, vdp_vislines, scaled_width * 4);
-            break;
-          case FILTER_XBRZ2X:
-            uiplot_xbrz_frame32(2, src_buffer, scaled_buffer, nominalwidth, vdp_vislines);
-            break;
-          case FILTER_XBRZ3X:
-            uiplot_xbrz_frame32(3, src_buffer, scaled_buffer, nominalwidth, vdp_vislines);
-            break;
-          case FILTER_XBRZ4X:
-            uiplot_xbrz_frame32(4, src_buffer, scaled_buffer, nominalwidth, vdp_vislines);
-            break;
-          default:
-            /* Fallback: simple copy without scaling */
-            for (line = 0; line < vdp_vislines; line++) {
-              memcpy(scaled_buffer + line * scaled_width,
-                     src_buffer + line * nominalwidth,
-                     nominalwidth * sizeof(uint32));
-            }
-            break;
-          }
-
-          /* Copy scaled data to write buffer with proper offsets */
-          unsigned int scaled_yoffset = yoffset * gen_ui->scale_factor;
-          unsigned int scaled_xoffset = xoffset * gen_ui->scale_factor;
-          for (line = 0; line < scaled_height; line++) {
-            screen = write_buffer + ((line + scaled_yoffset) * HMAXSIZE + scaled_xoffset) * 4;
-            memcpy(screen, scaled_buffer + line * scaled_width, scaled_width * sizeof(uint32));
-          }
-
-          free(scaled_buffer);
-        }
-        free(src_buffer);
+      /* Copy scaled data to write buffer with proper offsets */
+      unsigned int scaled_yoffset = yoffset * gen_ui->scale_factor;
+      unsigned int scaled_xoffset = xoffset * gen_ui->scale_factor;
+      for (line = 0; line < scaled_height; line++) {
+        screen = write_buffer + ((line + scaled_yoffset) * HMAXSIZE + scaled_xoffset) * 4;
+        memcpy(screen, gen_ui->upscale_dst_buffer + line * scaled_width, scaled_width * sizeof(uint32));
       }
     } else {
       /* No upscaling - simple rendering */
@@ -1100,9 +1251,436 @@ static void ui_simpleplot(void)
 static void ui_sdl_events(void)
 {
   SDL_Event event;
+
   while (SDL_PollEvent(&event)) {
-    /* TODO: Handle SDL joystick events */
+    switch (event.type) {
+      case SDL_JOYAXISMOTION:
+        /* Handle joystick axis movement (D-pad or analog stick)
+           SDL joystick axes: 0 = left/right, 1 = up/down
+           Values: -32768 (left/up) to +32767 (right/down) */
+        {
+          int player = event.jaxis.which;  /* Joystick index (0 or 1) */
+          if (player > 1)
+            break;  /* Only support 2 players */
+
+          /* Use deadzone to avoid drift */
+          const int deadzone = 8000;
+
+          if (event.jaxis.axis == 0) {
+            /* Horizontal axis */
+            if (event.jaxis.value < -deadzone) {
+              mem68k_cont[player].left = 1;
+              mem68k_cont[player].right = 0;
+            } else if (event.jaxis.value > deadzone) {
+              mem68k_cont[player].left = 0;
+              mem68k_cont[player].right = 1;
+            } else {
+              mem68k_cont[player].left = 0;
+              mem68k_cont[player].right = 0;
+            }
+          } else if (event.jaxis.axis == 1) {
+            /* Vertical axis */
+            if (event.jaxis.value < -deadzone) {
+              mem68k_cont[player].up = 1;
+              mem68k_cont[player].down = 0;
+            } else if (event.jaxis.value > deadzone) {
+              mem68k_cont[player].up = 0;
+              mem68k_cont[player].down = 1;
+            } else {
+              mem68k_cont[player].up = 0;
+              mem68k_cont[player].down = 0;
+            }
+          }
+        }
+        break;
+
+      case SDL_JOYBUTTONDOWN:
+      case SDL_JOYBUTTONUP:
+        /* Handle joystick button presses
+           Standard Genesis controller mapping:
+           Button 0 = A, Button 1 = B, Button 2 = C
+           Button 3 = Start, Button 4 = X (6-button), Button 5 = Y, Button 6 = Z */
+        {
+          int player = event.jbutton.which;
+          if (player > 1)
+            break;
+
+          gboolean pressed = (event.type == SDL_JOYBUTTONDOWN);
+
+          switch (event.jbutton.button) {
+            case 0:  /* Button A */
+              mem68k_cont[player].a = pressed ? 1 : 0;
+              break;
+            case 1:  /* Button B */
+              mem68k_cont[player].b = pressed ? 1 : 0;
+              break;
+            case 2:  /* Button C */
+            case 4:  /* Alternative C button */
+              mem68k_cont[player].c = pressed ? 1 : 0;
+              break;
+            case 3:  /* Start button */
+            case 7:  /* Alternative start button */
+              mem68k_cont[player].start = pressed ? 1 : 0;
+              break;
+          }
+        }
+        break;
+
+      case SDL_JOYHATMOTION:
+        /* Handle D-pad hat switch (alternative to analog axis)
+           Hat values: SDL_HAT_CENTERED, SDL_HAT_UP, SDL_HAT_DOWN, SDL_HAT_LEFT, SDL_HAT_RIGHT
+           and combinations like SDL_HAT_LEFTUP */
+        {
+          int player = event.jhat.which;
+          if (player > 1)
+            break;
+
+          uint8 hat = event.jhat.value;
+          mem68k_cont[player].up = (hat & SDL_HAT_UP) ? 1 : 0;
+          mem68k_cont[player].down = (hat & SDL_HAT_DOWN) ? 1 : 0;
+          mem68k_cont[player].left = (hat & SDL_HAT_LEFT) ? 1 : 0;
+          mem68k_cont[player].right = (hat & SDL_HAT_RIGHT) ? 1 : 0;
+        }
+        break;
+    }
   }
+}
+
+static gboolean ui_gtk4_driver_is_available(const char *driver_id)
+{
+  if (!driver_id || !*driver_id) {
+    return TRUE;
+  }
+  if (g_ascii_strcasecmp(driver_id, "auto") == 0) {
+    return TRUE;
+  }
+
+  int count = SDL_GetNumAudioDrivers();
+  for (int i = 0; i < count; i++) {
+    const char *candidate = SDL_GetAudioDriver(i);
+    if (candidate && g_ascii_strcasecmp(candidate, driver_id) == 0) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+static char *ui_gtk4_normalize_audio_driver(const char *driver)
+{
+  if (!driver) {
+    return g_strdup("auto");
+  }
+
+  char *copy = g_strdup(driver);
+  g_strstrip(copy);
+  if (*copy == '\0') {
+    g_free(copy);
+    return g_strdup("auto");
+  }
+
+  char *lower = g_ascii_strdown(copy, -1);
+  g_free(copy);
+
+  if (g_strcmp0(lower, "auto") == 0)
+    return lower;
+  if (g_strcmp0(lower, "pulse") == 0) {
+    g_free(lower);
+    return g_strdup("pulseaudio");
+  }
+  if (g_strcmp0(lower, "pipe-wire") == 0) {
+    g_free(lower);
+    return g_strdup("pipewire");
+  }
+  if (g_strcmp0(lower, "pw") == 0) {
+    g_free(lower);
+    return g_strdup("pipewire");
+  }
+  return lower;
+}
+
+static char *ui_gtk4_format_driver_label(const char *driver_id)
+{
+  if (!driver_id || !*driver_id)
+    return g_strdup("Unknown");
+
+  if (g_ascii_strcasecmp(driver_id, "pulseaudio") == 0)
+    return g_strdup("PulseAudio");
+  if (g_ascii_strcasecmp(driver_id, "pipewire") == 0)
+    return g_strdup("PipeWire");
+  if (g_ascii_strcasecmp(driver_id, "alsa") == 0)
+    return g_strdup("ALSA");
+  if (g_ascii_strcasecmp(driver_id, "jack") == 0)
+    return g_strdup("JACK");
+  if (g_ascii_strcasecmp(driver_id, "dummy") == 0)
+    return g_strdup("Dummy (mute)");
+  if (g_ascii_strcasecmp(driver_id, "directsound") == 0)
+    return g_strdup("DirectSound");
+  if (g_ascii_strcasecmp(driver_id, "wasapi") == 0)
+    return g_strdup("WASAPI");
+  if (g_ascii_strcasecmp(driver_id, "coreaudio") == 0)
+    return g_strdup("CoreAudio");
+
+  char *label = g_ascii_strdown(driver_id, -1);
+  gboolean capitalize_next = TRUE;
+  for (char *p = label; *p; ++p) {
+    if (*p == '_' || *p == '-') {
+      *p = ' ';
+      capitalize_next = TRUE;
+      continue;
+    }
+    if (capitalize_next && g_ascii_isalpha(*p)) {
+      *p = g_ascii_toupper(*p);
+      capitalize_next = FALSE;
+    }
+  }
+  if (label[0])
+    label[0] = g_ascii_toupper(label[0]);
+  return label;
+}
+
+static void ui_gtk4_rebuild_audio_driver_model(void)
+{
+  if (!gen_ui)
+    return;
+
+  g_clear_object(&gen_ui->audio_driver_model);
+  if (gen_ui->audio_driver_ids) {
+    g_ptr_array_free(gen_ui->audio_driver_ids, TRUE);
+    gen_ui->audio_driver_ids = nullptr;
+  }
+
+  gen_ui->audio_driver_model = gtk_string_list_new(nullptr);
+  gen_ui->audio_driver_ids = g_ptr_array_new_with_free_func(g_free);
+
+  gtk_string_list_append(gen_ui->audio_driver_model, "Automatic (SDL default)");
+  g_ptr_array_add(gen_ui->audio_driver_ids, g_strdup("auto"));
+
+  int count = SDL_GetNumAudioDrivers();
+  for (int i = 0; i < count; i++) {
+    const char *driver = SDL_GetAudioDriver(i);
+    if (!driver || !*driver)
+      continue;
+
+    gboolean seen = FALSE;
+    for (guint j = 0; j < gen_ui->audio_driver_ids->len; j++) {
+      const char *existing = g_ptr_array_index(gen_ui->audio_driver_ids, j);
+      if (g_ascii_strcasecmp(existing, driver) == 0) {
+        seen = TRUE;
+        break;
+      }
+    }
+    if (seen)
+      continue;
+
+    char *label = ui_gtk4_format_driver_label(driver);
+    gtk_string_list_append(gen_ui->audio_driver_model, label);
+    g_ptr_array_add(gen_ui->audio_driver_ids, g_strdup(driver));
+    g_free(label);
+  }
+}
+
+static guint ui_gtk4_find_driver_index(const char *driver_id)
+{
+  if (!gen_ui || !gen_ui->audio_driver_ids)
+    return GTK_INVALID_LIST_POSITION;
+
+  const char *target = (driver_id && *driver_id) ? driver_id : "auto";
+  for (guint i = 0; i < gen_ui->audio_driver_ids->len; i++) {
+    const char *candidate = g_ptr_array_index(gen_ui->audio_driver_ids, i);
+    if (g_ascii_strcasecmp(candidate, target) == 0)
+      return i;
+  }
+  return GTK_INVALID_LIST_POSITION;
+}
+
+static void ui_gtk4_update_audio_backend_subtitle(void)
+{
+  if (!gen_ui || !gen_ui->audio_driver_row)
+    return;
+
+  char *subtitle = nullptr;
+  if (!sound_on) {
+    subtitle = g_strdup("Sound disabled");
+  } else {
+    const char *current = SDL_GetCurrentAudioDriver();
+    if (!current) {
+      subtitle = g_strdup("Active backend: (not initialised)");
+    } else {
+      char *label = ui_gtk4_format_driver_label(current);
+      subtitle = g_strdup_printf("Active backend: %s", label);
+      g_free(label);
+    }
+  }
+
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(gen_ui->audio_driver_row),
+                              subtitle ? subtitle : "Active backend: Unknown");
+  g_free(subtitle);
+}
+
+static gboolean ui_gtk4_apply_audio_driver(const char *requested, gboolean restart_audio, gboolean persist_config)
+{
+  if (!gen_ui)
+    return FALSE;
+
+  char *target = ui_gtk4_normalize_audio_driver(requested);
+  if (!target)
+    target = g_strdup("auto");
+
+  if (g_strcmp0(target, "auto") != 0 && !ui_gtk4_driver_is_available(target)) {
+    fprintf(stderr, "Requested audio backend '%s' is not available; falling back to SDL default.\n", target);
+    g_free(target);
+    target = g_strdup("auto");
+  }
+
+  const char *current = gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto";
+  gboolean driver_changed = (g_ascii_strcasecmp(current, target) != 0);
+
+  if (!driver_changed) {
+    if (persist_config)
+      gtkopts_setvalue("audio_driver", target);
+    g_free(target);
+    return TRUE;
+  }
+
+  char *previous = g_strdup(current);
+
+  if (restart_audio) {
+    sound_stop();
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+  }
+
+  if (g_strcmp0(target, "auto") == 0) {
+    g_unsetenv("SDL_AUDIODRIVER");
+  } else {
+    g_setenv("SDL_AUDIODRIVER", target, TRUE);
+  }
+
+  gboolean restart_ok = TRUE;
+  if (restart_audio && sound_on) {
+    if (sound_start() != 0) {
+      restart_ok = FALSE;
+    } else if (!gen_ui->running) {
+      soundp_pause();
+    }
+  }
+
+  if (!restart_ok) {
+    if (g_strcmp0(previous, "auto") == 0) {
+      g_unsetenv("SDL_AUDIODRIVER");
+    } else {
+      g_setenv("SDL_AUDIODRIVER", previous, TRUE);
+    }
+    if (sound_on) {
+      SDL_QuitSubSystem(SDL_INIT_AUDIO);
+      if (sound_start() != 0) {
+        ui_gtk4_messageerror("Failed to recover audio after backend change. Sound output may be unavailable until restart.");
+      } else if (!gen_ui->running) {
+        soundp_pause();
+      }
+    }
+    if (persist_config)
+      gtkopts_setvalue("audio_driver", previous);
+    ui_gtk4_update_audio_backend_subtitle();
+    g_free(previous);
+    g_free(target);
+    return FALSE;
+  }
+
+  if (driver_changed) {
+    fprintf(stderr, "Audio backend preference set to: %s\n",
+            g_strcmp0(target, "auto") == 0 ? "auto (SDL default)" : target);
+  }
+
+  if (persist_config)
+    gtkopts_setvalue("audio_driver", target);
+
+  g_free(gen_ui->audio_driver_selection);
+  gen_ui->audio_driver_selection = g_strdup(target);
+
+  if (restart_audio)
+    ui_gtk4_update_audio_backend_subtitle();
+
+  g_free(previous);
+  g_free(target);
+  return TRUE;
+}
+
+static void ui_gtk4_on_audio_driver_changed(GObject *row_object, GParamSpec *pspec, gpointer user_data)
+{
+  (void)pspec;
+  (void)user_data;
+
+  if (!gen_ui || !gen_ui->audio_driver_ids)
+    return;
+
+  AdwComboRow *row = ADW_COMBO_ROW(row_object);
+  guint index = adw_combo_row_get_selected(row);
+  if (index == GTK_INVALID_LIST_POSITION)
+    return;
+
+  const char *selected_id = g_ptr_array_index(gen_ui->audio_driver_ids, index);
+  const char *current = gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto";
+
+  if (g_ascii_strcasecmp(selected_id, current) == 0)
+    return;
+
+  if (!ui_gtk4_apply_audio_driver(selected_id, TRUE, TRUE)) {
+    guint fallback = ui_gtk4_find_driver_index(current);
+    g_signal_handlers_block_by_func(G_OBJECT(row), ui_gtk4_on_audio_driver_changed, nullptr);
+    if (fallback != GTK_INVALID_LIST_POSITION) {
+      adw_combo_row_set_selected(row, fallback);
+    }
+    g_signal_handlers_unblock_by_func(G_OBJECT(row), ui_gtk4_on_audio_driver_changed, nullptr);
+  } else {
+    ui_gtk4_update_audio_backend_subtitle();
+  }
+}
+
+static void ui_gtk4_ensure_preferences_window(void)
+{
+  if (!gen_ui)
+    return;
+
+  if (gen_ui->prefs_window)
+    return;
+
+  AdwPreferencesWindow *prefs = ADW_PREFERENCES_WINDOW(adw_preferences_window_new());
+  gtk_window_set_title(GTK_WINDOW(prefs), "Preferences");
+  gtk_window_set_transient_for(GTK_WINDOW(prefs), GTK_WINDOW(gen_ui->window));
+  gtk_window_set_modal(GTK_WINDOW(prefs), TRUE);
+  gtk_window_set_hide_on_close(GTK_WINDOW(prefs), TRUE);
+
+  GtkWidget *audio_page = adw_preferences_page_new();
+  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(audio_page), "Audio");
+
+  GtkWidget *audio_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(audio_group), "Output");
+  adw_preferences_group_set_description(
+    ADW_PREFERENCES_GROUP(audio_group),
+    "Select the SDL audio backend. Changes take effect immediately.");
+
+  ui_gtk4_rebuild_audio_driver_model();
+
+  AdwComboRow *row = ADW_COMBO_ROW(adw_combo_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(row), "Audio Backend");
+  adw_combo_row_set_model(row, G_LIST_MODEL(gen_ui->audio_driver_model));
+  adw_combo_row_set_use_subtitle(row, TRUE);
+
+  gen_ui->audio_driver_row = GTK_WIDGET(row);
+
+  guint selected = ui_gtk4_find_driver_index(gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto");
+  if (selected != GTK_INVALID_LIST_POSITION) {
+    adw_combo_row_set_selected(row, selected);
+  }
+
+  g_signal_connect(row, "notify::selected", G_CALLBACK(ui_gtk4_on_audio_driver_changed), nullptr);
+
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(audio_group), GTK_WIDGET(row));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(audio_page), ADW_PREFERENCES_GROUP(audio_group));
+  adw_preferences_window_add(prefs, ADW_PREFERENCES_PAGE(audio_page));
+
+  gen_ui->prefs_window = GTK_WIDGET(prefs);
+  ui_gtk4_update_audio_backend_subtitle();
 }
 
 /*** Utility functions ***/
@@ -1115,7 +1693,7 @@ void ui_gtk4_newoptions(void)
 void ui_gtk4_messageinfo(const char *msg)
 {
   if (gen_ui && gen_ui->window) {
-    AdwDialog *dialog = adw_alert_dialog_new(NULL, msg);
+    AdwDialog *dialog = adw_alert_dialog_new(nullptr, msg);
     adw_alert_dialog_add_response(ADW_ALERT_DIALOG(dialog), "ok", "OK");
     adw_dialog_present(dialog, GTK_WIDGET(gen_ui->window));
   } else {

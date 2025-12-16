@@ -8,7 +8,11 @@
    there too - probably being far too picky and it isn't exactly perfect
    anyway */
 
-/* to do: fix F flag in status register */
+/* FIFO implementation notes:
+ * The Genesis VDP has a 4-entry write FIFO. Writes to VRAM/CRAM/VSRAM go into
+ * the FIFO and are processed during active display. The FIFO drains at roughly
+ * 1 entry per 2 scanlines during active display (faster during blank).
+ * Status register bits 8-9 report FIFO full/empty state. */
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -76,8 +80,10 @@ uint16 vdp_second;              /* second word of address set */
 uint8 vdp_reg[25];
 static int vdp_collision;       /* set during a sprite collision */
 static int vdp_overflow;        /* set when too many sprites in one line */
-static int vdp_fifofull;        /* set when write fifo full */
-static int vdp_fifoempty;       /* set when write fifo empty */
+static int vdp_fifofull;        /* set when write fifo full (4 entries) */
+static int vdp_fifoempty;       /* set when write fifo empty (0 entries) */
+static int vdp_fifo_count;      /* number of entries in FIFO (0-4) */
+#define VDP_FIFO_SIZE 4         /* Genesis VDP has 4-entry FIFO */
 static int vdp_complex;         /* set when simple routines can't cope */
 
 /*** forward references ***/
@@ -107,6 +113,29 @@ void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata);
 #define PRIBIT_LAYERB 0
 #define PRIBIT_LAYERA 1
 #define PRIBIT_SPRITE 2
+
+/*** vdp_fifo_add - add an entry to the FIFO (called on VDP writes) ***/
+
+static void vdp_fifo_add(void)
+{
+  if (vdp_fifo_count < VDP_FIFO_SIZE) {
+    vdp_fifo_count++;
+  }
+  vdp_fifoempty = (vdp_fifo_count == 0) ? 1 : 0;
+  vdp_fifofull = (vdp_fifo_count >= VDP_FIFO_SIZE) ? 1 : 0;
+}
+
+/*** vdp_fifo_drain - drain FIFO entries (called during display) ***/
+
+void vdp_fifo_drain(int count)
+{
+  vdp_fifo_count -= count;
+  if (vdp_fifo_count < 0) {
+    vdp_fifo_count = 0;
+  }
+  vdp_fifoempty = (vdp_fifo_count == 0) ? 1 : 0;
+  vdp_fifofull = (vdp_fifo_count >= VDP_FIFO_SIZE) ? 1 : 0;
+}
 
 /*** vdp_init - initialise this sub-unit ***/
 
@@ -165,6 +194,7 @@ void vdp_reset(void)
   vdp_collision = 0;
   vdp_overflow = 0;
   vdp_vsync = 0;
+  vdp_fifo_count = 0;
   vdp_fifofull = 0;
   vdp_fifoempty = 1;
   vdp_ctrlflag = 0;
@@ -295,7 +325,11 @@ void vdp_storectrl(uint16 data)
         vdp_dmabusy = 0;        /* 68k was frozen */
         break;
       case 2:                  /* VRAM fill */
-        /* later folks */
+        /* VRAM fill is triggered by the next data write to VDP.
+         * vdp_dmabusy remains set (from line 306 above), and when
+         * vdp_storedata() is called, it detects vdp_dmabusy and
+         * calls vdp_dma_fill() to perform the actual fill operation.
+         * See vdp_storedata() for the fill trigger logic. */
         break;
       case 3:                  /* VRAM copy */
         vdp_dma_vramcopy();
@@ -442,16 +476,19 @@ void vdp_storedata(uint16 data)
   case cd_vram_store:
     sdata = (vdp_address & 1) ? SWAP16(data) : data;    /* only for VRAM */
     *(uint16 *)(vdp_vram + (vdp_address & 0xfffe)) = LOCENDIAN16(sdata);
+    vdp_fifo_add();  /* Track FIFO entry */
     break;
   case cd_cram_store:
     address = vdp_address & 0x7e;       /* address lines used */
     *(uint16 *)(vdp_cram + address) = LOCENDIAN16(data);
     vdp_cramf[address >> 1] = 1;
+    vdp_fifo_add();  /* Track FIFO entry */
     break;
   case cd_vsram_store:
     address = vdp_address & 0x7e;       /* address lines used */
     if (address < LEN_VSRAM)
       *(uint16 *)(vdp_vsram + address) = LOCENDIAN16(data);
+    vdp_fifo_add();  /* Track FIFO entry */
     break;
   default:                     /* undefined */
     LOG_NORMAL(("%08X [VDP] Bad word store to %08X of type %d data = %04X",

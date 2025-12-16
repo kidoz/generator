@@ -182,10 +182,10 @@ static UINT32 dwElapsedTicks = 0;
  * Retrocade guts stuff
  * ***************************************************************************
  */
-static struct MemoryReadByte *z80MemoryRead = NULL;
-static struct MemoryWriteByte *z80MemoryWrite = NULL;
-static struct z80PortRead *z80IoRead = NULL;
-static struct z80PortWrite *z80IoWrite = NULL;
+static struct MemoryReadByte *z80MemoryRead = nullptr;
+static struct MemoryWriteByte *z80MemoryWrite = nullptr;
+static struct z80PortRead *z80IoRead = nullptr;
+static struct z80PortWrite *z80IoWrite = nullptr;
 WORD z80pc = 0;
 
 /* ***************************************************************************

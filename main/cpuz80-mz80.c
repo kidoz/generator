@@ -16,7 +16,7 @@ void cpuz80_iowrite_actual(UINT16 addr, UINT8 data, struct z80PortWrite *me);
 
 /*** variables externed ***/
 
-uint8 *cpuz80_ram = NULL;
+uint8 *cpuz80_ram = nullptr;
 uint32 cpuz80_bank = 0;
 uint8 cpuz80_resetting = 0;
 uint8 cpuz80_active = 0;
@@ -28,23 +28,23 @@ CONTEXTMZ80 cpuz80_z80;
 static unsigned int cpuz80_lastsync = 0;
 
 static struct MemoryReadByte cpuz80_read[] = {
-  {0x0000, 0xFFFF, cpuz80_read_actual, NULL},
-  {-1, -1, NULL, NULL}
+  {0x0000, 0xFFFF, cpuz80_read_actual, nullptr},
+  {-1, -1, nullptr, nullptr}
 };
 
 static struct MemoryWriteByte cpuz80_write[] = {
-  {0x0000, 0xFFFF, cpuz80_write_actual, NULL},
-  {-1, -1, NULL, NULL}
+  {0x0000, 0xFFFF, cpuz80_write_actual, nullptr},
+  {-1, -1, nullptr, nullptr}
 };
 
 static struct z80PortRead cpuz80_ioread[] = {
-  {0x0000, 0x00FF, cpuz80_ioread_actual, NULL},
-  {-1, -1, NULL, NULL}
+  {0x0000, 0x00FF, cpuz80_ioread_actual, nullptr},
+  {-1, -1, nullptr, nullptr}
 };
 
 static struct z80PortWrite cpuz80_iowrite[] = {
-  {0x0000, 0x00FF, cpuz80_iowrite_actual, NULL},
-  {-1, -1, NULL, NULL}
+  {0x0000, 0x00FF, cpuz80_iowrite_actual, nullptr},
+  {-1, -1, nullptr, nullptr}
 };
 
 UINT8 cpuz80_read_actual(UINT32 addr, struct MemoryReadByte *me)
@@ -85,7 +85,7 @@ int cpuz80_init(void)
 void cpuz80_reset(void)
 {
   if (!cpuz80_ram) {
-    if ((cpuz80_ram = malloc(LEN_SRAM)) == NULL) {
+    if ((cpuz80_ram = malloc(LEN_SRAM)) == nullptr) {
       fprintf(stderr, "Out of memory\n");
       exit(1);
     }

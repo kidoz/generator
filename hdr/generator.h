@@ -1,5 +1,6 @@
 /* #include "config.h" */ /* Meson passes all config via compiler flags */
 #include "machine.h"
+#include <signal.h>  /* For sig_atomic_t type used by gen_quit */
 
 /* VERSION set by autoconf */
 /* PACKAGE set by autoconf */
@@ -269,7 +270,7 @@ typedef enum {
 
 extern t_cartinfo gen_cartinfo;
 
-extern unsigned int gen_quit;
+extern volatile sig_atomic_t gen_quit;  /* Signal-safe flag for clean shutdown */
 extern unsigned int gen_debugmode;
 extern unsigned int gen_loglevel;
 extern unsigned int gen_autodetect;

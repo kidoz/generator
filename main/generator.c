@@ -33,7 +33,7 @@
 
 /*** variables externed in generator.h ***/
 
-unsigned int gen_quit = 0;
+volatile sig_atomic_t gen_quit = 0;  /* Signal-safe flag for clean shutdown */
 unsigned int gen_debugmode = 0;
 unsigned int gen_loglevel = 1;  /* 2 = NORMAL, 1 = CRITICAL */
 unsigned int gen_autodetect = 1; /* 0 = no, 1 = yes */
@@ -52,23 +52,22 @@ void gen_setupcartinfo(void);
 
 /*** Signal handler ***/
 
+/* POSIX-compliant signal handler - only sets a flag
+ *
+ * IMPORTANT: Signal handlers MUST only call async-signal-safe functions.
+ * Functions like ui_final(), exit(), malloc(), printf(), LOG_*() are NOT safe.
+ * Setting a volatile sig_atomic_t variable is the only safe operation.
+ *
+ * The main loop checks gen_quit and performs proper cleanup when it's set.
+ */
 RETSIGTYPE gen_sighandler(int signum)
 {
-  if (gen_debugmode) {
-    if (signum == SIGINT) {
-      if (gen_quit) {
-        LOG_CRITICAL(("Bye!"));
-        ui_final();
-        ui_err("Exiting");
-      } else {
-        LOG_REQUEST(("Ping - current PC = 0x%X", regs.pc));
-      }
-      gen_quit = 1;
-    }
-  } else {
-    ui_final();
-    exit(0);
-  }
+  (void)signum;  /* Suppress unused parameter warning */
+
+  /* Only operation allowed in signal handler: set atomic flag */
+  gen_quit = 1;
+
+  /* Re-install signal handler for non-BSD systems */
   signal(signum, gen_sighandler);
 }
 
@@ -164,7 +163,7 @@ char *gen_loadimage(const char *filename)
   if (cpu68k_rom) {
     if (gen_freerom)
       free(cpu68k_rom);
-    cpu68k_rom = NULL;
+    cpu68k_rom = nullptr;
   }
 
   /* Load file */
@@ -176,7 +175,7 @@ char *gen_loadimage(const char *filename)
 
   /* allocate enough memory plus 16 bytes for disassembler to cope
      with the last instruction */
-  if ((cpu68k_rom = malloc(cpu68k_romlen + 16)) == NULL) {
+  if ((cpu68k_rom = malloc(cpu68k_romlen + 16)) == nullptr) {
     cpu68k_romlen = 0;
     return ("Out of memory!");
   }
@@ -188,7 +187,7 @@ char *gen_loadimage(const char *filename)
   if ((file = open(filename, O_RDONLY, 0)) == -1) {
 #endif
     perror("open");
-    cpu68k_rom = NULL;
+    cpu68k_rom = nullptr;
     cpu68k_romlen = 0;
     return ("Unable to open file.");
   }
@@ -244,8 +243,8 @@ char *gen_loadimage(const char *filename)
     if (blocks * 16384 + 512 != cpu68k_romlen)
       return ("Image is corrupt.");
 
-    if ((new = malloc(cpu68k_romlen - 512)) == NULL) {
-      cpu68k_rom = NULL;
+    if ((new = malloc(cpu68k_romlen - 512)) == nullptr) {
+      cpu68k_rom = nullptr;
       cpu68k_romlen = 0;
       return ("Out of memory!");
     }
@@ -266,13 +265,13 @@ char *gen_loadimage(const char *filename)
   }
 
   /* is this icky? */
-  if ((p = strrchr(filename, '/')) == NULL &&
-      (p = strrchr(filename, '\\')) == NULL) {
+  if ((p = strrchr(filename, '/')) == nullptr &&
+      (p = strrchr(filename, '\\')) == nullptr) {
     snprintf(gen_leafname, sizeof(gen_leafname), "%s", filename);
   } else {
     snprintf(gen_leafname, sizeof(gen_leafname), "%s", p + 1);
   }
-  if ((p = strrchr(gen_leafname, '.')) != NULL) {
+  if ((p = strrchr(gen_leafname, '.')) != nullptr) {
     if ((!strcasecmp(p, ".smd")) || (!strcasecmp(p, ".bin")))
       *p = '\0';
   }
@@ -299,7 +298,7 @@ char *gen_loadimage(const char *filename)
                gen_cartinfo.checksum, gen_cartinfo.country));
 
   gen_modifiedrom = 0;
-  return NULL;
+  return nullptr;
 }
 
 /* setup to run from ROM in memory */

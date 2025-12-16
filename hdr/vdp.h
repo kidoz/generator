@@ -66,6 +66,7 @@ void vdp_endfield(void);
 void vdp_renderframe(uint8 *framedata, unsigned int lineoffset);
 void vdp_setupvideo(void);
 uint8 vdp_gethpos(void);
+void vdp_fifo_drain(int count);
 
 #define LEN_CRAM 128
 #define LEN_VSRAM 80

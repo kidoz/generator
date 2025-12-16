@@ -14,7 +14,7 @@
 #include "generator.h"
 #include "gtkopts.h"
 
-t_conf *gtkopts_conf = NULL;
+t_conf *gtkopts_conf = nullptr;
 
 static const char *gtkopts_default(const char *key);
 
@@ -60,6 +60,8 @@ static t_opts gtkopts_opts[] = {
     "try to buffer this many fields of sound" },
   { "sound_maxfields", "integer", "10",
     "maximum buffered sound fields before blocking (waiting)" },
+  { "audio_driver", "auto, pulseaudio, pipewire, alsa, jack, dummy", "auto",
+    "Preferred SDL audio backend (auto = SDL default)" },
   { "loglevel", "integer (0-7)", "1", 
     "logging level" },
   { "debugsound", "on, off", "off",
@@ -106,7 +108,7 @@ static t_opts gtkopts_opts[] = {
     "JPEG quality - 100 is least compression but best picture" },
   { "lowpassfilter", "0-100", "50",
     "Low-pass sound filter - 0 turns it off, 100 filters too much" },
-  { NULL, NULL, NULL, NULL }
+  { nullptr, nullptr, nullptr, nullptr }
 };
 
 /* *INDENT-ON* */
@@ -119,7 +121,7 @@ int gtkopts_load(const char *file)
   int line = 0;
   t_conf *conf, *confi;
 
-  if ((fd = fopen(file, "r")) == NULL) {
+  if ((fd = fopen(file, "r")) == nullptr) {
     fprintf(stderr, "%s: unable to open conf '%s' for reading: %s\n",
             PACKAGE, file, strerror(errno));
     return -1;
@@ -148,13 +150,13 @@ int gtkopts_load(const char *file)
     /* check for comment */
     if (!*p || *p == '#' || *p == ';')
       continue;
-    if ((conf = malloc(sizeof(t_conf))) == NULL) {
+    if ((conf = malloc(sizeof(t_conf))) == nullptr) {
       fprintf(stderr, "%s: Out of memory adding to conf\n", PACKAGE);
       goto error;
     }
     q = p;
     strsep(&q, "=");
-    if (q == NULL) {
+    if (q == nullptr) {
       fprintf(stderr, "%s: line %d not understood in conf file\n", PACKAGE,
               line);
       goto error;
@@ -165,14 +167,14 @@ int gtkopts_load(const char *file)
       *t-- = '\0';
     while (*q == ' ')
       q++;
-    if ((conf->key = malloc(strlen(p) + 1)) == NULL ||
-        (conf->value = malloc(strlen(q) + 1)) == NULL) {
+    if ((conf->key = malloc(strlen(p) + 1)) == nullptr ||
+        (conf->value = malloc(strlen(q) + 1)) == nullptr) {
       fprintf(stderr, "%s: Out of memory building conf\n", PACKAGE);
       goto error;
     }
     strcpy(conf->key, p);
     strcpy(conf->value, q);
-    conf->next = NULL;
+    conf->next = nullptr;
     for (confi = gtkopts_conf; confi && confi->next; confi = confi->next);
     if (!confi)
       gtkopts_conf = conf;
@@ -213,7 +215,7 @@ int gtkopts_setvalue(const char *key, const char *value)
 
   for (c = gtkopts_conf; c; c = c->next) {
     if (!strcasecmp(key, c->key)) {
-      if ((n = malloc(strlen(value) + 1)) == NULL)
+      if ((n = malloc(strlen(value) + 1)) == nullptr)
         return -1;
       strcpy(n, value);
       free(c->value);
@@ -221,9 +223,9 @@ int gtkopts_setvalue(const char *key, const char *value)
       return 0;
     }
   }
-  if ((c = malloc(sizeof(t_conf))) == NULL ||
-      (c->key = malloc(strlen(key) + 1)) == NULL ||
-      (c->value = malloc(strlen(value) + 1)) == NULL)
+  if ((c = malloc(sizeof(t_conf))) == nullptr ||
+      (c->key = malloc(strlen(key) + 1)) == nullptr ||
+      (c->value = malloc(strlen(value) + 1)) == nullptr)
     return -1;
   strcpy(c->key, key);
   strcpy(c->value, value);
@@ -237,7 +239,7 @@ int gtkopts_save(const char *file)
   FILE *fd;
   t_opts *o;
 
-  if ((fd = fopen(file, "w")) == NULL) {
+  if ((fd = fopen(file, "w")) == nullptr) {
     fprintf(stderr, "%s: unable to open conf '%s' for writing: %s\n",
             PACKAGE, file, strerror(errno));
     return -1;
@@ -264,5 +266,5 @@ static const char *gtkopts_default(const char *key)
     if (!strcasecmp(key, o->key))
       return o->def;
   }
-  return NULL;
+  return nullptr;
 }

@@ -132,7 +132,7 @@ t_mem68k_def mem68k_def[] = {
    mem68k_fetch_ram_byte, mem68k_fetch_ram_word, mem68k_fetch_ram_long,
    mem68k_store_ram_byte, mem68k_store_ram_word, mem68k_store_ram_long},
 
-  {0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL}
+  {0, 0, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr}
 
 };
 

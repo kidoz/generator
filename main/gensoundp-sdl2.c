@@ -22,7 +22,7 @@ static SDL_AudioSpec soundp_spec;
 static int16_t soundp_ring_buffer[RING_BUFFER_SIZE * 2]; /* stereo */
 static volatile unsigned int soundp_write_pos = 0;
 static volatile unsigned int soundp_read_pos = 0;
-static SDL_mutex *soundp_mutex = NULL;
+static SDL_mutex *soundp_mutex = nullptr;
 
 /*** soundp_detect_pipewire - Detect if PipeWire is being used ***/
 
@@ -131,21 +131,26 @@ int soundp_start(void)
   desired.freq = sound_speed;
   desired.format = AUDIO_S16SYS; /* 16-bit signed, system byte order */
   desired.channels = 2; /* stereo */
-  /* Buffer size: 2048 samples = ~46ms @ 44.1kHz
-     With dynamic rate control, we can use a smaller buffer for lower latency.
-     This balances responsiveness with stability, providing enough cushion for
-     xBRZ upscaling overhead (3-5ms per frame) while avoiding audio underruns. */
-  desired.samples = 2048;
+  /* Buffer size: clamp to audio threshold to avoid starving the callback.
+     GTK4 rendering occasionally blocks longer than one frame; keeping the SDL
+     request below the amount we normally stage (sound_threshold ≈ 5 fields)
+     prevents the callback from zero-filling and crackling. */
+  unsigned int requested_samples = sound_threshold;
+  if (requested_samples > 2048)
+    requested_samples = 2048;          /* ~46ms @ 44.1kHz */
+  if (requested_samples < 1024)
+    requested_samples = 1024;          /* keep latency reasonable on PAL */
+  desired.samples = (Uint16)requested_samples;
   desired.callback = soundp_audio_callback;
-  desired.userdata = NULL;
+  desired.userdata = nullptr;
 
   /* Open audio device */
-  soundp_dev = SDL_OpenAudioDevice(NULL, 0, &desired, &soundp_spec,
+  soundp_dev = SDL_OpenAudioDevice(nullptr, 0, &desired, &soundp_spec,
                                     SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
   if (soundp_dev == 0) {
     LOG_CRITICAL(("SDL_OpenAudioDevice failed: %s", SDL_GetError()));
     SDL_DestroyMutex(soundp_mutex);
-    soundp_mutex = NULL;
+    soundp_mutex = nullptr;
     return 1;
   }
 
@@ -155,7 +160,7 @@ int soundp_start(void)
     SDL_CloseAudioDevice(soundp_dev);
     SDL_DestroyMutex(soundp_mutex);
     soundp_dev = 0;
-    soundp_mutex = NULL;
+    soundp_mutex = nullptr;
     return 1;
   }
 
@@ -164,7 +169,7 @@ int soundp_start(void)
     SDL_CloseAudioDevice(soundp_dev);
     SDL_DestroyMutex(soundp_mutex);
     soundp_dev = 0;
-    soundp_mutex = NULL;
+    soundp_mutex = nullptr;
     return 1;
   }
 
@@ -174,7 +179,7 @@ int soundp_start(void)
     SDL_CloseAudioDevice(soundp_dev);
     SDL_DestroyMutex(soundp_mutex);
     soundp_dev = 0;
-    soundp_mutex = NULL;
+    soundp_mutex = nullptr;
     return 1;
   }
 
@@ -203,7 +208,7 @@ int soundp_start(void)
                (int)(1000 * (float)sound_minfields / (float)vdp_framerate)));
 
   /* Provide helpful information for PulseAudio users (but not PipeWire users) */
-  if (strstr(backend, "PulseAudio") != NULL && strstr(backend, "PipeWire") == NULL) {
+  if (strstr(backend, "PulseAudio") != nullptr && strstr(backend, "PipeWire") == nullptr) {
     LOG_VERBOSE(("Tip: For lower latency, consider switching to PipeWire"));
     LOG_VERBOSE(("     PipeWire provides 3-10ms latency vs PulseAudio's 50-100ms"));
   }
@@ -221,7 +226,7 @@ void soundp_stop(void)
   }
   if (soundp_mutex) {
     SDL_DestroyMutex(soundp_mutex);
-    soundp_mutex = NULL;
+    soundp_mutex = nullptr;
   }
 }
 

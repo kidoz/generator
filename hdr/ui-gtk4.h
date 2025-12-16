@@ -47,6 +47,7 @@ typedef struct {
 
   /* Dialogs */
   GtkWidget *prefs_window;
+  GtkWidget *audio_driver_row;
   GtkWidget *about_dialog;
   GtkWidget *console_window;
 
@@ -62,6 +63,9 @@ typedef struct {
   /* Upscaling */
   t_filter_type filter_type;
   int scale_factor; /* 1-4 for scale factors */
+  guint32 *upscale_src_buffer;   /* Pre-allocated source buffer for upscaling */
+  guint32 *upscale_dst_buffer;   /* Pre-allocated destination buffer for upscaling */
+  unsigned int upscale_buffer_size; /* Current allocated buffer size */
 
   /* Dynamic Rate Control */
   gboolean dynamic_rate_control;  /* Enable/disable dynamic rate control */
@@ -70,6 +74,9 @@ typedef struct {
   gint64 fps_times[60];            /* Last 60 frame timestamps for FPS calculation */
   int fps_index;                   /* Current index in fps_times array */
   double measured_fps;             /* Measured FPS (rolling average) */
+  int frames_recorded;             /* Number of frames recorded so far (max 60) */
+  int debug_counter;               /* Counter for debug output */
+  gint64 last_frame_time;          /* Last frame time for timing */
 
   /* SDL and rendering */
   void *screen; /* SDL_Surface pointer */
@@ -77,10 +84,15 @@ typedef struct {
   guint8 *screen0;
   guint8 *screen1;
   guint8 *newscreen;
-  int whichbank;
+  volatile int whichbank;  /* Volatile to prevent race condition between render and draw threads */
   gboolean locksurface;
   gboolean plotfield;
   gboolean vdpsimple;
+
+  /* Audio configuration */
+  GtkStringList *audio_driver_model;
+  GPtrArray *audio_driver_ids;
+  char *audio_driver_selection;
 
   /* Input */
   t_gtk4keys controllers[2];

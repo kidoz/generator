@@ -101,15 +101,15 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
   t_bmih *diblittle;
 
   memset(&h, 0, sizeof(t_avi_header));
-  if ((avi = malloc(sizeof(t_avi))) == NULL)
-    return NULL;
+  if ((avi = malloc(sizeof(t_avi))) == nullptr)
+    return nullptr;
   memset(avi, 0, sizeof(t_avi));
   avi->fd = fopen(filename, "wb");
-  if (avi->fd == NULL) {
+  if (avi->fd == nullptr) {
     saved_errno = errno;
     free(avi);
     errno = saved_errno;
-    return NULL;
+    return nullptr;
   }
   memcpy(&avi->info, info, sizeof(avi->info));
 
@@ -258,7 +258,7 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
     free(avi);
     fclose(avi->fd);
     errno = EIO;
-    return NULL;
+    return nullptr;
   }
   avi->frames = 0;
   avi->audiolength = 0;

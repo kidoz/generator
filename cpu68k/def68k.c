@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
 
   /* open output files and write headers */
 
-  if ((outiibs = fopen(FNAME_OUTIIBS, "w")) == NULL) {
+  if ((outiibs = fopen(FNAME_OUTIIBS, "w")) == nullptr) {
     perror("fopen outiibs");
     exit(1);
   }
@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
   fprintf(outiibs, "     size, stype, dtype, sbitpos, dbitpos, immvalue, ");
   fprintf(outiibs, "cc, funcnum */\n");
 
-  if ((outfuncs = fopen(FNAME_OUTFUNCS, "w")) == NULL) {
+  if ((outfuncs = fopen(FNAME_OUTFUNCS, "w")) == nullptr) {
     perror("fopen outfuncs");
     exit(1);
   }
@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
   fprintf(outfuncs, "void (*cpu68k_funcindex[])(t_ipc *ipc) = {\n");
   fprintf(outfuncs, "  /* function */\n");
 
-  if ((outproto = fopen(FNAME_OUTPROTO, "w")) == NULL) {
+  if ((outproto = fopen(FNAME_OUTPROTO, "w")) == nullptr) {
     perror("fopen outproto");
     exit(1);
   }
@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
 
   /* open input file */
 
-  if ((input = fopen(FNAME_CPUDEF, "r")) == NULL) {
+  if ((input = fopen(FNAME_CPUDEF, "r")) == nullptr) {
     perror("fopen input");
     exit(1);
   }
@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
     if (ferror(input)) {
       break;
     }
-    if (fgets(buf, BUFLEN, input) == NULL) {
+    if (fgets(buf, BUFLEN, input) == nullptr) {
       break;
       /* huh? why does this cause fgets to say 'Unknown error'?! */
       perror("fgets");
@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
     /* remove newline */
     buf[strlen(buf)-1] = '\0';
     /* remove comment */
-    if ((p = strchr(buf, ';')) != NULL) {
+    if ((p = strchr(buf, ';')) != nullptr) {
       *p = '\0';
     }
     /* remove leading spaces */

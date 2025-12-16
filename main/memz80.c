@@ -38,7 +38,7 @@ t_memz80_def memz80_def[] = {
   {0x70, 0x7F, memz80_fetch_bad_byte, memz80_store_bad_byte},
   {0x7F, 0x80, memz80_fetch_psg_byte, memz80_store_psg_byte},
   {0x80, 0x100, memz80_fetch_mem_byte, memz80_store_mem_byte},
-  {0, 0, NULL, NULL}
+  {0, 0, nullptr, nullptr}
 };
 
 uint8 (*memz80_fetch_byte[0x100]) (uint16 addr);

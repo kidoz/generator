@@ -106,7 +106,7 @@ void state_transfer8(const char *mod, const char *name, uint8 instance,
         break;
       }
     }
-    if (l == NULL) {
+    if (l == nullptr) {
       LOG_CRITICAL(("bad %s/%s\n", mod, name));
       memset(data, 0, size);
     }
@@ -149,7 +149,7 @@ void state_transfer16(const char *mod, const char *name, uint8 instance,
         break;
       }
     }
-    if (l == NULL) {
+    if (l == nullptr) {
       LOG_CRITICAL(("bad %s/%s\n", mod, name));
       memset(data, 0, size * 2);
     }
@@ -196,7 +196,7 @@ void state_transfer32(const char *mod, const char *name, uint8 instance,
         break;
       }
     }
-    if (l == NULL) {
+    if (l == nullptr) {
       LOG_CRITICAL(("bad %s/%s\n", mod, name));
       memset(data, 0, size * 4);
     }
@@ -339,7 +339,7 @@ static void state_dotransfer(unsigned int mode)
 
 int state_savefile(const char *filename)
 {
-  if ((state_outputfile = fopen(filename, "wb")) == NULL) {
+  if ((state_outputfile = fopen(filename, "wb")) == nullptr) {
     LOG_CRITICAL(("Failed to open '%s' for writing: %s",
                   filename, strerror(errno)));
     return -1;
@@ -367,11 +367,11 @@ int state_loadfile(const char *filename)
     return -1;
   }
 
-  if ((blk = malloc(statbuf.st_size)) == NULL) {
+  if ((blk = malloc(statbuf.st_size)) == nullptr) {
     LOG_CRITICAL(("Failed to allocate memory whilst loading '%s'", filename));
     return -1;
   }
-  if ((f = fopen(filename, "rb")) == NULL) {
+  if ((f = fopen(filename, "rb")) == nullptr) {
     LOG_CRITICAL(("Failed to open '%s': %s", filename, strerror(errno)));
     free(blk);
     return -1;
@@ -398,13 +398,13 @@ int state_loadfile(const char *filename)
     goto OVERRUN;
 
   /* loop around blocks creating structure */
-  state_statelist = NULL;
+  state_statelist = nullptr;
   for (;;) {
     /* mod(1+), name(1+), instance(1), bytes(1), size(4), data(0+) */
     if (e == p)
       /* EOF */
       break;
-    if ((ent = malloc(sizeof(t_statelist))) == NULL)
+    if ((ent = malloc(sizeof(t_statelist))) == nullptr)
       ui_err("out of memory");
     if ((e-p) < 8)
       goto OVERRUN;

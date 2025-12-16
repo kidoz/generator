@@ -3,9 +3,9 @@
 # UI Backend (required - choose one)
 option('ui-backend',
   type: 'combo',
-  choices: ['gtk4', 'console', 'svgalib', 'allegro', 'tcltk'],
+  choices: ['gtk4', 'console'],
   value: 'gtk4',
-  description: 'User interface backend to build'
+  description: 'User interface backend to build (gtk4=GTK4/libadwaita, console=SDL2 only)'
 )
 
 # Z80 Emulator (required - choose one)

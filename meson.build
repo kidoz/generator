@@ -7,7 +7,7 @@ project('generator', 'c', 'cpp',
   version: '0.35',
   license: 'GPL-2.0-or-later',
   default_options: [
-    'c_std=c17',  # Use pure C17 standard (ISO/IEC 9899:2018) without GNU extensions
+    'c_std=c23',  # Use C23 standard (ISO/IEC 9899:2024) - latest C standard
     'cpp_std=c++17',  # C++17 for xBRZ library (requires std::clamp)
     'warning_level=1',
   ],
@@ -59,8 +59,8 @@ endif
 
 add_project_arguments('-DALIGNLONGS=@0@'.format(alignlongs), language: 'c')
 
-# C17 Migration: Removed -fgnu89-inline flag
-# Now using standard C99/C17 inline semantics with 'static inline'
+# C23 Migration: Using latest C standard (ISO/IEC 9899:2024)
+# Features: nullptr, bool/true/false built-in, [[]] attributes, typeof, constexpr
 
 # GCC optimization flags
 if enable_debug
@@ -144,32 +144,6 @@ elif ui_backend == 'console'
                      'main/uiplot.c', 'main/gensoundp-sdl2.c',
                      'main/logo.c', 'main/font.c')
 
-elif ui_backend == 'svgalib'
-  vga_dep = cc.find_library('vga')
-  ui_deps = [vga_dep]
-  ui_sources = files('main/ui-console.c', 'main/uip-svgalib.c',
-                     'main/uiplot.c', 'main/gensoundp-unix.c',
-                     'main/logo.c', 'main/font.c')
-
-elif ui_backend == 'allegro'
-  allegro_dep = cc.find_library('alleg')
-  ui_deps = [allegro_dep]
-  ui_sources = files('main/ui-console.c', 'main/uip-allegro.c',
-                     'main/uiplot.c', 'main/gensoundp-allegro.c',
-                     'main/logo.c', 'main/font.c')
-  add_project_arguments('-DALLEGRO=1', language: 'c')
-
-elif ui_backend == 'tcltk'
-  tcl_dep = dependency('tcl', version: '>=8.0', required: false)
-  tk_dep = dependency('tk', version: '>=8.0', required: false)
-  if not tcl_dep.found()
-    tcl_dep = cc.find_library('tcl')
-  endif
-  if not tk_dep.found()
-    tk_dep = cc.find_library('tk')
-  endif
-  ui_deps = [tcl_dep, tk_dep]
-  ui_sources = files('main/ui-tcltk.c', 'main/gensoundp-unix.c')
 endif
 
 # Include directories

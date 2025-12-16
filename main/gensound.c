@@ -78,9 +78,9 @@ int sound_init(void)
     return ret;
 #ifdef JFM
   if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_speed,
-                            NULL, NULL)) == NULL) {
+                            nullptr, nullptr)) == nullptr) {
 #else
-  if (YM2612Init(1, vdp_clock / 7, sound_speed, NULL, NULL)) {
+  if (YM2612Init(1, vdp_clock / 7, sound_speed, nullptr, nullptr)) {
 #endif
     LOG_VERBOSE(("YM2612 failed init"));
     sound_stop();

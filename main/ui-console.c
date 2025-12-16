@@ -97,7 +97,7 @@ static uint8 ui_vga = 0;        /* flag for whether in VGA more or not */
 static uint8 ui_frameskip = 0;  /* 0 for dynamic */
 static uint8 ui_actualskip = 0; /* the last skip we did (1..) */
 static uint8 ui_state = 0;      /* 0=stop, 1=paused, 2=play */
-static char *ui_initload = NULL;        /* filename to load on init */
+static char *ui_initload = nullptr;        /* filename to load on init */
 static uint8 ui_plotfield = 0;  /* flag indicating plotting this field */
 static uint8 ui_plotprevfield = 0;      /* did we plot the previous field? */
 static uint16 *ui_font;         /* unpacked font */
@@ -193,7 +193,7 @@ int ui_init(int argc, char *argv[])
 
   if (argc < 1 || argc > 3)
     ui_usage();
-  if ((ui_initload = malloc(strlen(argv[0]) + 1)) == NULL) {
+  if ((ui_initload = malloc(strlen(argv[0]) + 1)) == nullptr) {
     fprintf(stderr, "Out of memory\n");
     return 1;
   }
@@ -324,10 +324,10 @@ int ui_setcolourbits(const char *str)
 
   snprintf(s, sizeof(s), "%s", str);
 
-  if ((green = strchr(s, ',')) == NULL)
+  if ((green = strchr(s, ',')) == nullptr)
     return -1;
   *green++ = '\0';
-  if ((blue = strchr(green, ',')) == NULL)
+  if ((blue = strchr(green, ',')) == nullptr)
     return -1;
   *blue++ = '\0';
   if ((r = atoi(s)) < 0 || r > 15 ||
@@ -356,7 +356,7 @@ int ui_setcontrollers(const char *str)
 
   snprintf(s, sizeof(s), "%s", str);
   cont0 = s;
-  if ((cont1 = strchr(s, ',')) == NULL)
+  if ((cont1 = strchr(s, ',')) == nullptr)
     return -1;
   *cont1++ = '\0';
 
@@ -415,7 +415,7 @@ int ui_unpackfont(void)
   uint16 *cdata;
 
   /* 128 chars, 6x, 10y, 16bit */
-  if ((ui_font = malloc(128 * 6 * 10 * 2)) == NULL)
+  if ((ui_font = malloc(128 * 6 * 10 * 2)) == nullptr)
     return -1;
   for (c = 0; c < 128; c++) {   /* 128 characters */
     cdata = ui_font + c * 6 * 10;
@@ -688,7 +688,7 @@ void ui_newframe(void)
   static unsigned int frameplots_i = 0;
   unsigned int i;
   int fps;
-  time_t t = time(NULL);
+  time_t t = time(nullptr);
   struct tm *tm_p = localtime(&t);
 
   /* we store whether we plotted the previous field as this is important
@@ -917,9 +917,9 @@ void ui_rendertoscreen(void)
                              ui_uipinfo.linewidth, nominalwidth);
           break;
         case DEINTERLACE_WEAVE:
-          uiplot_render16_x2h(evenscreen + line * 320, NULL, screen,
+          uiplot_render16_x2h(evenscreen + line * 320, nullptr, screen,
                               nominalwidth);
-          uiplot_render16_x2h(oddscreen + line * 320, NULL,
+          uiplot_render16_x2h(oddscreen + line * 320, nullptr,
                               screen + ui_uipinfo.linewidth, nominalwidth);
           break;
         case DEINTERLACE_WEAVEFILTER:

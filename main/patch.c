@@ -63,7 +63,7 @@ int patch_savefile(const char *filename)
   FILE *f;
   t_patchlist *ent;
 
-  if ((f = fopen(filename, "wb")) == NULL) {
+  if ((f = fopen(filename, "wb")) == nullptr) {
     LOG_CRITICAL(("Failed to open '%s' for writing: %s",
                   filename, strerror(errno)));
     return -1;
@@ -86,7 +86,7 @@ int patch_loadfile(const char *filename)
   FILE *f;
   t_patchlist *ent, **end;
 
-  if ((f = fopen(filename, "rb")) == NULL) {
+  if ((f = fopen(filename, "rb")) == nullptr) {
     LOG_CRITICAL(("Failed to open '%s': %s", filename, strerror(errno)));
     return -1;
   }
@@ -104,13 +104,13 @@ int patch_loadfile(const char *filename)
       LOG_CRITICAL(("Invalid patch file '%s'", filename));
       return -1;
     }
-    if ((ent = malloc(sizeof(t_patchlist))) == NULL)
+    if ((ent = malloc(sizeof(t_patchlist))) == nullptr)
       ui_err("out of memory");
     snprintf(ent->code, 12, "%s", linebuf);
     for (p = linebuf + 11; *p == ' '; p++) ;
-    if ((ent->action = strdup(p)) == NULL)
+    if ((ent->action = strdup(p)) == nullptr)
       ui_err("out of memory");
-    ent->next = NULL;
+    ent->next = nullptr;
     *end = ent;
     end = &ent->next;
   }
@@ -146,11 +146,11 @@ void patch_addcode(const char *code, const char *action)
   for (end = &patch_patchlist; *end; end = &((*end)->next)) ;
 
   /* create and insert */
-  if ((ent = malloc(sizeof(t_patchlist))) == NULL)
+  if ((ent = malloc(sizeof(t_patchlist))) == nullptr)
     ui_err("out of memory");
   snprintf(ent->code, sizeof(ent->code), "%s", code);
   ent->action = strdup(action);
-  ent->next = NULL;
+  ent->next = nullptr;
   *end = ent;
 }
 
@@ -193,7 +193,7 @@ int patch_genietoraw(const char *code, uint32 *addr, uint16 *data)
   if (strlen(code) != 9 || code[4] != '-')
     return -1;
   for (i = 0; i < 9; i = (i == 3 ? i+2 : i+1)) {
-    if ((p = strchr(patch_codestring, code[i])) == NULL)
+    if ((p = strchr(patch_codestring, code[i])) == nullptr)
       return -1;
     v = p - patch_codestring;
     switch (i) {

@@ -58,39 +58,6 @@ elif ui_backend == 'console'
     'gensoundp-sdl2.c'
   )
   build_deps += ui_deps
-
-elif ui_backend == 'svgalib'
-  program_name = 'generator-svgalib'
-  main_sources = common_sources + files(
-    'logo.c',
-    'font.c',
-    'ui-console.c',
-    'uip-svgalib.c',
-    'uiplot.c',
-    'gensoundp-unix.c'
-  )
-  build_deps += ui_deps
-
-elif ui_backend == 'allegro'
-  program_name = 'generator-allegro'
-  main_sources = common_sources + files(
-    'logo.c',
-    'font.c',
-    'ui-console.c',
-    'uip-allegro.c',
-    'uiplot.c',
-    'gensoundp-allegro.c'
-  )
-  build_deps += ui_deps
-
-elif ui_backend == 'tcltk'
-  program_name = 'generator-tcltk'
-  main_sources = common_sources + files(
-    'ui-tcltk.c',
-    'diss68k.c',
-    'gensoundp-unix.c'
-  )
-  build_deps += [ui_deps, declare_dependency(link_with: tab68k_lib)]
 endif
 
 # Build the executable

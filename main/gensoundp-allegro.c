@@ -55,14 +55,14 @@ int soundp_start(void)
       LOG_CRITICAL(("Allegro failed to detect hardware"));
       return 1;
     }
-    if (install_sound(DIGI_AUTODETECT, MIDI_NONE, NULL)) {
+    if (install_sound(DIGI_AUTODETECT, MIDI_NONE, nullptr)) {
       LOG_CRITICAL(("Failed to initialise sound"));
       return 1;
     }
   }
   /* allocate block capable of holding sound_maxfields frames */
   if ((soundp_sample = create_sample(16, 1, sound_speed, sound_sampsperfield *
-                                    sound_maxfields)) == NULL) {
+                                    sound_maxfields)) == nullptr) {
     LOG_CRITICAL(("Failed to create sample"));
     return 1;
   }
@@ -138,7 +138,7 @@ void sound_readyblock(void)
 {
   static int locked = 0;
   int writepos = soundp_block * sound_sampsperfield;
-  time_t start = time(NULL);
+  time_t start = time(nullptr);
 
   if (locked && digi_driver->unlock_voice)
     digi_driver->unlock_voice(soundp_voice);
@@ -147,7 +147,7 @@ void sound_readyblock(void)
           sound_sampsperfield) == soundp_block) {
     /* I used to usleep here, but it breaks on some platforms - then I
        tried uclock() which failed too, so we're just going to busywait */
-    if (time(NULL) > start + 10) {
+    if (time(nullptr) > start + 10) {
       LOG_CRITICAL(("Sound error - pos=%d %d=%d",
                     voice_get_position(soundp_voice),
                     sound_sampsperfield, soundp_block));

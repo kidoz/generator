@@ -15,9 +15,9 @@
 
 /*** externed variables ***/
 
-uint8 *cpu68k_rom = NULL;
+uint8 *cpu68k_rom = nullptr;
 unsigned int cpu68k_romlen = 0;
-uint8 *cpu68k_ram = NULL;
+uint8 *cpu68k_ram = nullptr;
 t_iib *cpu68k_iibtable[65536];
 void (*cpu68k_functable[65536 * 2]) (t_ipc * ipc);
 int cpu68k_totalinstr;
@@ -135,7 +135,7 @@ int cpu68k_init(void)
             continue;
           }
         }
-        if (cpu68k_iibtable[bitmap] != NULL) {
+        if (cpu68k_iibtable[bitmap] != nullptr) {
           LOG_CRITICAL(("CPU definition #%d conflicts (0x%x)", i, bitmap));
           return 1;
         }
@@ -332,7 +332,7 @@ t_ipclist *cpu68k_makeipclist(uint32 pc)
   uint16 required;
   int i;
 
-  if (list == NULL)
+  if (list == nullptr)
     ui_err("Out of memory");
 
   pc &= 0xffffff;
@@ -346,7 +346,7 @@ t_ipclist *cpu68k_makeipclist(uint32 pc)
         ui_err("Something has gone seriously wrong @ %08X", pc);
       size += 16;
       list = realloc(list, sizeof(t_ipclist) + size * sizeof(t_ipc) + 8);
-      if (list == NULL)
+      if (list == nullptr)
         ui_err("Out of memory whilst making ipc list @ %08X", pc);
       ipc = ((t_ipc *) (list + 1)) + instrs - 1;
     }
@@ -401,7 +401,7 @@ void cpu68k_clearcache(void)
   for (i = 0; i < LEN_IPCLISTTABLE; i++) {
     if (ipclist[i]) {
       free(ipclist[i]);
-      ipclist[i] = NULL;
+      ipclist[i] = nullptr;
     }
   }
 }
@@ -412,7 +412,7 @@ void cpu68k_reset(void)
 
   if (!cpu68k_ram) {
     /* +4 due to bug in DIRECTRAM hdr/mem68k.h code over-run of buffer */
-    if ((cpu68k_ram = malloc(0x10000 + 4)) == NULL)
+    if ((cpu68k_ram = malloc(0x10000 + 4)) == nullptr)
       ui_err("Out of memory");
   }
   memset(cpu68k_ram, 0, 0x10000);
@@ -428,7 +428,7 @@ void cpu68k_reset(void)
   for (i = 0; i < LEN_IPCLISTTABLE; i++) {
     if (ipclist[i]) {
       free(ipclist[i]);
-      ipclist[i] = NULL;
+      ipclist[i] = nullptr;
     }
   }
 }

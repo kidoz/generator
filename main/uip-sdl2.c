@@ -24,14 +24,14 @@
 
 /*** Static variables ***/
 
-static SDL_Window *uip_window = NULL;
-static SDL_Renderer *uip_renderer = NULL;
-static SDL_Texture *uip_texture[2] = {NULL, NULL};
+static SDL_Window *uip_window = nullptr;
+static SDL_Renderer *uip_renderer = nullptr;
+static SDL_Texture *uip_texture[2] = {nullptr, nullptr};
 static uint8 uip_vga = 0;                    /* flag for whether in VGA mode */
 static uint8 uip_key[SDL_NUM_SCANCODES];     /* keyboard state */
 static uint8 uip_displaybanknum = 0;         /* view this one, write to other one */
-static t_uipinfo *uip_uipinfo = NULL;        /* uipinfo */
-static uint8 *uip_screenmem[2] = {NULL, NULL}; /* screen memory banks */
+static t_uipinfo *uip_uipinfo = nullptr;        /* uipinfo */
+static uint8 *uip_screenmem[2] = {nullptr, nullptr}; /* screen memory banks */
 static int uip_forceredshift = -1;           /* if set, forces red shift pos */
 static int uip_forcegreenshift = -1;         /* if set, forces green shift pos */
 static int uip_forceblueshift = -1;          /* if set, forces blue shift pos */
@@ -262,7 +262,7 @@ void uip_displaybank(int bank)
   /* Update texture with current screen memory
    * SDL_UpdateTexture is faster and more synchronized than Lock/memcpy/Unlock
    * for streaming textures. It handles proper synchronization with the GPU. */
-  if (SDL_UpdateTexture(uip_texture[bank], NULL, uip_screenmem[bank], pitch) != 0) {
+  if (SDL_UpdateTexture(uip_texture[bank], nullptr, uip_screenmem[bank], pitch) != 0) {
     LOG_CRITICAL(("Failed to update texture: %s", SDL_GetError()));
     return;
   }
@@ -271,7 +271,7 @@ void uip_displaybank(int bank)
    * The renderer was created with SDL_RENDERER_PRESENTVSYNC, so
    * SDL_RenderPresent will wait for vblank to avoid tearing. */
   SDL_RenderClear(uip_renderer);
-  SDL_RenderCopy(uip_renderer, uip_texture[bank], NULL, NULL);
+  SDL_RenderCopy(uip_renderer, uip_texture[bank], nullptr, nullptr);
   SDL_RenderPresent(uip_renderer);
 
   uip_displaybanknum = bank;
@@ -298,22 +298,22 @@ void uip_textmode(void)
   for (i = 0; i < 2; i++) {
     if (uip_screenmem[i]) {
       free(uip_screenmem[i]);
-      uip_screenmem[i] = NULL;
+      uip_screenmem[i] = nullptr;
     }
     if (uip_texture[i]) {
       SDL_DestroyTexture(uip_texture[i]);
-      uip_texture[i] = NULL;
+      uip_texture[i] = nullptr;
     }
   }
 
   if (uip_renderer) {
     SDL_DestroyRenderer(uip_renderer);
-    uip_renderer = NULL;
+    uip_renderer = nullptr;
   }
 
   if (uip_window) {
     SDL_DestroyWindow(uip_window);
-    uip_window = NULL;
+    uip_window = nullptr;
   }
 
   SDL_Quit();
