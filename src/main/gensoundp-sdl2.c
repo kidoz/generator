@@ -17,11 +17,14 @@
 static SDL_AudioDeviceID soundp_dev = 0;
 static SDL_AudioSpec soundp_spec;
 
-/* Ring buffer for audio samples */
+/* Ring buffer for audio samples
+ * Note: All access to ring buffer positions is protected by soundp_mutex.
+ * The mutex ensures thread safety between the SDL audio callback (reader)
+ * and the emulator thread (writer). */
 #define RING_BUFFER_SIZE (SOUND_MAXRATE * 4) /* 4 seconds of buffering */
 static int16_t soundp_ring_buffer[RING_BUFFER_SIZE * 2]; /* stereo */
-static volatile unsigned int soundp_write_pos = 0;
-static volatile unsigned int soundp_read_pos = 0;
+static unsigned int soundp_write_pos = 0;  /* protected by soundp_mutex */
+static unsigned int soundp_read_pos = 0;   /* protected by soundp_mutex */
 static SDL_mutex *soundp_mutex = nullptr;
 
 /*** soundp_detect_pipewire - Detect if PipeWire is being used ***/

@@ -93,15 +93,22 @@ int patch_loadfile(const char *filename)
   patch_clearlist();
   end = &patch_patchlist;
   while (fgets(linebuf, sizeof(linebuf), f)) {
-    if (linebuf[strlen(linebuf) - 1] != '\n') {
+    size_t len = strlen(linebuf);
+    if (len == 0)
+      continue; /* skip empty lines */
+    if (linebuf[len - 1] != '\n') {
       LOG_CRITICAL(("Line too long in '%s': %s", filename, strerror(errno)));
+      fclose(f);
       return -1;
     }
-    linebuf[strlen(linebuf) - 1] = '\0'; /* remove newline */
-    if (*linebuf && linebuf[strlen(linebuf) - 1] == '\r')
-      linebuf[strlen(linebuf) - 1] = '\0'; /* remove optional cr */
-    if (strlen(linebuf) < 11 && linebuf[6] != ':') {
+    linebuf[--len] = '\0'; /* remove newline */
+    if (len > 0 && linebuf[len - 1] == '\r')
+      linebuf[--len] = '\0'; /* remove optional cr */
+    if (len == 0)
+      continue; /* skip blank lines */
+    if (len < 11 || linebuf[6] != ':') {
       LOG_CRITICAL(("Invalid patch file '%s'", filename));
+      fclose(f);
       return -1;
     }
     if ((ent = malloc(sizeof(t_patchlist))) == nullptr)
@@ -117,6 +124,7 @@ int patch_loadfile(const char *filename)
   }
   if (!feof(f)) {
     LOG_CRITICAL(("Error whilst reading patch file '%s'", filename));
+    fclose(f);
     return -1;
   }
   if (fclose(f) == EOF) {
@@ -189,7 +197,7 @@ int patch_apply(const char *code, const char *action)
 int patch_genietoraw(const char *code, uint32 *addr, uint16 *data)
 {
   char *p;
-  uint32 a, d, v;
+  uint32 a = 0, d = 0, v;
   int i;
 
   if (strlen(code) != 9 || code[4] != '-')

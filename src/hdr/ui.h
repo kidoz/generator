@@ -11,5 +11,5 @@ void ui_log_verbose(const char *text, ...);
 void ui_log_normal(const char *text, ...);
 void ui_log_critical(const char *text, ...);
 void ui_log_request(const char *text, ...);
-void ui_err(const char *text, ...);
+[[noreturn]] void ui_err(const char *text, ...);
 void ui_musiclog(uint8 *data, unsigned int length);

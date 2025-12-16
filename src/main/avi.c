@@ -255,8 +255,8 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
 
   avi->linebytes = ((3 * info->width) + 3) & ~3; /* round up */
   if (fwrite(&h, sizeof(h), 1, avi->fd) != 1) {
-    free(avi);
     fclose(avi->fd);
+    free(avi);
     errno = EIO;
     return nullptr;
   }

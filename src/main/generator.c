@@ -120,7 +120,9 @@ int main(int argc, char *argv[])
   if ((retval = sound_init()))
     ui_err("Failed to initialise sound module (%d)", retval);
 
-  signal(SIGINT, gen_sighandler);
+  /* Install signal handlers for graceful shutdown */
+  signal(SIGINT, gen_sighandler);   /* Ctrl+C */
+  signal(SIGTERM, gen_sighandler);  /* kill command / systemd stop */
 
   /* enter user interface loop */
   return ui_loop();

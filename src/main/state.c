@@ -354,15 +354,26 @@ static void state_dotransfer(unsigned int mode)
 #endif
   YM2612_save_state();
 
-  /* XXX: FIX ME!
-     Z80_REG_IRQVector,   0x00 to 0xff
-     Z80_REG_IRQLine,     boolean - 1 or 0
-   */
-
-  /* XXX: FIX ME!
-     c -> z80intAddr = z80intAddr;
-     c -> z80nmiAddr = z80nmiAddr;
-   */
+  /* Z80 interrupt vector and line state */
+#ifdef RAZE
+  if (state_transfermode == 0) {
+    /* save */
+    i8 = z80_get_reg(Z80_REG_IRQVector);
+    state_transfer8("z80", "irqvector", 0, &i8, 1);
+    i8 = z80_get_reg(Z80_REG_IRQLine);
+    state_transfer8("z80", "irqline", 0, &i8, 1);
+  } else {
+    /* load */
+    state_transfer8("z80", "irqvector", 0, &i8, 1);
+    z80_set_reg(Z80_REG_IRQVector, i8);
+    state_transfer8("z80", "irqline", 0, &i8, 1);
+    z80_set_reg(Z80_REG_IRQLine, i8);
+  }
+#else
+  /* cmz80: save/load interrupt and NMI addresses */
+  state_transfer16("z80", "intaddr", 0, &cpuz80_z80.z80intAddr, 1);
+  state_transfer16("z80", "nmiaddr", 0, &cpuz80_z80.z80nmiAddr, 1);
+#endif
 }
 
 /*** state_savefile - save to the given filename */
@@ -390,7 +401,7 @@ int state_loadfile(const char *filename)
   uint8 *p, *e;
   struct stat statbuf;
   FILE *f;
-  t_statelist *ent;
+  t_statelist *ent = nullptr;  /* Initialize for OVERRUN cleanup */
 
   if (stat(filename, &statbuf) != 0) {
     errno = ENOENT;
@@ -409,11 +420,11 @@ int state_loadfile(const char *filename)
   if (fread(blk, statbuf.st_size, 1, f) != 1) {
     if (feof(f)) {
       LOG_CRITICAL(("EOF whilst reading save state file '%s'", filename));
-      free(blk);
-      return -1;
+    } else {
+      LOG_CRITICAL(("Error whilst reading save state file '%s': %s", filename,
+                    strerror(errno)));
     }
-    LOG_CRITICAL(("Error whilst reading save state file '%s': %s", filename,
-                  strerror(errno)));
+    fclose(f);
     free(blk);
     return -1;
   }
@@ -439,12 +450,12 @@ int state_loadfile(const char *filename)
       ui_err("out of memory");
     if ((e - p) < 8)
       goto OVERRUN;
-    ent->mod = p;
+    ent->mod = (char *)p;
     while (p < e && *p++)
       ;
     if ((e - p) < 7)
       goto OVERRUN;
-    ent->name = p;
+    ent->name = (char *)p;
     while (p < e && *p++)
       ;
     if ((e - p) < 6)
@@ -459,6 +470,7 @@ int state_loadfile(const char *filename)
     p += ent->bytes * ent->size;
     ent->next = state_statelist;
     state_statelist = ent;
+    ent = nullptr;  /* Entry now in list, clear for next iteration */
   }
 
   /* reset */
@@ -489,11 +501,14 @@ int state_loadfile(const char *filename)
 OVERRUN:
   LOG_CRITICAL(("Invalid state file '%s': overrun encountered", filename));
   errno = EINVAL;
+  /* Free current entry if allocated but not yet added to list */
+  if (ent != nullptr)
+    free(ent);
   free(blk);
   while (state_statelist) {
-    ent = state_statelist;
+    t_statelist *tmp = state_statelist;
     state_statelist = state_statelist->next;
-    free(ent);
+    free(tmp);
   }
   return -1;
 }

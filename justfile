@@ -99,3 +99,52 @@ install:
 # Uninstall from system
 uninstall:
     ninja -C build uninstall
+
+# =============================================================================
+# Static Analysis & Code Quality
+# =============================================================================
+
+# Run Clang Static Analyzer (requires clang)
+analyze:
+    @if [ ! -d build ]; then \
+        echo "Setting up build directory..."; \
+        meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80; \
+    fi
+    ninja -C build scan-build
+
+# Run analyzer with HTML report (opens in browser)
+analyze-report:
+    @if [ ! -d build ]; then \
+        meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80; \
+    fi
+    scan-build -o ./analysis-report -V meson compile -C build
+    @echo "Report saved to ./analysis-report/"
+
+# Run analyzer for CI (fails on bugs found)
+analyze-ci:
+    @if [ ! -d build ]; then \
+        meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80; \
+    fi
+    SCANBUILD="scan-build --status-bugs" ninja -C build scan-build
+
+# Format all source files with clang-format
+format:
+    find src -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
+    @echo "Formatted all source files"
+
+# Check formatting without modifying files
+format-check:
+    find src -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
+    @echo "All files are properly formatted"
+
+# Run clang-tidy (requires compile_commands.json)
+tidy:
+    @if [ ! -f build/compile_commands.json ]; then \
+        echo "Setting up build directory..."; \
+        meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80; \
+    fi
+    find src/main -name '*.c' | head -20 | xargs clang-tidy -p build
+
+# Clean analysis reports
+clean-reports:
+    rm -rf analysis-report

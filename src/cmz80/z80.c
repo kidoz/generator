@@ -330,8 +330,7 @@ void SetSP(WORD wAddr)
 
 BYTE In(BYTE bPort)
 {
-  BYTE bVal;
-  // BYTE bVal = m_rgpfnPortRead[bPort](bPort);
+  BYTE bVal = 0xFF;  /* Default for unmapped ports */
 
   struct z80PortRead *mr = z80IoRead;
 
@@ -352,7 +351,7 @@ BYTE In(BYTE bPort)
 
 BYTE InRaw(BYTE bPort)
 {
-  BYTE bVal;
+  BYTE bVal = 0xFF;  /* Default for unmapped ports */
 
   struct z80PortRead *mr = z80IoRead;
 

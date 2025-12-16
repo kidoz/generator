@@ -32,10 +32,11 @@ int diss68k_gettext(t_ipc *ipc, char *text)
 
   if ((iib->mnemonic == i_Bcc) || (iib->mnemonic == i_BSR) ||
       (iib->mnemonic == i_DBcc)) {
-    sprintf(src, "$%08x", ipc->src);
+    snprintf(src, sizeof(src), "$%08x", ipc->src);
   }
 
-  strcpy(mnemonic, mnemonic_table[iib->mnemonic].name);
+  snprintf(mnemonic, sizeof(mnemonic), "%s",
+           mnemonic_table[iib->mnemonic].name);
 
   if ((p = strstr(mnemonic, "cc")) != nullptr) {
     if (iib->mnemonic == i_Bcc && iib->cc == 0) {
@@ -43,28 +44,36 @@ int diss68k_gettext(t_ipc *ipc, char *text)
       p[1] = 'A';
     } else {
       c = condition_table[iib->cc];
-      strcpy(p, c);
+      /* Safe: condition codes are 2 chars max, replacing "cc" */
+      size_t remaining = sizeof(mnemonic) - (p - mnemonic);
+      snprintf(p, remaining, "%s", c);
     }
   }
 
+  /* Append size suffix - mnemonic is max ~10 chars, plenty of room */
+  size_t len = strlen(mnemonic);
   switch (iib->size) {
   case sz_byte:
-    strcat(mnemonic, ".B");
+    snprintf(mnemonic + len, sizeof(mnemonic) - len, ".B");
     break;
   case sz_word:
-    strcat(mnemonic, ".W");
+    snprintf(mnemonic + len, sizeof(mnemonic) - len, ".W");
     break;
   case sz_long:
-    strcat(mnemonic, ".L");
+    snprintf(mnemonic + len, sizeof(mnemonic) - len, ".L");
     break;
   default:
     break;
   }
 
-  sprintf(text, "%-10s %s%s%s", mnemonic, src, dst[0] ? "," : "", dst);
+  /* text buffer assumed to be at least 128 bytes (typical usage) */
+  snprintf(text, 128, "%-10s %s%s%s", mnemonic, src, dst[0] ? "," : "", dst);
 
   return 1;
 }
+
+/* text buffer is 64 bytes (from caller) */
+#define OPERAND_SIZE 64
 
 void diss68k_getoperand(char *text, t_ipc *ipc, t_iib *iib, t_type type)
 {
@@ -81,112 +90,120 @@ void diss68k_getoperand(char *text, t_ipc *ipc, t_iib *iib, t_type type)
 
   switch (type == tp_src ? iib->stype : iib->dtype) {
   case dt_Dreg:
-    sprintf(text, "D%d", (ipc->opcode >> bitpos) & 7);
+    snprintf(text, OPERAND_SIZE, "D%d", (ipc->opcode >> bitpos) & 7);
     break;
   case dt_Areg:
-    sprintf(text, "A%d", (ipc->opcode >> bitpos) & 7);
+    snprintf(text, OPERAND_SIZE, "A%d", (ipc->opcode >> bitpos) & 7);
     break;
   case dt_Aind:
-    sprintf(text, "(A%d)", (ipc->opcode >> bitpos) & 7);
+    snprintf(text, OPERAND_SIZE, "(A%d)", (ipc->opcode >> bitpos) & 7);
     break;
   case dt_Ainc:
-    sprintf(text, "(A%d)+", (ipc->opcode >> bitpos) & 7);
+    snprintf(text, OPERAND_SIZE, "(A%d)+", (ipc->opcode >> bitpos) & 7);
     break;
   case dt_Adec:
-    sprintf(text, "-(A%d)", (ipc->opcode >> bitpos) & 7);
+    snprintf(text, OPERAND_SIZE, "-(A%d)", (ipc->opcode >> bitpos) & 7);
     break;
   case dt_Adis:
-    sprintf(text, "$%04x(A%d)", (uint16)val, (ipc->opcode >> bitpos) & 7);
+    snprintf(text, OPERAND_SIZE, "$%04x(A%d)", (uint16)val,
+             (ipc->opcode >> bitpos) & 7);
     break;
   case dt_Aidx:
-    sprintf(text, "$%02x(A%d,Rx.X)", (uint8)val, (ipc->opcode >> bitpos) & 7);
+    snprintf(text, OPERAND_SIZE, "$%02x(A%d,Rx.X)", (uint8)val,
+             (ipc->opcode >> bitpos) & 7);
     break;
   case dt_AbsW:
-    sprintf(text, "$%08x", val);
+    snprintf(text, OPERAND_SIZE, "$%08x", val);
     break;
   case dt_AbsL:
-    sprintf(text, "$%08x", val);
+    snprintf(text, OPERAND_SIZE, "$%08x", val);
     break;
   case dt_Pdis:
-    sprintf(text, "$%08x(pc)", val);
+    snprintf(text, OPERAND_SIZE, "$%08x(pc)", val);
     break;
   case dt_Pidx:
-    sprintf(text, "$%08x(pc, Rx.X)", val);
+    snprintf(text, OPERAND_SIZE, "$%08x(pc, Rx.X)", val);
     break;
   case dt_ImmB:
-    sprintf(text, "#$%02x", val);
+    snprintf(text, OPERAND_SIZE, "#$%02x", val);
     break;
   case dt_ImmW:
-    sprintf(text, "#$%04x", val);
+    snprintf(text, OPERAND_SIZE, "#$%04x", val);
     break;
   case dt_ImmL:
-    sprintf(text, "#$%08x", val);
+    snprintf(text, OPERAND_SIZE, "#$%08x", val);
     break;
   case dt_ImmS:
-    sprintf(text, "#%d", iib->immvalue);
+    snprintf(text, OPERAND_SIZE, "#%d", iib->immvalue);
     break;
   case dt_Imm3:
-    sprintf(text, "#%d", (ipc->opcode >> bitpos) & 7);
+    snprintf(text, OPERAND_SIZE, "#%d", (ipc->opcode >> bitpos) & 7);
     break;
   case dt_Imm4:
-    sprintf(text, "#%d", (ipc->opcode >> bitpos) & 15);
+    snprintf(text, OPERAND_SIZE, "#%d", (ipc->opcode >> bitpos) & 15);
     break;
   case dt_Imm8:
-    sprintf(text, "#%d", (ipc->opcode >> bitpos) & 255);
+    snprintf(text, OPERAND_SIZE, "#%d", (ipc->opcode >> bitpos) & 255);
     break;
   case dt_Imm8s:
-    sprintf(text, "#%d", (sint32)val);
+    snprintf(text, OPERAND_SIZE, "#%d", (sint32)val);
     break;
   default:
-    sprintf(text, "");
+    *text = '\0';
     break;
   }
 }
+
+/* dumpline buffer should be at least 256 bytes */
+#define DUMPLINE_SIZE 256
 
 int diss68k_getdumpline(uint32 addr68k, uint8 *addr, char *dumpline)
 {
   t_ipc ipc;
   t_iib *iibp = cpu68k_iibtable[LOCENDIAN16(*(uint16 *)addr)];
   int words, i;
-  char dissline[64], *p;
+  char dissline[128];
+  size_t pos = 0;
 
   if (addr68k < 256) {
-    sprintf(dissline, "dc.l $%08x", LOCENDIAN32(*(uint32 *)addr));
+    snprintf(dissline, sizeof(dissline), "dc.l $%08x",
+             LOCENDIAN32(*(uint32 *)addr));
     words = 2;
   } else {
     cpu68k_ipc(addr68k, addr, iibp, &ipc);
     if (!diss68k_gettext(&ipc, dissline))
-      strcpy(dissline, "Illegal Instruction");
+      snprintf(dissline, sizeof(dissline), "Illegal Instruction");
     words = ipc.wordlen;
   }
 
-  p = dumpline;
-  p += sprintf(p, "%6x : %04x ", addr68k, (addr[0] << 8) + addr[1]);
-  for (i = 1; i < words; i++) {
-    p += sprintf(p, "%04x ", (addr[i * 2] << 8) + addr[i * 2 + 1]);
+  pos += snprintf(dumpline + pos, DUMPLINE_SIZE - pos, "%6x : %04x ", addr68k,
+                  (addr[0] << 8) + addr[1]);
+  for (i = 1; i < words && pos < DUMPLINE_SIZE - 6; i++) {
+    pos +=
+        snprintf(dumpline + pos, DUMPLINE_SIZE - pos, "%04x ",
+                 (addr[i * 2] << 8) + addr[i * 2 + 1]);
   }
-  for (i = 29 - strlen(dumpline); i > 0; i--) {
-    *p++ = ' ';
+  /* Pad to column 29 */
+  while (pos < 29 && pos < DUMPLINE_SIZE - 1) {
+    dumpline[pos++] = ' ';
   }
-  p += sprintf(p, ": ");
-  for (i = 0; i < words; i++) {
-    if (isalnum(addr[i * 2])) {
-      *p++ = addr[i * 2];
-    } else
-      *p++ = '.';
-    if (isalnum(addr[i * 2 + 1])) {
-      *p++ = addr[i * 2 + 1];
-    } else
-      *p++ = '.';
+  pos += snprintf(dumpline + pos, DUMPLINE_SIZE - pos, ": ");
+  /* ASCII dump */
+  for (i = 0; i < words && pos < DUMPLINE_SIZE - 2; i++) {
+    dumpline[pos++] = isalnum(addr[i * 2]) ? addr[i * 2] : '.';
+    dumpline[pos++] = isalnum(addr[i * 2 + 1]) ? addr[i * 2 + 1] : '.';
   }
-  *p = '\0';
-  for (i = 39 - strlen(dumpline); i > 0; i--) {
-    *p++ = ' ';
+  /* Pad to column 39 */
+  while (pos < 39 && pos < DUMPLINE_SIZE - 1) {
+    dumpline[pos++] = ' ';
   }
+  dumpline[pos] = '\0';
+
   if (iibp) {
-    sprintf(p, " : %4d : %s\n", iibp->funcnum, dissline);
+    snprintf(dumpline + pos, DUMPLINE_SIZE - pos, " : %4d : %s\n",
+             iibp->funcnum, dissline);
   } else {
-    sprintf(p, " :      : %s\n", dissline);
+    snprintf(dumpline + pos, DUMPLINE_SIZE - pos, " :      : %s\n", dissline);
   }
 
   return words;

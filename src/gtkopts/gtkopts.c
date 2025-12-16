@@ -130,6 +130,7 @@ int gtkopts_load(const char *file)
     if (q == nullptr) {
       fprintf(stderr, "%s: line %d not understood in conf file\n", PACKAGE,
               line);
+      free(conf);
       goto error;
     }
     /* remove whitespace off end of p and start of q */
@@ -138,9 +139,15 @@ int gtkopts_load(const char *file)
       *t-- = '\0';
     while (*q == ' ')
       q++;
-    if ((conf->key = malloc(strlen(p) + 1)) == nullptr ||
-        (conf->value = malloc(strlen(q) + 1)) == nullptr) {
+    if ((conf->key = malloc(strlen(p) + 1)) == nullptr) {
       fprintf(stderr, "%s: Out of memory building conf\n", PACKAGE);
+      free(conf);
+      goto error;
+    }
+    if ((conf->value = malloc(strlen(q) + 1)) == nullptr) {
+      fprintf(stderr, "%s: Out of memory building conf\n", PACKAGE);
+      free(conf->key);
+      free(conf);
       goto error;
     }
     strcpy(conf->key, p);
@@ -154,10 +161,13 @@ int gtkopts_load(const char *file)
       confi->next = conf;
   }
 finished:
-  if (ferror(fd) || fclose(fd)) {
-    fprintf(stderr, "%s: error whilst reading conf: %s\n", PACKAGE,
-            strerror(errno));
-    return -1;
+  {
+    int had_error = ferror(fd);
+    if (fclose(fd) || had_error) {
+      fprintf(stderr, "%s: error whilst reading conf: %s\n", PACKAGE,
+              strerror(errno));
+      return -1;
+    }
   }
   return 0;
 error:
@@ -195,10 +205,17 @@ int gtkopts_setvalue(const char *key, const char *value)
       return 0;
     }
   }
-  if ((c = malloc(sizeof(t_conf))) == nullptr ||
-      (c->key = malloc(strlen(key) + 1)) == nullptr ||
-      (c->value = malloc(strlen(value) + 1)) == nullptr)
+  if ((c = malloc(sizeof(t_conf))) == nullptr)
     return -1;
+  if ((c->key = malloc(strlen(key) + 1)) == nullptr) {
+    free(c);
+    return -1;
+  }
+  if ((c->value = malloc(strlen(value) + 1)) == nullptr) {
+    free(c->key);
+    free(c);
+    return -1;
+  }
   strcpy(c->key, key);
   strcpy(c->value, value);
   c->next = gtkopts_conf;
