@@ -6,6 +6,7 @@
 
 #include <gtk/gtk.h>
 #include <adwaita.h>
+#include <stdatomic.h>
 
 #define HBORDER_MAX 32
 #define HBORDER_DEFAULT 8
@@ -66,7 +67,11 @@ typedef struct {
   guint32 *upscale_src_buffer; /* Pre-allocated source buffer for upscaling */
   guint32
       *upscale_dst_buffer; /* Pre-allocated destination buffer for upscaling */
+  guint32 *scale4x_temp_buffer; /* Pre-allocated intermediate buffer for Scale4x */
   unsigned int upscale_buffer_size; /* Current allocated buffer size */
+
+  /* Debug */
+  gboolean debug_telemetry; /* Enable debug output (set via GENERATOR_DEBUG env) */
 
   /* Dynamic Rate Control */
   gboolean dynamic_rate_control; /* Enable/disable dynamic rate control */
@@ -85,8 +90,8 @@ typedef struct {
   guint8 *screen0;
   guint8 *screen1;
   guint8 *newscreen;
-  volatile int whichbank; /* Volatile to prevent race condition between render
-                             and draw threads */
+  _Atomic int whichbank; /* Atomic for thread-safe access between render
+                            and draw threads */
   gboolean locksurface;
   gboolean plotfield;
   gboolean vdpsimple;

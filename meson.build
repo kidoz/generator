@@ -146,10 +146,11 @@ elif ui_backend == 'console'
 
 endif
 
-# Include directories
-inc = include_directories('src/hdr', 'src/cpu68k', 'src/ym2612', 'src/sn76496', 'src/gtkopts', 'src/xbrz')
+# Include directories (defined before subdirs so all can use it)
+inc = include_directories('src/hdr', 'src/cpu68k', 'src/ym2612', 'src/sn76496', 'src/gtkopts', 'src/xbrz', 'src/core', 'src/cmz80')
 
 # Build subdirectories
+subdir('src/core')
 subdir('src/cpu68k')
 subdir('src/ym2612')
 subdir('src/sn76496')
@@ -172,6 +173,10 @@ endif
 
 # Main executable
 subdir('src/main')
+
+# Headless backend (always built alongside main executable)
+# Useful for testing, benchmarking, and automated processing
+subdir('src/ui/headless')
 
 # Summary
 summary({

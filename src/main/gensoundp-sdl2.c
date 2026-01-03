@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <stdatomic.h>
 #include <SDL2/SDL.h>
 
 #include "generator.h"
@@ -17,15 +18,17 @@
 static SDL_AudioDeviceID soundp_dev = 0;
 static SDL_AudioSpec soundp_spec;
 
-/* Ring buffer for audio samples
- * Note: All access to ring buffer positions is protected by soundp_mutex.
- * The mutex ensures thread safety between the SDL audio callback (reader)
- * and the emulator thread (writer). */
+/* Lock-free SPSC ring buffer for audio samples
+ * Using acquire/release memory ordering for thread safety:
+ * - Producer (emulator): reads read_pos with acquire, writes samples, stores
+ *   write_pos with release
+ * - Consumer (SDL callback): reads write_pos with acquire, reads samples,
+ *   stores read_pos with release
+ * This is safe because there's exactly one producer and one consumer. */
 #define RING_BUFFER_SIZE (SOUND_MAXRATE * 4) /* 4 seconds of buffering */
 static int16_t soundp_ring_buffer[RING_BUFFER_SIZE * 2]; /* stereo */
-static unsigned int soundp_write_pos = 0;  /* protected by soundp_mutex */
-static unsigned int soundp_read_pos = 0;   /* protected by soundp_mutex */
-static SDL_mutex *soundp_mutex = nullptr;
+static _Atomic unsigned int soundp_write_pos = 0;
+static _Atomic unsigned int soundp_read_pos = 0;
 
 /*** soundp_detect_pipewire - Detect if PipeWire is being used ***/
 
@@ -68,44 +71,50 @@ static const char *soundp_detect_audio_backend(void)
   return "Unknown";
 }
 
-/*** soundp_audio_callback - SDL2 audio callback ***/
+/*** soundp_audio_callback - SDL2 audio callback (lock-free consumer) ***/
 
 static void soundp_audio_callback(void *userdata, Uint8 *stream, int len)
 {
+  (void)userdata; /* unused */
   int samples_requested = len / 4; /* 2 bytes per sample, 2 channels */
   int16_t *output = (int16_t *)stream;
   unsigned int samples_available;
   unsigned int i;
 
-  SDL_LockMutex(soundp_mutex);
+  /* Lock-free read: acquire write_pos to see all samples written by producer */
+  unsigned int write_pos = atomic_load_explicit(&soundp_write_pos,
+                                                memory_order_acquire);
+  unsigned int read_pos = atomic_load_explicit(&soundp_read_pos,
+                                               memory_order_relaxed);
 
   /* Calculate available samples in ring buffer */
-  if (soundp_write_pos >= soundp_read_pos) {
-    samples_available = soundp_write_pos - soundp_read_pos;
+  if (write_pos >= read_pos) {
+    samples_available = write_pos - read_pos;
   } else {
-    samples_available = RING_BUFFER_SIZE - soundp_read_pos + soundp_write_pos;
+    samples_available = RING_BUFFER_SIZE - read_pos + write_pos;
   }
 
   /* Copy samples from ring buffer to output */
   if (samples_available >= (unsigned int)samples_requested) {
     for (i = 0; i < (unsigned int)samples_requested; i++) {
-      output[i * 2] = soundp_ring_buffer[soundp_read_pos * 2];
-      output[i * 2 + 1] = soundp_ring_buffer[soundp_read_pos * 2 + 1];
-      soundp_read_pos = (soundp_read_pos + 1) % RING_BUFFER_SIZE;
+      output[i * 2] = soundp_ring_buffer[read_pos * 2];
+      output[i * 2 + 1] = soundp_ring_buffer[read_pos * 2 + 1];
+      read_pos = (read_pos + 1) % RING_BUFFER_SIZE;
     }
   } else {
     /* Not enough samples, output what we have and fill rest with silence */
     for (i = 0; i < samples_available; i++) {
-      output[i * 2] = soundp_ring_buffer[soundp_read_pos * 2];
-      output[i * 2 + 1] = soundp_ring_buffer[soundp_read_pos * 2 + 1];
-      soundp_read_pos = (soundp_read_pos + 1) % RING_BUFFER_SIZE;
+      output[i * 2] = soundp_ring_buffer[read_pos * 2];
+      output[i * 2 + 1] = soundp_ring_buffer[read_pos * 2 + 1];
+      read_pos = (read_pos + 1) % RING_BUFFER_SIZE;
     }
     /* Fill remaining with silence */
     memset(&output[samples_available * 2], 0,
            (samples_requested - samples_available) * 4);
   }
 
-  SDL_UnlockMutex(soundp_mutex);
+  /* Release store: publish the new read position */
+  atomic_store_explicit(&soundp_read_pos, read_pos, memory_order_release);
 }
 
 /*** soundp_start - start sound hardware ***/
@@ -120,13 +129,6 @@ int soundp_start(void)
       LOG_CRITICAL(("SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError()));
       return 1;
     }
-  }
-
-  /* Create mutex for ring buffer access */
-  soundp_mutex = SDL_CreateMutex();
-  if (!soundp_mutex) {
-    LOG_CRITICAL(("Failed to create audio mutex: %s", SDL_GetError()));
-    return 1;
   }
 
   /* Configure audio format */
@@ -152,8 +154,6 @@ int soundp_start(void)
                                    SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
   if (soundp_dev == 0) {
     LOG_CRITICAL(("SDL_OpenAudioDevice failed: %s", SDL_GetError()));
-    SDL_DestroyMutex(soundp_mutex);
-    soundp_mutex = nullptr;
     return 1;
   }
 
@@ -161,18 +161,14 @@ int soundp_start(void)
   if (soundp_spec.format != AUDIO_S16SYS) {
     LOG_CRITICAL(("SDL audio format not supported (must be 16 bit signed)"));
     SDL_CloseAudioDevice(soundp_dev);
-    SDL_DestroyMutex(soundp_mutex);
     soundp_dev = 0;
-    soundp_mutex = nullptr;
     return 1;
   }
 
   if (soundp_spec.channels != 2) {
     LOG_CRITICAL(("SDL audio does not support stereo"));
     SDL_CloseAudioDevice(soundp_dev);
-    SDL_DestroyMutex(soundp_mutex);
     soundp_dev = 0;
-    soundp_mutex = nullptr;
     return 1;
   }
 
@@ -180,9 +176,7 @@ int soundp_start(void)
     LOG_CRITICAL(("SDL audio does not support sample rate %d (got %d)",
                   sound_speed, soundp_spec.freq));
     SDL_CloseAudioDevice(soundp_dev);
-    SDL_DestroyMutex(soundp_mutex);
     soundp_dev = 0;
-    soundp_mutex = nullptr;
     return 1;
   }
 
@@ -191,9 +185,9 @@ int soundp_start(void)
                 soundp_spec.freq));
   }
 
-  /* Initialize ring buffer */
-  soundp_write_pos = 0;
-  soundp_read_pos = 0;
+  /* Initialize ring buffer (atomics) */
+  atomic_store(&soundp_write_pos, 0);
+  atomic_store(&soundp_read_pos, 0);
   memset(soundp_ring_buffer, 0, sizeof(soundp_ring_buffer));
 
   /* Start audio playback */
@@ -231,10 +225,6 @@ void soundp_stop(void)
     SDL_CloseAudioDevice(soundp_dev);
     soundp_dev = 0;
   }
-  if (soundp_mutex) {
-    SDL_DestroyMutex(soundp_mutex);
-    soundp_mutex = nullptr;
-  }
 }
 
 /*** soundp_pause - pause audio playback ***/
@@ -264,16 +254,18 @@ int soundp_samplesbuffered(void)
   if (!soundp_dev)
     return 0;
 
-  SDL_LockMutex(soundp_mutex);
+  /* Lock-free read of positions */
+  unsigned int write_pos = atomic_load_explicit(&soundp_write_pos,
+                                                memory_order_relaxed);
+  unsigned int read_pos = atomic_load_explicit(&soundp_read_pos,
+                                               memory_order_relaxed);
 
   /* Calculate buffered samples in ring buffer */
-  if (soundp_write_pos >= soundp_read_pos) {
-    samples_buffered = soundp_write_pos - soundp_read_pos;
+  if (write_pos >= read_pos) {
+    samples_buffered = write_pos - read_pos;
   } else {
-    samples_buffered = RING_BUFFER_SIZE - soundp_read_pos + soundp_write_pos;
+    samples_buffered = RING_BUFFER_SIZE - read_pos + write_pos;
   }
-
-  SDL_UnlockMutex(soundp_mutex);
 
   /* Account for SDL's internal audio buffer - samples that have been pulled
      from our ring buffer by the audio callback but are still queued in SDL's
@@ -284,7 +276,7 @@ int soundp_samplesbuffered(void)
   return samples_buffered;
 }
 
-/*** soundp_output - output samples to SDL2 ***/
+/*** soundp_output - output samples to SDL2 (lock-free producer) ***/
 
 void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 {
@@ -294,14 +286,17 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
   if (!soundp_dev)
     return;
 
-  SDL_LockMutex(soundp_mutex);
+  /* Lock-free read: acquire read_pos to calculate available space */
+  unsigned int read_pos = atomic_load_explicit(&soundp_read_pos,
+                                               memory_order_acquire);
+  unsigned int write_pos = atomic_load_explicit(&soundp_write_pos,
+                                                memory_order_relaxed);
 
   /* Calculate available space in ring buffer */
-  if (soundp_write_pos >= soundp_read_pos) {
-    space_available =
-        RING_BUFFER_SIZE - (soundp_write_pos - soundp_read_pos) - 1;
+  if (write_pos >= read_pos) {
+    space_available = RING_BUFFER_SIZE - (write_pos - read_pos) - 1;
   } else {
-    space_available = soundp_read_pos - soundp_write_pos - 1;
+    space_available = read_pos - write_pos - 1;
   }
 
   /* Clamp samples to available space */
@@ -314,10 +309,11 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 
   /* Copy samples to ring buffer */
   for (i = 0; i < samples; i++) {
-    soundp_ring_buffer[soundp_write_pos * 2] = (int16_t)left[i];
-    soundp_ring_buffer[soundp_write_pos * 2 + 1] = (int16_t)right[i];
-    soundp_write_pos = (soundp_write_pos + 1) % RING_BUFFER_SIZE;
+    soundp_ring_buffer[write_pos * 2] = (int16_t)left[i];
+    soundp_ring_buffer[write_pos * 2 + 1] = (int16_t)right[i];
+    write_pos = (write_pos + 1) % RING_BUFFER_SIZE;
   }
 
-  SDL_UnlockMutex(soundp_mutex);
+  /* Release store: publish the new write position after all samples written */
+  atomic_store_explicit(&soundp_write_pos, write_pos, memory_order_release);
 }

@@ -66,7 +66,7 @@ static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval,
 static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data);
 static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
                                  gpointer user_data);
-static void ui_newframe(void);
+static void ui_newframe(int pending_samples);
 static void ui_simpleplot(void);
 static void ui_sdl_events(void);
 static void ui_rendertoscreen(void);
@@ -114,6 +114,9 @@ int ui_init(int argc, char *argv[])
   /* Initialize Genesis controller state to all buttons released */
   memset(mem68k_cont, 0, sizeof(mem68k_cont));
 
+  /* Initialize debug output (set GENERATOR_DEBUG=1 to enable) */
+  gen_ui->debug_telemetry = (g_getenv("GENERATOR_DEBUG") != nullptr);
+
   /* Initialize dynamic rate control */
   gen_ui->dynamic_rate_control = TRUE; /* Enable by default */
   gen_ui->rate_adjust = 1.0;           /* Normal speed */
@@ -132,6 +135,8 @@ int ui_init(int argc, char *argv[])
       g_malloc(gen_ui->upscale_buffer_size * sizeof(guint32));
   gen_ui->upscale_dst_buffer =
       g_malloc(gen_ui->upscale_buffer_size * sizeof(guint32));
+  /* Scale4x needs intermediate 2x buffer: 640x480 pixels max */
+  gen_ui->scale4x_temp_buffer = g_malloc(640 * 480 * sizeof(guint32));
 
   /* Allocate screen buffers */
   gen_ui->screen_buffers[0] = g_malloc0(4 * HMAXSIZE * VMAXSIZE);
@@ -215,7 +220,7 @@ int ui_init(int argc, char *argv[])
   gen_ui->screen0 = gen_ui->screen_buffers[0];
   gen_ui->screen1 = gen_ui->screen_buffers[1];
   gen_ui->newscreen = gen_ui->screen_buffers[2];
-  gen_ui->whichbank = 0;
+  atomic_store(&gen_ui->whichbank, 0);
   gen_ui->musicfile_fd = -1;
 
   /* Set up color conversion for Cairo CAIRO_FORMAT_RGB24
@@ -744,7 +749,8 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width,
   /* Double buffering: display the buffer indicated by whichbank
    * whichbank is updated atomically by ui_rendertoscreen() after each frame
    * completes, so we're always reading from a stable, complete frame. */
-  screen_data = (gen_ui->whichbank == 0) ? gen_ui->screen0 : gen_ui->screen1;
+  int current_bank = atomic_load(&gen_ui->whichbank);
+  screen_data = (current_bank == 0) ? gen_ui->screen0 : gen_ui->screen1;
 
   /* Create Cairo image surface from emulator buffer
      Format: CAIRO_FORMAT_RGB24 which is 32-bit with unused alpha */
@@ -912,16 +918,20 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
   /* Check sound buffer status to prevent overflow
      This provides backpressure to maintain audio/video sync */
   pending_samples = soundp_samplesbuffered();
-  if (pending_samples < min_pending)
-    min_pending = pending_samples;
-  frames_tracked++;
-  if (frames_tracked >= 120) {
-    fprintf(stderr,
-            "GTK4 audio telemetry: min_buffer=%d threshold=%u feedback=%d "
-            "rate=%.4f\n",
-            min_pending, sound_threshold, sound_feedback, gen_ui->rate_adjust);
-    min_pending = INT_MAX;
-    frames_tracked = 0;
+
+  /* Debug telemetry (only when GENERATOR_DEBUG is set) */
+  if (gen_ui->debug_telemetry) {
+    if (pending_samples < min_pending)
+      min_pending = pending_samples;
+    frames_tracked++;
+    if (frames_tracked >= 120) {
+      fprintf(stderr,
+              "GTK4 audio telemetry: min_buffer=%d threshold=%u feedback=%d "
+              "rate=%.4f\n",
+              min_pending, sound_threshold, sound_feedback, gen_ui->rate_adjust);
+      min_pending = INT_MAX;
+      frames_tracked = 0;
+    }
   }
 
   /* If sound buffer is too full (more than 2x threshold), skip this frame
@@ -956,7 +966,7 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
     if (frame_iter > 0 && pending_samples >= (int)(sound_threshold * 1.05))
       break;
 
-    ui_newframe();
+    ui_newframe(pending_samples);
     event_doframe();
     gtk_widget_queue_draw(gen_ui->drawing_area);
 
@@ -1014,14 +1024,17 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
           gen_ui->rate_adjust =
               gen_ui->rate_adjust * 0.9 + new_rate_adjust * 0.1;
 
-          gen_ui->debug_counter++;
-          if (gen_ui->debug_counter >= 60) {
-            fprintf(stderr,
-                    "DRC: FPS=%.2f (target=%.2f) buffer=%d/%d ratio=%.2f "
-                    "rate_adjust=%.4f\n",
-                    gen_ui->measured_fps, target_fps, pending_samples,
-                    sound_threshold, buffer_ratio, gen_ui->rate_adjust);
-            gen_ui->debug_counter = 0;
+          /* Debug output (only when GENERATOR_DEBUG is set) */
+          if (gen_ui->debug_telemetry) {
+            gen_ui->debug_counter++;
+            if (gen_ui->debug_counter >= 60) {
+              fprintf(stderr,
+                      "DRC: FPS=%.2f (target=%.2f) buffer=%d/%d ratio=%.2f "
+                      "rate_adjust=%.4f\n",
+                      gen_ui->measured_fps, target_fps, pending_samples,
+                      sound_threshold, buffer_ratio, gen_ui->rate_adjust);
+              gen_ui->debug_counter = 0;
+            }
           }
         }
       }
@@ -1033,13 +1046,14 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
   return G_SOURCE_CONTINUE;
 }
 
-static void ui_newframe(void)
+static void ui_newframe(int pending_samples)
 {
   static int vmode = -1;
   static int pal = -1;
   static int skipcount = 0;
   static char frameplots[60];
   static unsigned int frameplots_i = 0;
+  static unsigned int consecutive_skips = 0;
   unsigned int i;
   int fps;
   char fps_string[64];
@@ -1068,10 +1082,24 @@ static void ui_newframe(void)
     /* Not in interlace mode, or in interlace mode on even field */
     gen_ui->plotfield = FALSE;
     if (gen_ui->frameskip == 0) {
-      /* Hold rendering when audio buffer is starving to let emulation catch up
-       */
-      if (sound_feedback != -1)
+      /* Dynamic frame skipping based on audio buffer level.
+         Use cached pending_samples from caller to avoid redundant polling. */
+
+      /* Allow rendering if buffer is at least 50% of threshold.
+         This is less aggressive than requiring full threshold, preventing
+         excessive frame skipping that causes low FPS. */
+      if (pending_samples >= (int)(sound_threshold * 0.5)) {
         gen_ui->plotfield = TRUE;
+        consecutive_skips = 0;
+      } else {
+        /* Buffer is critically low - skip frame to let audio catch up.
+           But prevent permanent freeze: force render every 4 frames max. */
+        consecutive_skips++;
+        if (consecutive_skips >= 4) {
+          gen_ui->plotfield = TRUE;
+          consecutive_skips = 0;
+        }
+      }
     } else {
       if (cpu68k_frames % (gen_ui->frameskip + 1) == 0)
         gen_ui->plotfield = TRUE;
@@ -1191,7 +1219,8 @@ static void ui_rendertoscreen(void)
    * whichbank indicates which buffer is being displayed:
    *   0 = screen0 is displayed, write to screen1
    *   1 = screen1 is displayed, write to screen0 */
-  if (gen_ui->whichbank == 0) {
+  int bank = atomic_load(&gen_ui->whichbank);
+  if (bank == 0) {
     display_buffer = gen_ui->screen0;
     write_buffer = gen_ui->screen1;
   } else {
@@ -1206,56 +1235,59 @@ static void ui_rendertoscreen(void)
   case 2: /* invalid */
     /* Apply upscaling if enabled, otherwise simple copy */
     if (gen_ui->filter_type != FILTER_NONE && gen_ui->scale_factor > 1) {
-      /* Use pre-allocated buffers instead of malloc/free per frame
-         Extract source pixels from newscreen (remove stride) */
-      for (line = 0; line < vdp_vislines; line++) {
-        newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
-        memcpy(gen_ui->upscale_src_buffer + line * nominalwidth, newlinedata,
-               nominalwidth * sizeof(uint32));
-      }
-
       /* Calculate scaled dimensions */
       unsigned int scaled_width = nominalwidth * gen_ui->scale_factor;
       unsigned int scaled_height = vdp_vislines * gen_ui->scale_factor;
 
-      /* Apply the selected upscaling filter using pre-allocated destination
-       * buffer */
+      /* Apply the selected upscaling filter
+       * Scale2x/3x/4x: read directly from newscreen using stride parameter
+       * xBRZ: needs packed buffer (no stride support) */
       switch (gen_ui->filter_type) {
       case FILTER_SCALE2X:
-        uiplot_scale2x_frame32(gen_ui->upscale_src_buffer,
+        /* Read directly from newscreen with stride (384 pixels = 1536 bytes) */
+        uiplot_scale2x_frame32((uint32 *)gen_ui->newscreen,
                                gen_ui->upscale_dst_buffer, nominalwidth,
-                               vdp_vislines, scaled_width * 4);
+                               vdp_vislines, 384 * 4, scaled_width * 4);
         break;
       case FILTER_SCALE3X:
-        uiplot_scale3x_frame32(gen_ui->upscale_src_buffer,
+        uiplot_scale3x_frame32((uint32 *)gen_ui->newscreen,
                                gen_ui->upscale_dst_buffer, nominalwidth,
-                               vdp_vislines, scaled_width * 4);
+                               vdp_vislines, 384 * 4, scaled_width * 4);
         break;
       case FILTER_SCALE4X:
-        uiplot_scale4x_frame32(gen_ui->upscale_src_buffer,
-                               gen_ui->upscale_dst_buffer, nominalwidth,
-                               vdp_vislines, scaled_width * 4);
+        uiplot_scale4x_frame32((uint32 *)gen_ui->newscreen,
+                               gen_ui->upscale_dst_buffer,
+                               gen_ui->scale4x_temp_buffer, nominalwidth,
+                               vdp_vislines, 384 * 4, scaled_width * 4);
         break;
       case FILTER_XBRZ2X:
-        uiplot_xbrz_frame32(2, gen_ui->upscale_src_buffer,
-                            gen_ui->upscale_dst_buffer, nominalwidth,
-                            vdp_vislines);
-        break;
       case FILTER_XBRZ3X:
-        uiplot_xbrz_frame32(3, gen_ui->upscale_src_buffer,
-                            gen_ui->upscale_dst_buffer, nominalwidth,
-                            vdp_vislines);
-        break;
       case FILTER_XBRZ4X:
-        uiplot_xbrz_frame32(4, gen_ui->upscale_src_buffer,
-                            gen_ui->upscale_dst_buffer, nominalwidth,
-                            vdp_vislines);
+        /* xBRZ needs packed input - copy with stride removal first */
+        for (line = 0; line < vdp_vislines; line++) {
+          newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
+          memcpy(gen_ui->upscale_src_buffer + line * nominalwidth, newlinedata,
+                 nominalwidth * sizeof(uint32));
+        }
+        if (gen_ui->filter_type == FILTER_XBRZ2X) {
+          uiplot_xbrz_frame32(2, gen_ui->upscale_src_buffer,
+                              gen_ui->upscale_dst_buffer, nominalwidth,
+                              vdp_vislines);
+        } else if (gen_ui->filter_type == FILTER_XBRZ3X) {
+          uiplot_xbrz_frame32(3, gen_ui->upscale_src_buffer,
+                              gen_ui->upscale_dst_buffer, nominalwidth,
+                              vdp_vislines);
+        } else {
+          uiplot_xbrz_frame32(4, gen_ui->upscale_src_buffer,
+                              gen_ui->upscale_dst_buffer, nominalwidth,
+                              vdp_vislines);
+        }
         break;
       default:
         /* Fallback: simple copy without scaling */
         for (line = 0; line < vdp_vislines; line++) {
-          memcpy(gen_ui->upscale_dst_buffer + line * scaled_width,
-                 gen_ui->upscale_src_buffer + line * nominalwidth,
+          newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
+          memcpy(gen_ui->upscale_dst_buffer + line * scaled_width, newlinedata,
                  nominalwidth * sizeof(uint32));
         }
         break;
@@ -1318,7 +1350,8 @@ static void ui_rendertoscreen(void)
    * This ensures Cairo reads from a complete, stable frame while we render
    * the next frame to the other buffer. This eliminates tearing and stuttering.
    */
-  gen_ui->whichbank = (gen_ui->whichbank == 0) ? 1 : 0;
+  int old_bank = atomic_load(&gen_ui->whichbank);
+  atomic_store(&gen_ui->whichbank, (old_bank == 0) ? 1 : 0);
 }
 
 static void ui_simpleplot(void)
@@ -1886,6 +1919,8 @@ void ui_err(const char *text, ...)
   vsnprintf(buffer, sizeof(buffer), text, ap);
   va_end(ap);
   ui_gtk4_messageerror(buffer);
+  fprintf(stderr, "FATAL ERROR: %s\n", buffer);
+  exit(1);
 }
 
 void ui_musiclog(uint8 *data, unsigned int length)

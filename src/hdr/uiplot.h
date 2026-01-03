@@ -22,16 +22,17 @@ void uiplot_irender16_weavefilter(uint16 *evendata, uint16 *odddata,
 void uiplot_irender32_weavefilter(uint32 *evendata, uint32 *odddata,
                                   uint8 *screen, unsigned int pixels);
 
-/* Scale2x/EPX upscaling algorithms */
+/* Scale2x/EPX upscaling algorithms
+   src_pitch and dst_pitch are in bytes (stride of source/dest buffers) */
 void uiplot_scale2x_frame32(uint32 *srcdata, uint32 *dstdata,
                             unsigned int src_width, unsigned int src_height,
-                            unsigned int dst_pitch);
+                            unsigned int src_pitch, unsigned int dst_pitch);
 void uiplot_scale3x_frame32(uint32 *srcdata, uint32 *dstdata,
                             unsigned int src_width, unsigned int src_height,
-                            unsigned int dst_pitch);
-void uiplot_scale4x_frame32(uint32 *srcdata, uint32 *dstdata,
+                            unsigned int src_pitch, unsigned int dst_pitch);
+void uiplot_scale4x_frame32(uint32 *srcdata, uint32 *dstdata, uint32 *temp,
                             unsigned int src_width, unsigned int src_height,
-                            unsigned int dst_pitch);
+                            unsigned int src_pitch, unsigned int dst_pitch);
 
 /* xBRZ high-quality upscaling algorithms */
 void uiplot_xbrz_frame32(int factor, uint32 *srcdata, uint32 *dstdata,

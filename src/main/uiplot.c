@@ -450,28 +450,31 @@ void uiplot_irender32_weavefilter(uint32 *evendata, uint32 *odddata,
    This preserves diagonal edges while smoothing jaggy lines.
 */
 
-/* Scale2x for full frame (32-bit) - processes entire 2D image at once */
+/* Scale2x for full frame (32-bit) - processes entire 2D image at once
+   src_pitch and dst_pitch are in bytes (stride of source/dest buffers) */
 void uiplot_scale2x_frame32(uint32 *srcdata, uint32 *dstdata,
                             unsigned int src_width, unsigned int src_height,
-                            unsigned int dst_pitch)
+                            unsigned int src_pitch, unsigned int dst_pitch)
 {
   unsigned int x, y;
   uint32 *dst_line1, *dst_line2;
   uint32 N, S, E, W, C;
   uint32 E0, E1, E2, E3;
+  unsigned int src_stride = src_pitch / 4; /* Convert bytes to pixels */
+  unsigned int dst_stride = dst_pitch / 4;
 
   for (y = 0; y < src_height; y++) {
-    dst_line1 = dstdata + (y * 2) * (dst_pitch / 4);
-    dst_line2 = dstdata + (y * 2 + 1) * (dst_pitch / 4);
+    dst_line1 = dstdata + (y * 2) * dst_stride;
+    dst_line2 = dstdata + (y * 2 + 1) * dst_stride;
 
     for (x = 0; x < src_width; x++) {
-      C = srcdata[y * src_width + x];
+      C = srcdata[y * src_stride + x];
 
       /* Get neighbors (with boundary checks) */
-      N = (y > 0) ? srcdata[(y - 1) * src_width + x] : C;
-      S = (y < src_height - 1) ? srcdata[(y + 1) * src_width + x] : C;
-      W = (x > 0) ? srcdata[y * src_width + (x - 1)] : C;
-      E = (x < src_width - 1) ? srcdata[y * src_width + (x + 1)] : C;
+      N = (y > 0) ? srcdata[(y - 1) * src_stride + x] : C;
+      S = (y < src_height - 1) ? srcdata[(y + 1) * src_stride + x] : C;
+      W = (x > 0) ? srcdata[y * src_stride + (x - 1)] : C;
+      E = (x < src_width - 1) ? srcdata[y * src_stride + (x + 1)] : C;
 
       /* Apply Scale2x rules */
       E0 = (W == N && W != S && W != E) ? W : C;
@@ -491,9 +494,10 @@ void uiplot_scale2x_frame32(uint32 *srcdata, uint32 *dstdata,
 /* Scale3x for full frame (32-bit) - EPX/Scale3x variant */
 void uiplot_scale3x_frame32(uint32 *srcdata, uint32 *dstdata,
                             unsigned int src_width, unsigned int src_height,
-                            unsigned int dst_pitch)
+                            unsigned int src_pitch, unsigned int dst_pitch)
 {
   unsigned int x, y;
+  unsigned int src_stride = src_pitch / 4; /* Convert bytes to pixels */
   uint32 *dst_line1, *dst_line2, *dst_line3;
   uint32 A, B, C, D, E, F, G, H, I;
   uint32 E0, E1, E2, E3, E4, E5, E6, E7, E8;
@@ -509,19 +513,19 @@ void uiplot_scale3x_frame32(uint32 *srcdata, uint32 *dstdata,
          D E F
          G H I
       */
-      E = srcdata[y * src_width + x];
+      E = srcdata[y * src_stride + x];
 
-      A = (y > 0 && x > 0) ? srcdata[(y - 1) * src_width + (x - 1)] : E;
-      B = (y > 0) ? srcdata[(y - 1) * src_width + x] : E;
-      C = (y > 0 && x < src_width - 1) ? srcdata[(y - 1) * src_width + (x + 1)]
+      A = (y > 0 && x > 0) ? srcdata[(y - 1) * src_stride + (x - 1)] : E;
+      B = (y > 0) ? srcdata[(y - 1) * src_stride + x] : E;
+      C = (y > 0 && x < src_width - 1) ? srcdata[(y - 1) * src_stride + (x + 1)]
                                        : E;
-      D = (x > 0) ? srcdata[y * src_width + (x - 1)] : E;
-      F = (x < src_width - 1) ? srcdata[y * src_width + (x + 1)] : E;
-      G = (y < src_height - 1 && x > 0) ? srcdata[(y + 1) * src_width + (x - 1)]
+      D = (x > 0) ? srcdata[y * src_stride + (x - 1)] : E;
+      F = (x < src_width - 1) ? srcdata[y * src_stride + (x + 1)] : E;
+      G = (y < src_height - 1 && x > 0) ? srcdata[(y + 1) * src_stride + (x - 1)]
                                         : E;
-      H = (y < src_height - 1) ? srcdata[(y + 1) * src_width + x] : E;
+      H = (y < src_height - 1) ? srcdata[(y + 1) * src_stride + x] : E;
       I = (y < src_height - 1 && x < src_width - 1)
-              ? srcdata[(y + 1) * src_width + (x + 1)]
+              ? srcdata[(y + 1) * src_stride + (x + 1)]
               : E;
 
       /* Apply Scale3x rules (simplified)
@@ -557,10 +561,12 @@ void uiplot_scale3x_frame32(uint32 *srcdata, uint32 *dstdata,
   }
 }
 
-/* Scale4x for full frame (32-bit) - Double application of Scale2x */
-void uiplot_scale4x_frame32(uint32 *srcdata, uint32 *dstdata,
+/* Scale4x for full frame (32-bit) - Double application of Scale2x
+   temp: Pre-allocated intermediate buffer (must be at least src_width*2 *
+   src_height*2 * 4 bytes) */
+void uiplot_scale4x_frame32(uint32 *srcdata, uint32 *dstdata, uint32 *temp,
                             unsigned int src_width, unsigned int src_height,
-                            unsigned int dst_pitch)
+                            unsigned int src_pitch, unsigned int dst_pitch)
 {
   /* Scale4x = Scale2x applied twice
      First: src -> temp (2x)
@@ -568,33 +574,15 @@ void uiplot_scale4x_frame32(uint32 *srcdata, uint32 *dstdata,
 
   unsigned int temp_width = src_width * 2;
   unsigned int temp_height = src_height * 2;
-
-  /* Allocate temporary buffer for intermediate 2x result */
-  uint32 *temp = malloc(temp_width * temp_height * sizeof(uint32));
-  if (!temp) {
-    /* Fallback: just do simple 4x duplication if malloc fails */
-    unsigned int x, y, dx, dy;
-    for (y = 0; y < src_height; y++) {
-      for (x = 0; x < src_width; x++) {
-        uint32 pixel = srcdata[y * src_width + x];
-        for (dy = 0; dy < 4; dy++) {
-          uint32 *dst_line = dstdata + (y * 4 + dy) * (dst_pitch / 4);
-          for (dx = 0; dx < 4; dx++) {
-            dst_line[x * 4 + dx] = pixel;
-          }
-        }
-      }
-    }
-    return;
-  }
+  unsigned int temp_pitch = temp_width * 4; /* Temp buffer is packed */
 
   /* First pass: Scale2x from src to temp */
-  uiplot_scale2x_frame32(srcdata, temp, src_width, src_height, temp_width * 4);
+  uiplot_scale2x_frame32(srcdata, temp, src_width, src_height, src_pitch,
+                         temp_pitch);
 
   /* Second pass: Scale2x from temp to dst */
-  uiplot_scale2x_frame32(temp, dstdata, temp_width, temp_height, dst_pitch);
-
-  free(temp);
+  uiplot_scale2x_frame32(temp, dstdata, temp_width, temp_height, temp_pitch,
+                         dst_pitch);
 }
 
 /*** xBRZ High-Quality Upscaling Algorithm ***/

@@ -76,6 +76,8 @@ static char thing[] = ("\n\nIt's the year 2000 is there anyone out there?\n"
                        "air, say yeah!\n\n");
 
 /*** Program entry point ***/
+/* Not compiled when building as library (headless mode) */
+#ifndef GENERATOR_LIB_ONLY
 
 int main(int argc, char *argv[])
 {
@@ -131,6 +133,8 @@ int main(int argc, char *argv[])
 #ifdef ALLEGRO
 END_OF_MAIN();
 #endif
+
+#endif /* GENERATOR_LIB_ONLY */
 
 /*** gen_reset - reset system ***/
 

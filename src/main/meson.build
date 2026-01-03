@@ -18,6 +18,7 @@ common_sources = files(
 
 # Build dependencies - common to all
 build_deps = [
+  core_dep,
   cpu68k_dep,
   ym2612_dep,
   sn76496_dep,
