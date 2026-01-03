@@ -15,7 +15,7 @@
 
 #include <gtk/gtk.h>
 #include <adwaita.h>
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 #include "generator.h"
 #include "snprintf.h"
@@ -197,22 +197,25 @@ int ui_init(int argc, char *argv[])
   ui_gtk4_apply_audio_driver(gtkopts_getvalue("audio_driver"), FALSE, TRUE);
 
   /* Initialize SDL for video and joystick */
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK) < 0) {
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK)) {
     fprintf(stderr, "Couldn't initialise SDL: %s\n", SDL_GetError());
     return -1;
   }
 
   /* Setup joysticks */
-  gen_ui->joysticks = SDL_NumJoysticks();
+  SDL_JoystickID *joystick_ids = SDL_GetJoysticks(&gen_ui->joysticks);
   fprintf(stderr, "%d joysticks detected\n", gen_ui->joysticks);
-  for (i = 0; i < gen_ui->joysticks && i < 2; i++) {
-    gen_ui->js_handles[i] = SDL_JoystickOpen(i);
-    if (gen_ui->js_handles[i]) {
-      name = SDL_JoystickName(gen_ui->js_handles[i]);
-      fprintf(stderr, "Joystick %d: %s\n", i, name ? name : "Unknown Joystick");
+  if (joystick_ids) {
+    for (i = 0; i < gen_ui->joysticks && i < 2; i++) {
+      gen_ui->js_handles[i] = SDL_OpenJoystick(joystick_ids[i]);
+      if (gen_ui->js_handles[i]) {
+        name = SDL_GetJoystickName(gen_ui->js_handles[i]);
+        fprintf(stderr, "Joystick %d: %s\n", i, name ? name : "Unknown Joystick");
+      }
     }
+    SDL_free(joystick_ids);
   }
-  SDL_JoystickEventState(SDL_ENABLE);
+  SDL_SetJoystickEventsEnabled(true);
 
   /* Initialize screen buffers */
   memset(gen_ui->screen_buffers[0], 0, 4 * HMAXSIZE * VMAXSIZE);
@@ -1370,19 +1373,31 @@ static void ui_simpleplot(void)
   }
 }
 
+/* Helper to map SDL3 joystick ID to player index (0 or 1) */
+static int ui_joystick_id_to_player(SDL_JoystickID id)
+{
+  for (int i = 0; i < 2; i++) {
+    if (gen_ui->js_handles[i] &&
+        SDL_GetJoystickID(gen_ui->js_handles[i]) == id) {
+      return i;
+    }
+  }
+  return -1; /* Unknown joystick */
+}
+
 static void ui_sdl_events(void)
 {
   SDL_Event event;
 
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
-    case SDL_JOYAXISMOTION:
+    case SDL_EVENT_JOYSTICK_AXIS_MOTION:
       /* Handle joystick axis movement (D-pad or analog stick)
          SDL joystick axes: 0 = left/right, 1 = up/down
          Values: -32768 (left/up) to +32767 (right/down) */
       {
-        int player = event.jaxis.which; /* Joystick index (0 or 1) */
-        if (player > 1)
+        int player = ui_joystick_id_to_player(event.jaxis.which);
+        if (player < 0 || player > 1)
           break; /* Only support 2 players */
 
         /* Use deadzone to avoid drift */
@@ -1416,19 +1431,19 @@ static void ui_sdl_events(void)
       }
       break;
 
-    case SDL_JOYBUTTONDOWN:
-    case SDL_JOYBUTTONUP:
+    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
+    case SDL_EVENT_JOYSTICK_BUTTON_UP:
       /* Handle joystick button presses
          Standard Genesis controller mapping:
          Button 0 = A, Button 1 = B, Button 2 = C
          Button 3 = Start, Button 4 = X (6-button), Button 5 = Y, Button 6 = Z
        */
       {
-        int player = event.jbutton.which;
-        if (player > 1)
+        int player = ui_joystick_id_to_player(event.jbutton.which);
+        if (player < 0 || player > 1)
           break;
 
-        gboolean pressed = (event.type == SDL_JOYBUTTONDOWN);
+        gboolean pressed = (event.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
 
         switch (event.jbutton.button) {
         case 0: /* Button A */
@@ -1449,13 +1464,13 @@ static void ui_sdl_events(void)
       }
       break;
 
-    case SDL_JOYHATMOTION:
+    case SDL_EVENT_JOYSTICK_HAT_MOTION:
       /* Handle D-pad hat switch (alternative to analog axis)
          Hat values: SDL_HAT_CENTERED, SDL_HAT_UP, SDL_HAT_DOWN, SDL_HAT_LEFT,
          SDL_HAT_RIGHT and combinations like SDL_HAT_LEFTUP */
       {
-        int player = event.jhat.which;
-        if (player > 1)
+        int player = ui_joystick_id_to_player(event.jhat.which);
+        if (player < 0 || player > 1)
           break;
 
         uint8 hat = event.jhat.value;

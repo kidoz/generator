@@ -29,6 +29,9 @@ gcc_opt_version = get_option('gcc-version')
 add_project_arguments('-DVERSION="@0@"'.format(meson.project_version()), language: 'c')
 add_project_arguments('-DPACKAGE="generator"', language: 'c')
 
+# Enable GNU extensions for POSIX functions like strcasecmp
+add_project_arguments('-D_GNU_SOURCE', language: 'c')
+
 # Processor-specific optimizations
 optimum = true
 if host_cpu == 'x86' or host_cpu == 'x86_64'
@@ -133,15 +136,15 @@ ui_libs = []
 if ui_backend == 'gtk4'
   gtk4_dep = dependency('gtk4', version: '>=4.10.0')
   adwaita_dep = dependency('libadwaita-1', version: '>=1.4.0')
-  sdl2_dep = dependency('sdl2', version: '>=2.0.0')
-  ui_deps = [gtk4_dep, adwaita_dep, sdl2_dep]
-  ui_sources = files('src/main/ui-gtk4.c', 'src/main/uiplot.c', 'src/main/gensoundp-sdl2.c')
+  sdl3_dep = dependency('sdl3', version: '>=3.0.0')
+  ui_deps = [gtk4_dep, adwaita_dep, sdl3_dep]
+  ui_sources = files('src/main/ui-gtk4.c', 'src/main/uiplot.c', 'src/main/gensoundp-sdl3.c')
 
 elif ui_backend == 'console'
-  sdl2_dep = dependency('sdl2', version: '>=2.0.0')
-  ui_deps = [sdl2_dep]
-  ui_sources = files('src/main/ui-console.c', 'src/main/uip-sdl2.c',
-                     'src/main/uiplot.c', 'src/main/gensoundp-sdl2.c',
+  sdl3_dep = dependency('sdl3', version: '>=3.0.0')
+  ui_deps = [sdl3_dep]
+  ui_sources = files('src/main/ui-console.c', 'src/main/uip-sdl3.c',
+                     'src/main/uiplot.c', 'src/main/gensoundp-sdl3.c',
                      'src/main/logo.c', 'src/main/font.c')
 
 endif
@@ -193,7 +196,7 @@ if ui_backend == 'gtk4'
   summary({
     'GTK4': gtk4_dep.version(),
     'libadwaita': adwaita_dep.version(),
-    'SDL2': sdl2_dep.version(),
+    'SDL3': sdl3_dep.version(),
   }, section: 'Dependencies')
 endif
 

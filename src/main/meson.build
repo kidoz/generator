@@ -39,7 +39,7 @@ if ui_backend == 'gtk4'
   main_sources = common_sources + files(
     'ui-gtk4.c',
     'uiplot.c',
-    'gensoundp-sdl2.c',
+    'gensoundp-sdl3.c',
     'initcart.c',
     'patch.c',
     'dib.c',
@@ -54,9 +54,9 @@ elif ui_backend == 'console'
     'logo.c',
     'font.c',
     'ui-console.c',
-    'uip-sdl2.c',
+    'uip-sdl3.c',
     'uiplot.c',
-    'gensoundp-sdl2.c'
+    'gensoundp-sdl3.c'
   )
   build_deps += ui_deps
 endif

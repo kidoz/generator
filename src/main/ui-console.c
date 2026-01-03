@@ -23,7 +23,7 @@
 
 #include "generator.h"
 #include "snprintf.h"
-#include "SDL.h"
+#include <SDL3/SDL.h>
 
 #include "cpu68k.h"
 #include "cpuz80.h"
@@ -836,7 +836,7 @@ void ui_endfield(void)
     /* Frame rate limiting - ensure we don't run faster than target framerate
        Genesis timing: NTSC = 60 Hz (16.67ms), PAL = 50 Hz (20ms) */
     frame_count++;
-    current_time = SDL_GetTicks64();
+    current_time = SDL_GetTicks();
 
     if (last_frame_time == 0) {
       last_frame_time = current_time;
@@ -854,7 +854,7 @@ void ui_endfield(void)
         /* Cap delay at 2x target time to avoid hanging if timing goes wrong */
         if (delay_needed > 0 && delay_needed < target_frame_time_ms * 2) {
           SDL_Delay(delay_needed);
-          current_time = SDL_GetTicks64();
+          current_time = SDL_GetTicks();
         }
       }
 
