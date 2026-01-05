@@ -199,7 +199,8 @@ typedef enum {
   i_LINE15
 } t_mnemonic;
 
-typedef struct {
+/* Instruction Information Block - named struct for forward declaration support */
+typedef struct t_iib {
   uint16 mask;         /* mask of bits that are static */
   uint16 bits;         /* bit values corresponding to bits in mask */
   t_mnemonic mnemonic; /* instruction mnemonic */
@@ -220,7 +221,7 @@ typedef struct {
   unsigned int funcnum;     /* function number for this instruction */
   unsigned int wordlen;     /* length in words of this instruction */
   unsigned int clocks;      /* number of external clock periods */
-} t_iib;                    /* instruction information block */
+} t_iib;
 
 #define IIB_FLAG_X 1 << 0
 #define IIB_FLAG_N 1 << 1
@@ -293,6 +294,20 @@ typedef struct {
  * TAS on Genesis 1 and 2 (but not 3) do not write back with TAS */
 #define BROKEN_TAS
 
+/* Runtime log levels (higher = more verbose) */
+#define GEN_LOG_NONE     0  /* No logging */
+#define GEN_LOG_CRITICAL 1  /* Critical errors only */
+#define GEN_LOG_NORMAL   2  /* Normal messages */
+#define GEN_LOG_VERBOSE  3  /* Verbose output */
+#define GEN_LOG_USER     4  /* User-level debug */
+#define GEN_LOG_DEBUG1   5  /* Debug level 1 */
+#define GEN_LOG_DEBUG2   6  /* Debug level 2 */
+#define GEN_LOG_DEBUG3   7  /* Debug level 3 (most verbose) */
+
+/* Runtime log level checking macros.
+   These check gen_loglevel at runtime, allowing log verbosity to be
+   changed without recompiling. Use NOLOGGING to disable all logging
+   at compile time for maximum performance in release builds. */
 #ifdef NOLOGGING
 #define LOG_DEBUG3(x)   /* */
 #define LOG_DEBUG2(x)   /* */
@@ -303,14 +318,14 @@ typedef struct {
 #define LOG_CRITICAL(x) /* */
 #define LOG_REQUEST(x)  /* */
 #else
-#define LOG_DEBUG3(x) /* ui_log_debug3 x */
-#define LOG_DEBUG2(x) /* ui_log_debug2 x */
-#define LOG_DEBUG1(x) /* ui_log_debug1 x */
-#define LOG_USER(x) ui_log_user x
-#define LOG_VERBOSE(x) /* ui_log_verbose x - disabled: causes GTK freeze on hot paths */
-#define LOG_NORMAL(x) ui_log_normal x
-#define LOG_CRITICAL(x) ui_log_critical x
-#define LOG_REQUEST(x) ui_log_request x
+#define LOG_DEBUG3(x)   do { if (gen_loglevel >= GEN_LOG_DEBUG3) ui_log_debug3 x; } while(0)
+#define LOG_DEBUG2(x)   do { if (gen_loglevel >= GEN_LOG_DEBUG2) ui_log_debug2 x; } while(0)
+#define LOG_DEBUG1(x)   do { if (gen_loglevel >= GEN_LOG_DEBUG1) ui_log_debug1 x; } while(0)
+#define LOG_USER(x)     do { if (gen_loglevel >= GEN_LOG_USER) ui_log_user x; } while(0)
+#define LOG_VERBOSE(x)  do { if (gen_loglevel >= GEN_LOG_VERBOSE) ui_log_verbose x; } while(0)
+#define LOG_NORMAL(x)   do { if (gen_loglevel >= GEN_LOG_NORMAL) ui_log_normal x; } while(0)
+#define LOG_CRITICAL(x) do { if (gen_loglevel >= GEN_LOG_CRITICAL) ui_log_critical x; } while(0)
+#define LOG_REQUEST(x)  do { if (gen_loglevel >= GEN_LOG_NORMAL) ui_log_request x; } while(0)
 #endif
 
 typedef struct {

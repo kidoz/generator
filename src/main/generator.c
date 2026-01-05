@@ -35,7 +35,7 @@
 
 volatile sig_atomic_t gen_quit = 0; /* Signal-safe flag for clean shutdown */
 unsigned int gen_debugmode = 0;
-unsigned int gen_loglevel = 1;    /* 2 = NORMAL, 1 = CRITICAL */
+unsigned int gen_loglevel = GEN_LOG_NORMAL;  /* Default: show normal + critical */
 unsigned int gen_autodetect = 1;  /* 0 = no, 1 = yes */
 unsigned int gen_musiclog = 0;    /* 0 = no, 1 = GYM, 2 = GNM */
 unsigned int gen_modifiedrom = 0; /* 0 = no, 1 = yes */

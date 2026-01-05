@@ -243,6 +243,11 @@ int soundp_samplesbuffered(void)
 }
 
 /*** soundp_output - output samples to SDL3 ***/
+/* Thread Safety: SDL3 audio streams are internally synchronized.
+   SDL_PutAudioStreamData() and SDL_GetAudioStreamQueued() are thread-safe
+   when using bound audio streams, so no additional mutex is needed here.
+   The emulation thread calls this function to push samples, and SDL3's
+   audio callback thread consumes them safely. */
 
 void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 {

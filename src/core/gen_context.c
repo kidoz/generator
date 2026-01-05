@@ -230,9 +230,21 @@ int gen_context_init(gen_context_t *ctx)
 
   /* Configuration defaults */
   ctx->config.debugmode = 0;
-  ctx->config.loglevel = 1;  /* Normal logging */
-  ctx->config.autodetect = 1; /* Auto-detect PAL/NTSC */
+  ctx->config.loglevel = GEN_LOG_NORMAL;
+  ctx->config.autodetect = 1;  /* Auto-detect PAL/NTSC */
+
+  /* Sound config defaults */
+  ctx->config.sound_on = 1;
+  ctx->config.sound_psg = 1;
+  ctx->config.sound_fm = 1;
+  ctx->config.sound_filter = 50;  /* 50% low-pass filter */
   ctx->config.musiclog = GEN_MUSICLOG_OFF;
+
+  /* VDP layer visibility (all enabled by default) */
+  ctx->config.vdp_layer_a = 1;
+  ctx->config.vdp_layer_b = 1;
+  ctx->config.vdp_layer_w = 1;
+  ctx->config.vdp_layer_s = 1;
 
   /* Runtime state */
   ctx->quit = 0;

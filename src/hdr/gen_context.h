@@ -12,6 +12,11 @@
 typedef struct gen_context gen_context_t;
 typedef struct gen_ui_callbacks gen_ui_callbacks_t;
 
+/* CPU 68k type forward declarations (full definitions in cpu68k.h, generator.h) */
+typedef struct _t_ipc t_ipc;
+typedef struct _t_ipclist t_ipclist;
+struct t_iib;  /* Full definition in generator.h */
+
 /* Memory sizes */
 #define GEN_CONTEXT_RAM_SIZE (64 * 1024)
 #define GEN_CONTEXT_VRAM_SIZE (64 * 1024)
@@ -50,10 +55,10 @@ typedef struct {
   unsigned int line;             /* Current scanline */
   unsigned int frozen;           /* Freeze flag */
 
-  /* Instruction tables (pointers to shared tables) */
-  void *iibtable;                /* t_iib *[65536] - instruction info */
-  void *functable;               /* void (*[65536*2])(t_ipc*) - functions */
-  void *ipclist;                 /* t_ipclist *[16384] - compiled cache */
+  /* Instruction tables (pointers to shared tables) - now properly typed */
+  struct t_iib **iibtable;       /* [65536] instruction info blocks */
+  void (**functable)(t_ipc *);   /* [65536*2] instruction handler functions */
+  t_ipclist **ipclist;           /* [16384] compiled instruction cache */
   uint8 movem_bit[256];          /* MOVEM bit lookup */
 
   /* Stats */
@@ -232,12 +237,27 @@ typedef enum {
 
 /*
  * Configuration
+ * Consolidates all runtime configuration in one place.
+ * Previously scattered across generator.c, gensound.c, vdp.c
  */
 typedef struct {
-  unsigned int debugmode;
-  unsigned int loglevel;
-  unsigned int autodetect;       /* Auto-detect PAL/NTSC */
-  gen_musiclog_t musiclog;
+  /* General */
+  unsigned int debugmode;        /* Debug mode flag */
+  unsigned int loglevel;         /* Log verbosity (GEN_LOG_* constants) */
+  unsigned int autodetect;       /* Auto-detect PAL/NTSC from ROM */
+
+  /* Sound configuration */
+  unsigned int sound_on;         /* Master sound enable */
+  unsigned int sound_psg;        /* PSG (SN76496) enable */
+  unsigned int sound_fm;         /* FM (YM2612) enable */
+  unsigned int sound_filter;     /* Low-pass filter percentage (0-100) */
+  gen_musiclog_t musiclog;       /* Music logging mode */
+
+  /* VDP layer visibility (for debugging) */
+  unsigned int vdp_layer_a;      /* Show layer A */
+  unsigned int vdp_layer_b;      /* Show layer B */
+  unsigned int vdp_layer_w;      /* Show window layer */
+  unsigned int vdp_layer_s;      /* Show sprites */
 } gen_config_t;
 
 /*
