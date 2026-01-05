@@ -38,6 +38,9 @@
 #include "ui-console.h"
 #include "state.h"
 #include "uiplot.h"
+#include "gen_context.h"
+#include "gen_ui_callbacks.h"
+#include "gen_core.h"
 
 #define UI_LOGLINESIZE 128
 #define UI_LOGLINES 64
@@ -81,6 +84,33 @@ int ui_setcolourbits(const char *str);
 int ui_setcontrollers(const char *str);
 
 static void ui_simpleplot(void);
+
+/*** gen_context callback declarations ***/
+static void console_cb_line(gen_context_t *ctx, int line);
+static void console_cb_end_field(gen_context_t *ctx);
+static void console_cb_musiclog(gen_context_t *ctx, const uint8 *data,
+                                unsigned int length);
+[[noreturn]] static void console_cb_fatal_error(gen_context_t *ctx,
+                                                const char *msg);
+
+/*** gen_context callback structure ***/
+static const gen_ui_callbacks_t console_callbacks = {
+    .line = console_cb_line,
+    .end_field = console_cb_end_field,
+    .audio_output = nullptr,
+    .log_debug3 = nullptr,
+    .log_debug2 = nullptr,
+    .log_debug1 = nullptr,
+    .log_user = nullptr,
+    .log_verbose = nullptr,
+    .log_normal = nullptr,
+    .log_critical = nullptr,
+    .log_request = nullptr,
+    .musiclog = console_cb_musiclog,
+    .fatal_error = console_cb_fatal_error};
+
+/*** gen_context for console UI ***/
+static gen_context_t *console_ctx = nullptr;
 
 /* we store up log lines and dump them right at the end for allegro */
 #ifdef ALLEGRO
@@ -244,6 +274,23 @@ int ui_init(int argc, char *argv[])
   ui_screen0 = ui_screen[0];
   ui_screen1 = ui_screen[1];
   ui_newscreen = ui_screen[2];
+
+  /* Initialize gen_context for console UI */
+  console_ctx = gen_context_create();
+  if (console_ctx == nullptr) {
+    fprintf(stderr, "Failed to create emulator context\n");
+    return 1;
+  }
+  if (gen_context_init(console_ctx) != 0) {
+    fprintf(stderr, "Failed to initialize emulator context\n");
+    gen_context_destroy(console_ctx);
+    return 1;
+  }
+  gen_ui_set_callbacks(console_ctx, &console_callbacks, nullptr);
+  if (gen_core_attach(console_ctx) != 0) {
+    fprintf(stderr, "Failed to attach emulator context\n");
+  }
+
   return 0;
 }
 
@@ -1338,4 +1385,33 @@ void ui_musiclog(uint8 *data, unsigned int length)
 {
   (void)data;
   (void)length;
+}
+
+/*** gen_context callback implementations ***/
+
+static void console_cb_line(gen_context_t *ctx, int line)
+{
+  (void)ctx;
+  ui_line(line);
+}
+
+static void console_cb_end_field(gen_context_t *ctx)
+{
+  (void)ctx;
+  ui_endfield();
+}
+
+static void console_cb_musiclog(gen_context_t *ctx, const uint8 *data,
+                                unsigned int length)
+{
+  (void)ctx;
+  ui_musiclog((uint8 *)data, length);
+}
+
+[[noreturn]] static void console_cb_fatal_error(gen_context_t *ctx,
+                                                const char *msg)
+{
+  (void)ctx;
+  ui_err("%s", msg);
+  exit(1);
 }

@@ -9,6 +9,8 @@
 #include "vdp.h"
 #include "ui.h"
 #include "sn76496.h"
+#include "gen_context.h"
+#include "gen_ui_callbacks.h"
 
 #ifdef JFM
 #include "jfm.h"
@@ -218,7 +220,7 @@ void sound_endfield(void)
       }
     }
     /* write data */
-    ui_musiclog(sound_logdata, sound_logdata_p);
+    GEN_UI_CALL(g_ctx, musiclog, sound_logdata, sound_logdata_p);
     /* sound_startfield resets everything */
   }
 

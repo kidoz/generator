@@ -5,6 +5,10 @@
 #include <string.h>
 
 #include "gen_context.h"
+#include "generator.h"
+#include "vdp.h"
+#include "gensound.h"
+#include "cpu68k.h"
 
 /*
  * Global context pointer (transition aid)
@@ -264,4 +268,46 @@ void gen_context_reset(gen_context_t *ctx)
   ctx->cpu68k.rom = rom;
   ctx->cpu68k.romlen = romlen;
   ctx->freerom = freerom;
+}
+
+/*** Context Accessor Functions (transition aid) ***/
+
+const uint8 *gen_ctx_vdp_reg(void)
+{
+  return vdp_reg;
+}
+
+unsigned int gen_ctx_vdp_pal(void)
+{
+  return vdp_pal;
+}
+
+unsigned int gen_ctx_vdp_framerate(void)
+{
+  return vdp_framerate;
+}
+
+unsigned int gen_ctx_vdp_vislines(void)
+{
+  return vdp_vislines;
+}
+
+uint8 gen_ctx_vdp_oddframe(void)
+{
+  return vdp_oddframe;
+}
+
+unsigned int gen_ctx_sound_threshold(void)
+{
+  return sound_threshold;
+}
+
+int gen_ctx_sound_feedback(void)
+{
+  return sound_feedback;
+}
+
+unsigned int gen_ctx_cpu68k_frames(void)
+{
+  return cpu68k_frames;
 }

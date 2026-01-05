@@ -307,7 +307,7 @@ typedef struct {
 #define LOG_DEBUG2(x) /* ui_log_debug2 x */
 #define LOG_DEBUG1(x) /* ui_log_debug1 x */
 #define LOG_USER(x) ui_log_user x
-#define LOG_VERBOSE(x) ui_log_verbose x
+#define LOG_VERBOSE(x) /* ui_log_verbose x - disabled: causes GTK freeze on hot paths */
 #define LOG_NORMAL(x) ui_log_normal x
 #define LOG_CRITICAL(x) ui_log_critical x
 #define LOG_REQUEST(x) ui_log_request x

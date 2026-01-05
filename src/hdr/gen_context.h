@@ -292,4 +292,18 @@ void gen_context_reset(gen_context_t *ctx);
  */
 extern gen_context_t *g_ctx;
 
+/*
+ * Context Accessor Functions (transition aid)
+ * These provide a clean interface during migration from globals to context.
+ * Initially they return global values; later they will return context values.
+ */
+const uint8 *gen_ctx_vdp_reg(void);
+unsigned int gen_ctx_vdp_pal(void);
+unsigned int gen_ctx_vdp_framerate(void);
+unsigned int gen_ctx_vdp_vislines(void);
+uint8 gen_ctx_vdp_oddframe(void);
+unsigned int gen_ctx_sound_threshold(void);
+int gen_ctx_sound_feedback(void);
+unsigned int gen_ctx_cpu68k_frames(void);
+
 #endif /* GEN_CONTEXT_H */

@@ -7,6 +7,8 @@
 #include "reg68k.h"
 #include "ui.h"
 #include "gensound.h"
+#include "gen_context.h"
+#include "gen_ui_callbacks.h"
 
 #include "snprintf.h"
 
@@ -171,7 +173,7 @@ void event_nextevent(void)
 
     /* Notify UI that this scanline is ready to be rendered to the screen.
      * The UI will read vdp_regs[] and vdp_vram[] to render graphics/sprites */
-    ui_line(vdp_line - vdp_visstartline + 1);
+    GEN_UI_CALL(g_ctx, line, vdp_line - vdp_visstartline + 1);
 
     /* Calculate cycles until next event (LINE_END). If not enough time, break
      */
@@ -218,8 +220,7 @@ void event_nextevent(void)
       /* IMPORTANT: Order of these calls matters for correct emulation! */
       sound_endfield(); /* Must be first: Finalizes sound buffer for GYM/AVI
                            output */
-      ui_endfield();  /* Notify UI that frame is complete, trigger screen update
-                       */
+      GEN_UI_CALL(g_ctx, end_field); /* Notify UI that frame is complete */
       vdp_endfield(); /* Must be after ui_endfield: Resets VDP state for next
                          frame */
       cpuz80_endfield(); /* Reset Z80 state */

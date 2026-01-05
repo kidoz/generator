@@ -56,6 +56,11 @@ reconfigure-gtk4:
 compile:
     meson compile -C build
 
+# Rebuild (clean + compile, keeps current config)
+rebuild:
+    meson compile -C build --clean
+    meson compile -C build
+
 # Quick rebuild and run with custom ROM (console)
 run-console-quick ROM: compile
     ./build/src/main/generator-console "{{ROM}}"

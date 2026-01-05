@@ -24,6 +24,12 @@
  * Returns 0 on success, non-zero on error. */
 int gen_core_init(gen_context_t *ctx);
 
+/* Attach context to already-initialized subsystems.
+ * Use this when main() has already called subsystem init functions
+ * and you just need to sync the context with global state.
+ * Returns 0 on success, non-zero on error. */
+int gen_core_attach(gen_context_t *ctx);
+
 /* Shutdown the emulator core (cleanup resources)
  * Should be called before destroying the context. */
 void gen_core_shutdown(gen_context_t *ctx);

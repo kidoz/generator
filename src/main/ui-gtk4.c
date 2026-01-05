@@ -21,6 +21,8 @@
 #include "snprintf.h"
 #include "ui.h"
 #include "ui-gtk4.h"
+#include "gen_core.h"
+#include "gen_ui_callbacks.h"
 #include "ui-console.h"
 #include "uiplot.h"
 #include "gtkopts.h"
@@ -83,6 +85,48 @@ static gboolean ui_gtk4_driver_is_available(const char *driver_id);
 static char *ui_gtk4_normalize_audio_driver(const char *driver);
 static char *ui_gtk4_format_driver_label(const char *driver_id);
 
+/*** New Architecture: gen_context callbacks ***/
+static void gtk4_cb_line(gen_context_t *ctx, int line);
+static void gtk4_cb_end_field(gen_context_t *ctx);
+static void gtk4_cb_audio_output(gen_context_t *ctx, const uint16 *left,
+                                  const uint16 *right, unsigned int samples);
+static void gtk4_cb_log_debug(gen_context_t *ctx, const char *msg);
+static void gtk4_cb_log_user(gen_context_t *ctx, const char *msg);
+static void gtk4_cb_log_verbose(gen_context_t *ctx, const char *msg);
+static void gtk4_cb_log_normal(gen_context_t *ctx, const char *msg);
+static void gtk4_cb_log_critical(gen_context_t *ctx, const char *msg);
+static void gtk4_cb_musiclog(gen_context_t *ctx, const uint8 *data,
+                              unsigned int length);
+[[noreturn]] static void gtk4_cb_fatal_error(gen_context_t *ctx, const char *msg);
+
+/*** Emulation thread functions ***/
+static gpointer ui_emu_thread_func(gpointer data);
+static void ui_start_emu_thread(void);
+static void ui_stop_emu_thread(void);
+
+/*** Gamepad functions ***/
+static void ui_open_gamepad(SDL_JoystickID id);
+static void ui_close_gamepad(SDL_JoystickID id);
+static int ui_gamepad_id_to_player(SDL_JoystickID id);
+static void ui_handle_gamepad_button(SDL_GamepadButtonEvent *event);
+static void ui_handle_gamepad_axis(SDL_GamepadAxisEvent *event);
+
+/*** GTK4 Callback Structure for gen_context ***/
+static const gen_ui_callbacks_t gtk4_callbacks = {
+    .line = gtk4_cb_line,
+    .end_field = gtk4_cb_end_field,
+    .audio_output = gtk4_cb_audio_output,
+    .log_debug3 = gtk4_cb_log_debug,
+    .log_debug2 = gtk4_cb_log_debug,
+    .log_debug1 = gtk4_cb_log_debug,
+    .log_user = gtk4_cb_log_user,
+    .log_verbose = gtk4_cb_log_verbose,
+    .log_normal = gtk4_cb_log_normal,
+    .log_critical = gtk4_cb_log_critical,
+    .log_request = gtk4_cb_log_normal,
+    .musiclog = gtk4_cb_musiclog,
+    .fatal_error = gtk4_cb_fatal_error};
+
 /*** Program entry point ***/
 
 int ui_init(int argc, char *argv[])
@@ -91,7 +135,6 @@ int ui_init(int argc, char *argv[])
   struct passwd *passwd;
   struct stat statbuf;
   int i;
-  const char *name;
 
   fprintf(stderr, "Generator is (c) James Ponder 1997-2003, all rights "
                   "reserved. v" VERSION "\n\n");
@@ -113,6 +156,29 @@ int ui_init(int argc, char *argv[])
 
   /* Initialize Genesis controller state to all buttons released */
   memset(mem68k_cont, 0, sizeof(mem68k_cont));
+
+  /* Initialize gamepad slots */
+  memset(gen_ui->gamepads, 0, sizeof(gen_ui->gamepads));
+  gen_ui->num_gamepads = 0;
+
+  /* Initialize new architecture support (gen_context) */
+  gen_ui->ctx = gen_context_create();
+  if (gen_ui->ctx == nullptr) {
+    fprintf(stderr, "Failed to create emulator context\n");
+    return -1;
+  }
+  if (gen_context_init(gen_ui->ctx) != 0) {
+    fprintf(stderr, "Failed to initialize emulator context\n");
+    gen_context_destroy(gen_ui->ctx);
+    return -1;
+  }
+  gen_ui_set_callbacks(gen_ui->ctx, &gtk4_callbacks, gen_ui);
+
+  /* Initialize emulation thread state (thread started after GTK activation) */
+  gen_ui->emu_thread = nullptr;
+  gen_ui->emu_thread_running = FALSE;
+  gen_ui->frame_requested = FALSE;
+  atomic_store(&gen_ui->render_complete, 0);
 
   /* Initialize debug output (set GENERATOR_DEBUG=1 to enable) */
   gen_ui->debug_telemetry = (g_getenv("GENERATOR_DEBUG") != nullptr);
@@ -196,26 +262,25 @@ int ui_init(int argc, char *argv[])
   /* Apply preferred audio backend before SDL initialises audio */
   ui_gtk4_apply_audio_driver(gtkopts_getvalue("audio_driver"), FALSE, TRUE);
 
-  /* Initialize SDL for video and joystick */
-  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK)) {
+  /* Initialize SDL for gamepad support only.
+   * NOTE: We do NOT initialize SDL_INIT_VIDEO because GTK4 handles all rendering.
+   * Initializing SDL video can conflict with GTK4's Wayland/X11 display handling. */
+  if (!SDL_Init(SDL_INIT_GAMEPAD)) {
     fprintf(stderr, "Couldn't initialise SDL: %s\n", SDL_GetError());
     return -1;
   }
 
-  /* Setup joysticks */
-  SDL_JoystickID *joystick_ids = SDL_GetJoysticks(&gen_ui->joysticks);
-  fprintf(stderr, "%d joysticks detected\n", gen_ui->joysticks);
-  if (joystick_ids) {
-    for (i = 0; i < gen_ui->joysticks && i < 2; i++) {
-      gen_ui->js_handles[i] = SDL_OpenJoystick(joystick_ids[i]);
-      if (gen_ui->js_handles[i]) {
-        name = SDL_GetJoystickName(gen_ui->js_handles[i]);
-        fprintf(stderr, "Joystick %d: %s\n", i, name ? name : "Unknown Joystick");
-      }
+  /* Setup gamepads (with hot-plug support via events) */
+  int gamepad_count = 0;
+  SDL_JoystickID *gamepad_ids = SDL_GetGamepads(&gamepad_count);
+  fprintf(stderr, "%d gamepads detected\n", gamepad_count);
+  if (gamepad_ids) {
+    for (i = 0; i < gamepad_count; i++) {
+      ui_open_gamepad(gamepad_ids[i]);
     }
-    SDL_free(joystick_ids);
+    SDL_free(gamepad_ids);
   }
-  SDL_SetJoystickEventsEnabled(true);
+  SDL_SetGamepadEventsEnabled(true);
 
   /* Initialize screen buffers */
   memset(gen_ui->screen_buffers[0], 0, 4 * HMAXSIZE * VMAXSIZE);
@@ -311,28 +376,70 @@ int ui_loop(void)
 
 static void ui_startup(GtkApplication *app, gpointer user_data)
 {
+  (void)user_data;
+
   /* Setup application-level actions and menus */
   ui_setup_actions(app);
+
+  /* Attach context to already-initialized subsystems
+   * Note: main() in generator.c already calls mem68k_init(), vdp_init(), etc.
+   * We just need to sync the context with the global state. */
+  if (gen_ui->ctx != nullptr) {
+    if (gen_core_attach(gen_ui->ctx) != 0) {
+      fprintf(stderr, "Failed to attach emulator context\n");
+    } else {
+      fprintf(stderr, "Emulator context attached to core\n");
+    }
+  }
 }
 
 static void ui_activate(GtkApplication *app, gpointer user_data)
 {
+  (void)user_data;
+
   /* Create and show main window */
   if (gen_ui->window == nullptr) {
     ui_create_main_window(app);
   }
   gtk_window_present(GTK_WINDOW(gen_ui->window));
+
+  /* Start the emulation thread */
+  if (gen_ui->emu_thread == nullptr) {
+    ui_start_emu_thread();
+  }
 }
 
 static void ui_shutdown(GtkApplication *app, gpointer user_data)
 {
+  (void)app;
+  (void)user_data;
+
   /* Stop emulation and cleanup */
   gen_ui->running = FALSE;
   gen_quit = 1;
 
-  /* Stop and cleanup sound system - this will close SDL2 audio device
+  /* Stop the emulation thread */
+  ui_stop_emu_thread();
+
+  /* Close all gamepads */
+  for (int i = 0; i < MAX_GAMEPADS; i++) {
+    if (gen_ui->gamepads[i].gamepad != nullptr) {
+      SDL_CloseGamepad(gen_ui->gamepads[i].gamepad);
+      gen_ui->gamepads[i].gamepad = nullptr;
+    }
+  }
+  gen_ui->num_gamepads = 0;
+
+  /* Stop and cleanup sound system - this will close SDL3 audio device
      and stop the audio callback thread, preventing sound from continuing */
   sound_final();
+
+  /* Shutdown core and destroy context */
+  if (gen_ui->ctx != nullptr) {
+    gen_core_shutdown(gen_ui->ctx);
+    gen_context_destroy(gen_ui->ctx);
+    gen_ui->ctx = nullptr;
+  }
 
   /* Save configuration */
   if (gtkopts_save(gen_ui->configfile) != 0) {
@@ -519,23 +626,37 @@ static void on_open_rom_response(GObject *source, GAsyncResult *result,
                                  gpointer data)
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
-  GFile *file = gtk_file_dialog_open_finish(dialog, result, nullptr);
+  GError *error_obj = nullptr;
+  GFile *file = gtk_file_dialog_open_finish(dialog, result, &error_obj);
+
+  if (error_obj) {
+    /* User cancelled or error occurred */
+    if (error_obj->code != GTK_DIALOG_ERROR_DISMISSED) {
+      fprintf(stderr, "File dialog error: %s\n", error_obj->message);
+    }
+    g_error_free(error_obj);
+    return;
+  }
+
   if (file) {
     char *filename = g_file_get_path(file);
+    fprintf(stderr, "Opening ROM: %s\n", filename);
 
     /* Stop currently running game before loading new ROM */
     gen_ui->running = FALSE;
-    soundp_stop();
+    sound_stop();
 
     char *error = gen_loadimage(filename);
     if (error) {
+      fprintf(stderr, "ROM load error: %s\n", error);
       ui_gtk4_messageerror(error);
       /* ROM load failed - restart previous ROM and audio */
-      soundp_start();
+      sound_start();
       gen_ui->running = TRUE;
     } else {
       /* ROM loaded successfully - restart sound and emulation */
-      soundp_start();
+      fprintf(stderr, "ROM loaded successfully, resetting...\n");
+      sound_start();
       gen_reset();
       gen_ui->running = TRUE;
     }
@@ -734,10 +855,10 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width,
 {
   cairo_surface_t *surface;
   uint8 *screen_data;
-  unsigned int base_width = (vdp_reg[12] & 1) ? 320 : 256;
-  unsigned int base_height = vdp_vislines;
-  unsigned int xoffset = (vdp_reg[12] & 1) ? 0 : 32;
-  unsigned int yoffset = (vdp_reg[1] & (1 << 3)) ? 0 : 8;
+  unsigned int base_width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
+  unsigned int base_height = gen_ctx_vdp_vislines();
+  unsigned int xoffset = (gen_ctx_vdp_reg()[12] & 1) ? 0 : 32;
+  unsigned int yoffset = (gen_ctx_vdp_reg()[1] & (1 << 3)) ? 0 : 8;
 
   /* Apply scaling factor for upscaled rendering */
   int scale = (gen_ui->filter_type != FILTER_NONE) ? gen_ui->scale_factor : 1;
@@ -894,8 +1015,8 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
   }
 
   /* Process SDL events with non-blocking SDL_PollEvent (called in
-     ui_sdl_events) This is the recommended pattern for GTK+SDL2 integration to
-     avoid blocking the GTK event loop, which would starve the SDL2 audio thread
+     ui_sdl_events) This is the recommended pattern for GTK+SDL3 integration to
+     avoid blocking the GTK event loop, which would starve the SDL3 audio thread
    */
   ui_sdl_events();
 
@@ -911,9 +1032,9 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
   if (gen_ui->dynamic_rate_control) {
     /* Apply rate adjustment: higher rate_adjust means slower emulation (longer
      * frame time) */
-    frame_duration_us = (vdp_pal ? 20000 : 16667) * gen_ui->rate_adjust;
+    frame_duration_us = (gen_ctx_vdp_pal() ? 20000 : 16667) * gen_ui->rate_adjust;
   } else {
-    frame_duration_us = vdp_pal ? 20000 : 16667;
+    frame_duration_us = gen_ctx_vdp_pal() ? 20000 : 16667;
   }
 
   elapsed_us = current_time - gen_ui->last_frame_time;
@@ -931,7 +1052,7 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
       fprintf(stderr,
               "GTK4 audio telemetry: min_buffer=%d threshold=%u feedback=%d "
               "rate=%.4f\n",
-              min_pending, sound_threshold, sound_feedback, gen_ui->rate_adjust);
+              min_pending, gen_ctx_sound_threshold(), gen_ctx_sound_feedback(), gen_ui->rate_adjust);
       min_pending = INT_MAX;
       frames_tracked = 0;
     }
@@ -939,113 +1060,108 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
 
   /* If sound buffer is too full (more than 2x threshold), skip this frame
      to let audio catch up and prevent buffer overflow */
-  if (pending_samples > (int)(sound_threshold * 2)) {
+  if (pending_samples > (int)(gen_ctx_sound_threshold() * 2)) {
     return G_SOURCE_CONTINUE;
   }
 
-  int frames_to_run = 0;
-  if (elapsed_us >= frame_duration_us)
-    frames_to_run = 1;
+  /*
+   * THREADED EXECUTION PATH
+   * Emulation runs in a dedicated thread. This tick callback:
+   * 1. Checks if a frame was completed by the emulation thread
+   * 2. Swaps display buffers and triggers redraw
+   * 3. Signals the emulation thread to produce more frames as needed
+   */
+  if (gen_ui->emu_thread != nullptr) {
+    /* Check if emulation thread completed a frame */
+    if (atomic_load(&gen_ui->render_complete)) {
+      atomic_store(&gen_ui->render_complete, 0);
 
-  if (pending_samples < (int)sound_threshold) {
-    if (frames_to_run == 0)
-      frames_to_run = 1;
-    if (pending_samples < (int)(sound_threshold * 0.60))
-      frames_to_run += 2;
-    else if (pending_samples < (int)(sound_threshold * 0.80))
-      frames_to_run += 1;
-  }
+      /* Swap display buffer (already done in gtk4_cb_end_field via
+       * ui_rendertoscreen) */
+      gtk_widget_queue_draw(gen_ui->drawing_area);
 
-  if (frames_to_run > 3)
-    frames_to_run = 3;
+      /* Update timing for rate control */
+      gen_ui->last_frame_time = current_time;
+      pending_samples = soundp_samplesbuffered();
 
-  for (int frame_iter = 0; frame_iter < frames_to_run; frame_iter++) {
-    if (frame_iter > 0) {
-      current_time = g_get_monotonic_time();
-      elapsed_us = current_time - gen_ui->last_frame_time;
-    }
+      /* Record frame for FPS measurement */
+      if (gen_ui->dynamic_rate_control) {
+        gen_ui->fps_times[gen_ui->fps_index] = current_time;
+        if (gen_ui->frames_recorded < 60)
+          gen_ui->frames_recorded++;
+        gen_ui->fps_index = (gen_ui->fps_index + 1) % 60;
 
-    /* Skip if we're already caught up and buffer is healthy */
-    if (frame_iter > 0 && pending_samples >= (int)(sound_threshold * 1.05))
-      break;
+        /* Calculate rate adjustment */
+        if (gen_ui->frames_recorded >= 60) {
+          int oldest_idx = gen_ui->fps_index;
+          int newest_idx = (gen_ui->fps_index + 59) % 60;
+          gint64 time_span =
+              gen_ui->fps_times[newest_idx] - gen_ui->fps_times[oldest_idx];
 
-    ui_newframe(pending_samples);
-    event_doframe();
-    gtk_widget_queue_draw(gen_ui->drawing_area);
+          if (time_span > 1000) {
+            gen_ui->measured_fps = 59.0 * 1000000.0 / (double)time_span;
+            double target_fps = gen_ctx_vdp_pal() ? 50.0 : 59.94;
+            double fps_error = (gen_ui->measured_fps - target_fps) / target_fps;
+            double buffer_ratio =
+                (double)pending_samples / (double)gen_ctx_sound_threshold();
+            double buffer_error = buffer_ratio - 1.0;
+            double total_error = (fps_error * 0.25) + (buffer_error * 0.75);
 
-    /* Update last frame time */
-    gen_ui->last_frame_time = current_time;
+            double adaptive_delta = gen_ui->rate_delta;
+            if (buffer_error < -0.40)
+              adaptive_delta = 0.08;
+            else if (buffer_error < -0.20 && adaptive_delta < 0.05)
+              adaptive_delta = 0.05;
+            else if (buffer_error > 0.50 && adaptive_delta < 0.05)
+              adaptive_delta = 0.05;
 
-    /* Re-sample buffer occupancy after producing audio */
-    pending_samples = soundp_samplesbuffered();
+            double new_rate_adjust =
+                gen_ui->rate_adjust * (1.0 + total_error * 0.25);
+            double min_rate = 1.0 - adaptive_delta;
+            double max_rate = 1.0 + adaptive_delta;
+            if (new_rate_adjust < min_rate)
+              new_rate_adjust = min_rate;
+            if (new_rate_adjust > max_rate)
+              new_rate_adjust = max_rate;
 
-    /* Record frame timestamp for FPS measurement (dynamic rate control) */
-    if (gen_ui->dynamic_rate_control) {
-      gen_ui->fps_times[gen_ui->fps_index] = current_time;
+            gen_ui->rate_adjust =
+                gen_ui->rate_adjust * 0.9 + new_rate_adjust * 0.1;
 
-      if (gen_ui->frames_recorded < 60) {
-        gen_ui->frames_recorded++;
-      }
-
-      gen_ui->fps_index = (gen_ui->fps_index + 1) % 60;
-
-      if (gen_ui->frames_recorded >= 60) {
-        int oldest_idx = gen_ui->fps_index;
-        int newest_idx = (gen_ui->fps_index + 59) % 60;
-        gint64 time_span =
-            gen_ui->fps_times[newest_idx] - gen_ui->fps_times[oldest_idx];
-
-        if (time_span > 1000) {
-          gen_ui->measured_fps = 59.0 * 1000000.0 / (double)time_span;
-
-          double target_fps = vdp_pal ? 50.0 : 59.94;
-          double fps_error = (gen_ui->measured_fps - target_fps) / target_fps;
-          double buffer_ratio =
-              (double)pending_samples / (double)sound_threshold;
-          double buffer_error = buffer_ratio - 1.0;
-          double total_error = (fps_error * 0.25) + (buffer_error * 0.75);
-
-          double adaptive_delta = gen_ui->rate_delta;
-          if (buffer_error < -0.40) {
-            adaptive_delta = 0.08;
-          } else if (buffer_error < -0.20 && adaptive_delta < 0.05) {
-            adaptive_delta = 0.05;
-          } else if (buffer_error > 0.50 && adaptive_delta < 0.05) {
-            adaptive_delta = 0.05;
-          }
-
-          double new_rate_adjust =
-              gen_ui->rate_adjust * (1.0 + total_error * 0.25);
-
-          double min_rate = 1.0 - adaptive_delta;
-          double max_rate = 1.0 + adaptive_delta;
-          if (new_rate_adjust < min_rate)
-            new_rate_adjust = min_rate;
-          if (new_rate_adjust > max_rate)
-            new_rate_adjust = max_rate;
-
-          gen_ui->rate_adjust =
-              gen_ui->rate_adjust * 0.9 + new_rate_adjust * 0.1;
-
-          /* Debug output (only when GENERATOR_DEBUG is set) */
-          if (gen_ui->debug_telemetry) {
-            gen_ui->debug_counter++;
-            if (gen_ui->debug_counter >= 60) {
-              fprintf(stderr,
-                      "DRC: FPS=%.2f (target=%.2f) buffer=%d/%d ratio=%.2f "
-                      "rate_adjust=%.4f\n",
-                      gen_ui->measured_fps, target_fps, pending_samples,
-                      sound_threshold, buffer_ratio, gen_ui->rate_adjust);
-              gen_ui->debug_counter = 0;
+            if (gen_ui->debug_telemetry) {
+              gen_ui->debug_counter++;
+              if (gen_ui->debug_counter >= 60) {
+                fprintf(stderr,
+                        "DRC: FPS=%.2f (target=%.2f) buffer=%d/%d "
+                        "rate_adjust=%.4f\n",
+                        gen_ui->measured_fps, target_fps, pending_samples,
+                        gen_ctx_sound_threshold(), gen_ui->rate_adjust);
+                gen_ui->debug_counter = 0;
+              }
             }
           }
         }
       }
     }
+
+    /* Determine if we should request more frames from the emulation thread */
+    gboolean should_request =
+        (elapsed_us >= frame_duration_us) ||
+        (pending_samples < (int)(gen_ctx_sound_threshold() * 0.80));
+
+    if (should_request && !gen_ui->frame_requested) {
+      /* Prepare frame parameters and signal emulation thread */
+      ui_newframe(pending_samples);
+
+      g_mutex_lock(&gen_ui->emu_mutex);
+      gen_ui->frame_requested = TRUE;
+      g_cond_signal(&gen_ui->emu_cond);
+      g_mutex_unlock(&gen_ui->emu_mutex);
+    }
+
+    return G_SOURCE_CONTINUE;
   }
 
-  /* GTK's frame clock will invoke us again next refresh, keeping pacing steady.
-   */
+  /* No emulation thread - shouldn't happen, but return safely */
   return G_SOURCE_CONTINUE;
 }
 
@@ -1061,7 +1177,7 @@ static void ui_newframe(int pending_samples)
   int fps;
   char fps_string[64];
 
-  if (frameplots_i > vdp_framerate)
+  if (frameplots_i > gen_ctx_vdp_framerate())
     frameplots_i = 0;
 
   /* Check interlace mode from VDP register 12 bits 1-2:
@@ -1069,9 +1185,9 @@ static void ui_newframe(int pending_samples)
      1 = interlace mode 1 (doubled - even/odd fields identical)
      2 = invalid (treat as doubled)
      3 = interlace mode 2 (double resolution - even/odd fields different) */
-  unsigned int interlace_mode = (vdp_reg[12] >> 1) & 3;
+  unsigned int interlace_mode = (gen_ctx_vdp_reg()[12] >> 1) & 3;
 
-  if (interlace_mode && vdp_oddframe) {
+  if (interlace_mode && gen_ctx_vdp_oddframe()) {
     /* In interlace mode on odd field */
     if (interlace_mode == 3) {
       /* Mode 3 (double resolution): Keep plotfield from even field
@@ -1088,23 +1204,32 @@ static void ui_newframe(int pending_samples)
       /* Dynamic frame skipping based on audio buffer level.
          Use cached pending_samples from caller to avoid redundant polling. */
 
-      /* Allow rendering if buffer is at least 50% of threshold.
-         This is less aggressive than requiring full threshold, preventing
-         excessive frame skipping that causes low FPS. */
-      if (pending_samples >= (int)(sound_threshold * 0.5)) {
+      /* Startup grace period: render all frames for first 120 frames (~2 sec)
+         to allow audio buffer to stabilize before applying skip logic.
+         Uses cpu68k_frames which resets on ROM load/reset. */
+      if (gen_ctx_cpu68k_frames() < 120) {
         gen_ui->plotfield = TRUE;
         consecutive_skips = 0;
       } else {
-        /* Buffer is critically low - skip frame to let audio catch up.
-           But prevent permanent freeze: force render every 4 frames max. */
-        consecutive_skips++;
-        if (consecutive_skips >= 4) {
+        /* After startup: Use adaptive threshold based on samples per field.
+           Allow rendering if buffer has at least 1 field worth of audio.
+           This is much more achievable than 50% of threshold (2.5 fields). */
+        unsigned int min_buffer = gen_ctx_sound_threshold() / 5; /* ~1 field */
+        if (pending_samples >= (int)min_buffer) {
           gen_ui->plotfield = TRUE;
           consecutive_skips = 0;
+        } else {
+          /* Buffer is critically low - skip frame to let audio catch up.
+             Force render every 2 frames max to maintain playable FPS. */
+          consecutive_skips++;
+          if (consecutive_skips >= 2) {
+            gen_ui->plotfield = TRUE;
+            consecutive_skips = 0;
+          }
         }
       }
     } else {
-      if (cpu68k_frames % (gen_ui->frameskip + 1) == 0)
+      if (gen_ctx_cpu68k_frames() % (gen_ui->frameskip + 1) == 0)
         gen_ui->plotfield = TRUE;
     }
   }
@@ -1116,15 +1241,15 @@ static void ui_newframe(int pending_samples)
   }
 
   /* Check for video mode changes */
-  if (vmode != (int)(vdp_reg[1] & (1 << 3)) || pal != (int)vdp_pal) {
+  if (vmode != (int)(gen_ctx_vdp_reg()[1] & (1 << 3)) || pal != (int)gen_ctx_vdp_pal()) {
     vdp_setupvideo();
-    vmode = vdp_reg[1] & (1 << 3);
-    pal = vdp_pal;
+    vmode = gen_ctx_vdp_reg()[1] & (1 << 3);
+    pal = gen_ctx_vdp_pal();
   }
 
   /* Calculate FPS */
   fps = 0;
-  for (i = 0; i < vdp_framerate; i++) {
+  for (i = 0; i < gen_ctx_vdp_framerate(); i++) {
     if (frameplots[i])
       fps++;
   }
@@ -1140,29 +1265,29 @@ static void ui_newframe(int pending_samples)
 void ui_line(int line)
 {
   static uint8 gfx[320];
-  unsigned int width = (vdp_reg[12] & 1) ? 320 : 256;
+  unsigned int width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
 
   if (!gen_ui->plotfield)
     return;
-  if (line < 0 || line >= (int)vdp_vislines)
+  if (line < 0 || line >= (int)gen_ctx_vdp_vislines())
     return;
 
   if (gen_ui->vdpsimple) {
-    if (line == (int)(vdp_vislines >> 1))
+    if (line == (int)(gen_ctx_vdp_vislines() >> 1))
       /* if we're in simple cell-based mode, plot when half way down screen */
       ui_simpleplot();
     return;
   }
 
   /* We are plotting this frame, and we're not doing a simple plot */
-  switch ((vdp_reg[12] >> 1) & 3) {
+  switch ((gen_ctx_vdp_reg()[12] >> 1) & 3) {
   case 0: /* normal */
   case 1: /* interlace simply doubled up */
   case 2: /* invalid */
     vdp_renderline(line, gfx, 0);
     break;
   case 3: /* interlace with double resolution */
-    vdp_renderline(line, gfx, vdp_oddframe);
+    vdp_renderline(line, gfx, gen_ctx_vdp_oddframe());
     break;
   }
 
@@ -1196,7 +1321,7 @@ void ui_endfield(void)
   if (gen_ui->frameskip == 0) {
     /* dynamic frame skipping */
     counter++;
-    if (sound_feedback >= 0) {
+    if (gen_ctx_sound_feedback() >= 0) {
       gen_ui->actualskip = counter;
       counter = 0;
     }
@@ -1209,9 +1334,9 @@ static void ui_rendertoscreen(void)
 {
   uint32 *newlinedata, *oldlinedata;
   unsigned int line;
-  unsigned int nominalwidth = (vdp_reg[12] & 1) ? 320 : 256;
-  unsigned int yoffset = (vdp_reg[1] & (1 << 3)) ? 0 : 8;
-  unsigned int xoffset = (vdp_reg[12] & 1) ? 0 : 32;
+  unsigned int nominalwidth = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
+  unsigned int yoffset = (gen_ctx_vdp_reg()[1] & (1 << 3)) ? 0 : 8;
+  unsigned int xoffset = (gen_ctx_vdp_reg()[12] & 1) ? 0 : 32;
   uint8 *screen;
   uint8 *write_buffer;   /* buffer to write to (opposite of display) */
   uint8 *display_buffer; /* buffer currently being displayed */
@@ -1232,7 +1357,7 @@ static void ui_rendertoscreen(void)
   }
 
   /* Render based on interlace mode */
-  switch ((vdp_reg[12] >> 1) & 3) {
+  switch ((gen_ctx_vdp_reg()[12] >> 1) & 3) {
   case 0: /* normal */
   case 1: /* interlace simply doubled up */
   case 2: /* invalid */
@@ -1240,7 +1365,7 @@ static void ui_rendertoscreen(void)
     if (gen_ui->filter_type != FILTER_NONE && gen_ui->scale_factor > 1) {
       /* Calculate scaled dimensions */
       unsigned int scaled_width = nominalwidth * gen_ui->scale_factor;
-      unsigned int scaled_height = vdp_vislines * gen_ui->scale_factor;
+      unsigned int scaled_height = gen_ctx_vdp_vislines() * gen_ui->scale_factor;
 
       /* Apply the selected upscaling filter
        * Scale2x/3x/4x: read directly from newscreen using stride parameter
@@ -1250,24 +1375,24 @@ static void ui_rendertoscreen(void)
         /* Read directly from newscreen with stride (384 pixels = 1536 bytes) */
         uiplot_scale2x_frame32((uint32 *)gen_ui->newscreen,
                                gen_ui->upscale_dst_buffer, nominalwidth,
-                               vdp_vislines, 384 * 4, scaled_width * 4);
+                               gen_ctx_vdp_vislines(), 384 * 4, scaled_width * 4);
         break;
       case FILTER_SCALE3X:
         uiplot_scale3x_frame32((uint32 *)gen_ui->newscreen,
                                gen_ui->upscale_dst_buffer, nominalwidth,
-                               vdp_vislines, 384 * 4, scaled_width * 4);
+                               gen_ctx_vdp_vislines(), 384 * 4, scaled_width * 4);
         break;
       case FILTER_SCALE4X:
         uiplot_scale4x_frame32((uint32 *)gen_ui->newscreen,
                                gen_ui->upscale_dst_buffer,
                                gen_ui->scale4x_temp_buffer, nominalwidth,
-                               vdp_vislines, 384 * 4, scaled_width * 4);
+                               gen_ctx_vdp_vislines(), 384 * 4, scaled_width * 4);
         break;
       case FILTER_XBRZ2X:
       case FILTER_XBRZ3X:
       case FILTER_XBRZ4X:
         /* xBRZ needs packed input - copy with stride removal first */
-        for (line = 0; line < vdp_vislines; line++) {
+        for (line = 0; line < gen_ctx_vdp_vislines(); line++) {
           newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
           memcpy(gen_ui->upscale_src_buffer + line * nominalwidth, newlinedata,
                  nominalwidth * sizeof(uint32));
@@ -1275,20 +1400,20 @@ static void ui_rendertoscreen(void)
         if (gen_ui->filter_type == FILTER_XBRZ2X) {
           uiplot_xbrz_frame32(2, gen_ui->upscale_src_buffer,
                               gen_ui->upscale_dst_buffer, nominalwidth,
-                              vdp_vislines);
+                              gen_ctx_vdp_vislines());
         } else if (gen_ui->filter_type == FILTER_XBRZ3X) {
           uiplot_xbrz_frame32(3, gen_ui->upscale_src_buffer,
                               gen_ui->upscale_dst_buffer, nominalwidth,
-                              vdp_vislines);
+                              gen_ctx_vdp_vislines());
         } else {
           uiplot_xbrz_frame32(4, gen_ui->upscale_src_buffer,
                               gen_ui->upscale_dst_buffer, nominalwidth,
-                              vdp_vislines);
+                              gen_ctx_vdp_vislines());
         }
         break;
       default:
         /* Fallback: simple copy without scaling */
-        for (line = 0; line < vdp_vislines; line++) {
+        for (line = 0; line < gen_ctx_vdp_vislines(); line++) {
           newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
           memcpy(gen_ui->upscale_dst_buffer + line * scaled_width, newlinedata,
                  nominalwidth * sizeof(uint32));
@@ -1307,7 +1432,7 @@ static void ui_rendertoscreen(void)
       }
     } else {
       /* No upscaling - simple rendering */
-      for (line = 0; line < vdp_vislines; line++) {
+      for (line = 0; line < gen_ctx_vdp_vislines(); line++) {
         newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
         screen = write_buffer + ((line + yoffset) * HMAXSIZE + xoffset) * 4;
         memcpy(screen, newlinedata, nominalwidth * 4);
@@ -1318,12 +1443,12 @@ static void ui_rendertoscreen(void)
   case 3: /* interlace with double resolution */
     /* Handle interlaced display - need data from display buffer for interlacing
      */
-    for (line = 0; line < vdp_vislines; line++) {
+    for (line = 0; line < gen_ctx_vdp_vislines(); line++) {
       newlinedata = (uint32 *)(gen_ui->newscreen + line * 384 * 4);
       oldlinedata =
           (uint32 *)(display_buffer + ((line + yoffset) * 384 + xoffset) * 4);
 
-      if (vdp_oddframe) {
+      if (gen_ctx_vdp_oddframe()) {
         oddscreen = newlinedata;
         evenscreen = oldlinedata;
       } else {
@@ -1360,29 +1485,17 @@ static void ui_rendertoscreen(void)
 static void ui_simpleplot(void)
 {
   unsigned int line;
-  unsigned int width = (vdp_reg[12] & 1) ? 320 : 256;
+  unsigned int width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
   uint8 gfx[(320 + 16) * (240 + 16)];
 
   /* cell mode - entire frame done here */
   uiplot_checkpalcache(0);
   vdp_renderframe(gfx + (8 * (320 + 16)) + 8, 320 + 16); /* plot frame */
 
-  for (line = 0; line < vdp_vislines; line++) {
+  for (line = 0; line < gen_ctx_vdp_vislines(); line++) {
     uiplot_convertdata32(gfx + 8 + (line + 8) * (320 + 16),
                          (uint32 *)(gen_ui->newscreen + line * 384 * 4), width);
   }
-}
-
-/* Helper to map SDL3 joystick ID to player index (0 or 1) */
-static int ui_joystick_id_to_player(SDL_JoystickID id)
-{
-  for (int i = 0; i < 2; i++) {
-    if (gen_ui->js_handles[i] &&
-        SDL_GetJoystickID(gen_ui->js_handles[i]) == id) {
-      return i;
-    }
-  }
-  return -1; /* Unknown joystick */
 }
 
 static void ui_sdl_events(void)
@@ -1391,94 +1504,24 @@ static void ui_sdl_events(void)
 
   while (SDL_PollEvent(&event)) {
     switch (event.type) {
-    case SDL_EVENT_JOYSTICK_AXIS_MOTION:
-      /* Handle joystick axis movement (D-pad or analog stick)
-         SDL joystick axes: 0 = left/right, 1 = up/down
-         Values: -32768 (left/up) to +32767 (right/down) */
-      {
-        int player = ui_joystick_id_to_player(event.jaxis.which);
-        if (player < 0 || player > 1)
-          break; /* Only support 2 players */
-
-        /* Use deadzone to avoid drift */
-        const int deadzone = 8000;
-
-        if (event.jaxis.axis == 0) {
-          /* Horizontal axis */
-          if (event.jaxis.value < -deadzone) {
-            mem68k_cont[player].left = 1;
-            mem68k_cont[player].right = 0;
-          } else if (event.jaxis.value > deadzone) {
-            mem68k_cont[player].left = 0;
-            mem68k_cont[player].right = 1;
-          } else {
-            mem68k_cont[player].left = 0;
-            mem68k_cont[player].right = 0;
-          }
-        } else if (event.jaxis.axis == 1) {
-          /* Vertical axis */
-          if (event.jaxis.value < -deadzone) {
-            mem68k_cont[player].up = 1;
-            mem68k_cont[player].down = 0;
-          } else if (event.jaxis.value > deadzone) {
-            mem68k_cont[player].up = 0;
-            mem68k_cont[player].down = 1;
-          } else {
-            mem68k_cont[player].up = 0;
-            mem68k_cont[player].down = 0;
-          }
-        }
-      }
+    /* Gamepad hot-plug events */
+    case SDL_EVENT_GAMEPAD_ADDED:
+      ui_open_gamepad(event.gdevice.which);
       break;
 
-    case SDL_EVENT_JOYSTICK_BUTTON_DOWN:
-    case SDL_EVENT_JOYSTICK_BUTTON_UP:
-      /* Handle joystick button presses
-         Standard Genesis controller mapping:
-         Button 0 = A, Button 1 = B, Button 2 = C
-         Button 3 = Start, Button 4 = X (6-button), Button 5 = Y, Button 6 = Z
-       */
-      {
-        int player = ui_joystick_id_to_player(event.jbutton.which);
-        if (player < 0 || player > 1)
-          break;
-
-        gboolean pressed = (event.type == SDL_EVENT_JOYSTICK_BUTTON_DOWN);
-
-        switch (event.jbutton.button) {
-        case 0: /* Button A */
-          mem68k_cont[player].a = pressed ? 1 : 0;
-          break;
-        case 1: /* Button B */
-          mem68k_cont[player].b = pressed ? 1 : 0;
-          break;
-        case 2: /* Button C */
-        case 4: /* Alternative C button */
-          mem68k_cont[player].c = pressed ? 1 : 0;
-          break;
-        case 3: /* Start button */
-        case 7: /* Alternative start button */
-          mem68k_cont[player].start = pressed ? 1 : 0;
-          break;
-        }
-      }
+    case SDL_EVENT_GAMEPAD_REMOVED:
+      ui_close_gamepad(event.gdevice.which);
       break;
 
-    case SDL_EVENT_JOYSTICK_HAT_MOTION:
-      /* Handle D-pad hat switch (alternative to analog axis)
-         Hat values: SDL_HAT_CENTERED, SDL_HAT_UP, SDL_HAT_DOWN, SDL_HAT_LEFT,
-         SDL_HAT_RIGHT and combinations like SDL_HAT_LEFTUP */
-      {
-        int player = ui_joystick_id_to_player(event.jhat.which);
-        if (player < 0 || player > 1)
-          break;
+    /* Gamepad button events */
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+    case SDL_EVENT_GAMEPAD_BUTTON_UP:
+      ui_handle_gamepad_button(&event.gbutton);
+      break;
 
-        uint8 hat = event.jhat.value;
-        mem68k_cont[player].up = (hat & SDL_HAT_UP) ? 1 : 0;
-        mem68k_cont[player].down = (hat & SDL_HAT_DOWN) ? 1 : 0;
-        mem68k_cont[player].left = (hat & SDL_HAT_LEFT) ? 1 : 0;
-        mem68k_cont[player].right = (hat & SDL_HAT_RIGHT) ? 1 : 0;
-      }
+    /* Gamepad axis events */
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+      ui_handle_gamepad_axis(&event.gaxis);
       break;
     }
   }
@@ -1891,6 +1934,7 @@ void ui_log_user(const char *text, ...)
   va_list ap;
   va_start(ap, text);
   vfprintf(stderr, text, ap);
+  fputc('\n', stderr);
   va_end(ap);
 }
 
@@ -1899,6 +1943,7 @@ void ui_log_verbose(const char *text, ...)
   va_list ap;
   va_start(ap, text);
   vfprintf(stderr, text, ap);
+  fputc('\n', stderr);
   va_end(ap);
 }
 
@@ -1907,6 +1952,7 @@ void ui_log_normal(const char *text, ...)
   va_list ap;
   va_start(ap, text);
   vfprintf(stderr, text, ap);
+  fputc('\n', stderr);
   va_end(ap);
 }
 
@@ -1915,6 +1961,7 @@ void ui_log_critical(const char *text, ...)
   va_list ap;
   va_start(ap, text);
   vfprintf(stderr, text, ap);
+  fputc('\n', stderr);
   va_end(ap);
 }
 
@@ -1923,6 +1970,7 @@ void ui_log_request(const char *text, ...)
   va_list ap;
   va_start(ap, text);
   vfprintf(stderr, text, ap);
+  fputc('\n', stderr);
   va_end(ap);
 }
 
@@ -1942,5 +1990,325 @@ void ui_musiclog(uint8 *data, unsigned int length)
 {
   if (gen_ui->musicfile_fd != -1) {
     write(gen_ui->musicfile_fd, data, length);
+  }
+}
+
+/*** gen_context Callback Implementations ***/
+
+/* Line rendering callback - called by VDP for each scanline */
+static void gtk4_cb_line(gen_context_t *ctx, int line)
+{
+  (void)ctx; /* Use gen_ui directly for now */
+  static uint8 gfx[320];
+  unsigned int width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
+
+  if (!gen_ui->plotfield)
+    return;
+  if (line < 0 || line >= (int)gen_ctx_vdp_vislines())
+    return;
+
+  if (gen_ui->vdpsimple) {
+    if (line == (int)(gen_ctx_vdp_vislines() >> 1))
+      ui_simpleplot();
+    return;
+  }
+
+  switch ((gen_ctx_vdp_reg()[12] >> 1) & 3) {
+  case 0:
+  case 1:
+  case 2:
+    vdp_renderline(line, gfx, 0);
+    break;
+  case 3:
+    vdp_renderline(line, gfx, gen_ctx_vdp_oddframe());
+    break;
+  }
+
+  uiplot_checkpalcache(0);
+  uiplot_convertdata32(gfx, (uint32 *)(gen_ui->newscreen + line * 384 * 4),
+                       width);
+}
+
+/* End of field callback - called after each frame completes */
+static void gtk4_cb_end_field(gen_context_t *ctx)
+{
+  (void)ctx;
+  static int counter = 0;
+
+  if (gen_ui->plotfield) {
+    ui_rendertoscreen();
+  }
+
+  if (gen_ui->frameskip == 0) {
+    counter++;
+    if (gen_ctx_sound_feedback() >= 0) {
+      gen_ui->actualskip = counter;
+      counter = 0;
+    }
+  } else {
+    gen_ui->actualskip = gen_ui->frameskip;
+  }
+}
+
+/* Audio output callback */
+static void gtk4_cb_audio_output(gen_context_t *ctx, const uint16 *left,
+                                  const uint16 *right, unsigned int samples)
+{
+  (void)ctx;
+  (void)left;
+  (void)right;
+  (void)samples;
+  /* Audio is handled by soundp layer directly, this callback is for
+   * informational purposes or future audio routing */
+}
+
+/* Logging callbacks */
+static void gtk4_cb_log_debug(gen_context_t *ctx, const char *msg)
+{
+  (void)ctx;
+  (void)msg;
+  /* Debug logs are no-op unless debug mode is enabled */
+}
+
+static void gtk4_cb_log_user(gen_context_t *ctx, const char *msg)
+{
+  (void)ctx;
+  fprintf(stderr, "%s\n", msg);
+}
+
+static void gtk4_cb_log_verbose(gen_context_t *ctx, const char *msg)
+{
+  (void)ctx;
+  fprintf(stderr, "%s\n", msg);
+}
+
+static void gtk4_cb_log_normal(gen_context_t *ctx, const char *msg)
+{
+  (void)ctx;
+  fprintf(stderr, "%s\n", msg);
+}
+
+static void gtk4_cb_log_critical(gen_context_t *ctx, const char *msg)
+{
+  (void)ctx;
+  fprintf(stderr, "CRITICAL: %s\n", msg);
+}
+
+/* Music logging callback */
+static void gtk4_cb_musiclog(gen_context_t *ctx, const uint8 *data,
+                              unsigned int length)
+{
+  (void)ctx;
+  if (gen_ui->musicfile_fd != -1) {
+    write(gen_ui->musicfile_fd, data, length);
+  }
+}
+
+/* Fatal error callback - must not return */
+[[noreturn]] static void gtk4_cb_fatal_error(gen_context_t *ctx, const char *msg)
+{
+  (void)ctx;
+  ui_gtk4_messageerror(msg);
+  fprintf(stderr, "FATAL ERROR: %s\n", msg);
+  exit(1);
+}
+
+/*** Emulation Thread Implementation ***/
+
+static gpointer ui_emu_thread_func(gpointer data)
+{
+  GenUI *ui = (GenUI *)data;
+
+  while (ui->emu_thread_running) {
+    g_mutex_lock(&ui->emu_mutex);
+
+    /* Wait for frame request from main thread */
+    while (!ui->frame_requested && ui->emu_thread_running) {
+      g_cond_wait(&ui->emu_cond, &ui->emu_mutex);
+    }
+
+    if (!ui->emu_thread_running) {
+      g_mutex_unlock(&ui->emu_mutex);
+      break;
+    }
+
+    ui->frame_requested = FALSE;
+    g_mutex_unlock(&ui->emu_mutex);
+
+    /* Run one frame of emulation (outside mutex for performance) */
+    if (ui->running && ui->ctx != nullptr) {
+      gen_core_run_frame(ui->ctx);
+    }
+
+    /* Signal frame completion */
+    atomic_store(&ui->render_complete, 1);
+  }
+
+  return nullptr;
+}
+
+static void ui_start_emu_thread(void)
+{
+  g_mutex_init(&gen_ui->emu_mutex);
+  g_cond_init(&gen_ui->emu_cond);
+
+  gen_ui->emu_thread_running = TRUE;
+  gen_ui->frame_requested = FALSE;
+  atomic_store(&gen_ui->render_complete, 0);
+
+  gen_ui->emu_thread = g_thread_new("generator-emu", ui_emu_thread_func, gen_ui);
+  fprintf(stderr, "Emulation thread started\n");
+}
+
+static void ui_stop_emu_thread(void)
+{
+  if (gen_ui->emu_thread == nullptr)
+    return;
+
+  g_mutex_lock(&gen_ui->emu_mutex);
+  gen_ui->emu_thread_running = FALSE;
+  g_cond_signal(&gen_ui->emu_cond);
+  g_mutex_unlock(&gen_ui->emu_mutex);
+
+  g_thread_join(gen_ui->emu_thread);
+  gen_ui->emu_thread = nullptr;
+
+  g_mutex_clear(&gen_ui->emu_mutex);
+  g_cond_clear(&gen_ui->emu_cond);
+
+  fprintf(stderr, "Emulation thread stopped\n");
+}
+
+/*** SDL3 Gamepad Implementation ***/
+
+static void ui_open_gamepad(SDL_JoystickID id)
+{
+  if (gen_ui->num_gamepads >= MAX_GAMEPADS)
+    return;
+
+  SDL_Gamepad *pad = SDL_OpenGamepad(id);
+  if (!pad) {
+    fprintf(stderr, "Failed to open gamepad %d: %s\n", (int)id, SDL_GetError());
+    return;
+  }
+
+  /* Find free slot */
+  for (int i = 0; i < MAX_GAMEPADS; i++) {
+    if (gen_ui->gamepads[i].gamepad == nullptr) {
+      gen_ui->gamepads[i].gamepad = pad;
+      gen_ui->gamepads[i].id = id;
+      /* Assign to player if slot available (0 or 1) */
+      gen_ui->gamepads[i].player = (gen_ui->num_gamepads < 2) ? gen_ui->num_gamepads : -1;
+      gen_ui->num_gamepads++;
+
+      const char *name = SDL_GetGamepadName(pad);
+      fprintf(stderr, "Gamepad connected: %s (player %d)\n",
+              name ? name : "Unknown", gen_ui->gamepads[i].player + 1);
+      return;
+    }
+  }
+}
+
+static void ui_close_gamepad(SDL_JoystickID id)
+{
+  for (int i = 0; i < MAX_GAMEPADS; i++) {
+    if (gen_ui->gamepads[i].id == id) {
+      fprintf(stderr, "Gamepad disconnected: player %d\n",
+              gen_ui->gamepads[i].player + 1);
+
+      SDL_CloseGamepad(gen_ui->gamepads[i].gamepad);
+      gen_ui->gamepads[i].gamepad = nullptr;
+      gen_ui->gamepads[i].id = 0;
+      gen_ui->gamepads[i].player = -1;
+      gen_ui->num_gamepads--;
+      return;
+    }
+  }
+}
+
+static int ui_gamepad_id_to_player(SDL_JoystickID id)
+{
+  for (int i = 0; i < MAX_GAMEPADS; i++) {
+    if (gen_ui->gamepads[i].gamepad != nullptr && gen_ui->gamepads[i].id == id) {
+      return gen_ui->gamepads[i].player;
+    }
+  }
+  return -1;
+}
+
+static void ui_handle_gamepad_button(SDL_GamepadButtonEvent *event)
+{
+  int player = ui_gamepad_id_to_player(event->which);
+  if (player < 0 || player > 1)
+    return;
+
+  gboolean pressed = (event->down != 0);
+
+  switch (event->button) {
+  case SDL_GAMEPAD_BUTTON_SOUTH: /* A button */
+    mem68k_cont[player].a = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_EAST: /* B button */
+    mem68k_cont[player].b = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_WEST: /* X -> C button */
+  case SDL_GAMEPAD_BUTTON_NORTH: /* Y -> C button (alternative) */
+    mem68k_cont[player].c = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_START:
+    mem68k_cont[player].start = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_DPAD_UP:
+    mem68k_cont[player].up = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
+    mem68k_cont[player].down = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
+    mem68k_cont[player].left = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+    mem68k_cont[player].right = pressed ? 1 : 0;
+    break;
+  default:
+    break;
+  }
+}
+
+static void ui_handle_gamepad_axis(SDL_GamepadAxisEvent *event)
+{
+  int player = ui_gamepad_id_to_player(event->which);
+  if (player < 0 || player > 1)
+    return;
+
+  const int deadzone = 8000;
+
+  switch (event->axis) {
+  case SDL_GAMEPAD_AXIS_LEFTX:
+    if (event->value < -deadzone) {
+      mem68k_cont[player].left = 1;
+      mem68k_cont[player].right = 0;
+    } else if (event->value > deadzone) {
+      mem68k_cont[player].left = 0;
+      mem68k_cont[player].right = 1;
+    } else {
+      mem68k_cont[player].left = 0;
+      mem68k_cont[player].right = 0;
+    }
+    break;
+  case SDL_GAMEPAD_AXIS_LEFTY:
+    if (event->value < -deadzone) {
+      mem68k_cont[player].up = 1;
+      mem68k_cont[player].down = 0;
+    } else if (event->value > deadzone) {
+      mem68k_cont[player].up = 0;
+      mem68k_cont[player].down = 1;
+    } else {
+      mem68k_cont[player].up = 0;
+      mem68k_cont[player].down = 0;
+    }
+    break;
+  default:
+    break;
   }
 }

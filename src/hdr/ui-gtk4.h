@@ -7,6 +7,12 @@
 #include <gtk/gtk.h>
 #include <adwaita.h>
 #include <stdatomic.h>
+#include <SDL3/SDL.h>
+
+#include "gen_context.h"
+
+/* Maximum number of gamepads supported */
+#define MAX_GAMEPADS 4
 
 #define HBORDER_MAX 32
 #define HBORDER_DEFAULT 8
@@ -37,6 +43,13 @@ typedef struct {
   unsigned int right;
   unsigned int start;
 } t_gtk4keys;
+
+/* SDL3 Gamepad slot for hot-plug support */
+typedef struct {
+  SDL_Gamepad *gamepad; /* SDL3 gamepad handle */
+  SDL_JoystickID id;    /* Joystick ID for event matching */
+  int player;           /* Player index (0, 1) or -1 if unassigned */
+} t_gamepad_slot;
 
 typedef struct {
   AdwApplication *app;
@@ -101,10 +114,23 @@ typedef struct {
   GPtrArray *audio_driver_ids;
   char *audio_driver_selection;
 
-  /* Input */
+  /* Input - Keyboard */
   t_gtk4keys controllers[2];
-  int joysticks;
-  void *js_handles[2]; /* SDL_Joystick pointers */
+
+  /* Input - SDL3 Gamepads (with hot-plug support) */
+  t_gamepad_slot gamepads[MAX_GAMEPADS];
+  int num_gamepads;
+
+  /* Emulator Context (gen_context architecture) */
+  gen_context_t *ctx;        /* Emulator context */
+
+  /* Emulation Thread */
+  GThread *emu_thread;       /* Dedicated emulation thread */
+  GMutex emu_mutex;          /* Protects frame_requested and thread state */
+  GCond emu_cond;            /* Signal to run frames */
+  gboolean emu_thread_running; /* Thread alive flag */
+  gboolean frame_requested;  /* Main thread requested a frame */
+  _Atomic int render_complete; /* Emu thread completed a frame */
 
   /* Recording */
   int musicfile_fd;

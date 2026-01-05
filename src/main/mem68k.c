@@ -664,7 +664,8 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
   case 0x1B:
   case 0x1D:
   case 0x1F:
-    /* return; */
+    /* Serial port registers - silently ignore */
+    return;
   default:
     LOG_CRITICAL(("%08X [IO] Invalid memory store (byte) 0x%X", regs.pc, addr));
     return;

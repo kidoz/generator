@@ -121,6 +121,23 @@ int gen_core_init(gen_context_t *ctx)
   return 0;
 }
 
+/*** gen_core_attach - Attach context to already-initialized subsystems ***/
+
+int gen_core_attach(gen_context_t *ctx)
+{
+  if (ctx == nullptr) {
+    return -1;
+  }
+
+  /* Set the global context for transition period */
+  g_ctx = ctx;
+
+  /* Sync context with subsystem globals (already initialized by main()) */
+  gen_core_sync_from_globals(ctx);
+
+  return 0;
+}
+
 /*** gen_core_shutdown - Shutdown the emulator core ***/
 
 void gen_core_shutdown(gen_context_t *ctx)

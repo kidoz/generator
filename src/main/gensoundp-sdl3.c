@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <SDL3/SDL.h>
 
 #include "generator.h"
@@ -72,12 +73,17 @@ int soundp_start(void)
   SDL_AudioDeviceID *devices;
   SDL_AudioDeviceID dev_id;
 
+  fprintf(stderr, "[AUDIO] soundp_start() called\n");
+
   /* Initialize SDL audio if not already done */
   if (!SDL_WasInit(SDL_INIT_AUDIO)) {
+    fprintf(stderr, "[AUDIO] Initializing SDL audio subsystem...\n");
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-      LOG_CRITICAL(("SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError()));
+      fprintf(stderr, "[AUDIO] SDL_InitSubSystem(AUDIO) FAILED: %s\n", SDL_GetError());
       return 1;
     }
+    fprintf(stderr, "[AUDIO] SDL audio initialized, driver: %s\n",
+            SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown");
   }
 
   LOG_VERBOSE(("SDL3 audio subsystem initialized, driver: %s",
@@ -145,6 +151,9 @@ int soundp_start(void)
   /* Start audio playback */
   SDL_ResumeAudioDevice(soundp_dev);
 
+  fprintf(stderr, "[AUDIO] Audio device started: dev=%u, stream=%p, %dHz stereo\n",
+          (unsigned)soundp_dev, (void*)soundp_stream, src_spec.freq);
+
   /* Detect and log audio backend */
   const char *backend = soundp_detect_audio_backend();
 
@@ -165,6 +174,23 @@ int soundp_start(void)
         ("     PipeWire provides 3-10ms latency vs PulseAudio's 50-100ms"));
   }
 
+  /* Pre-fill audio buffer with silence to bootstrap the buffer level.
+     This prevents the frame-skip logic from starving because the buffer
+     never reaches the threshold when production == consumption rate.
+     Pre-fill with ~3 frames worth of silence (half the threshold). */
+  {
+    unsigned int prefill_samples = sound_sampsperfield * 3;
+    size_t prefill_bytes = prefill_samples * 4; /* stereo 16-bit = 4 bytes */
+    int16_t *silence = (int16_t *)calloc(prefill_samples * 2, sizeof(int16_t));
+    if (silence) {
+      if (SDL_PutAudioStreamData(soundp_stream, silence, (int)prefill_bytes)) {
+        LOG_VERBOSE(("Pre-filled audio buffer with %u samples of silence",
+                     prefill_samples));
+      }
+      free(silence);
+    }
+  }
+
   return 0;
 }
 
@@ -172,6 +198,8 @@ int soundp_start(void)
 
 void soundp_stop(void)
 {
+  fprintf(stderr, "[AUDIO] soundp_stop() called, stream=%p, dev=%u\n",
+          (void*)soundp_stream, (unsigned)soundp_dev);
   if (soundp_stream) {
     SDL_DestroyAudioStream(soundp_stream);
     soundp_stream = nullptr;
@@ -220,9 +248,33 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 {
   int16_t *interleaved;
   unsigned int i;
+  static int debug_count = 0;
 
-  if (!soundp_stream || samples == 0)
+  if (!soundp_stream || samples == 0) {
+    if (debug_count < 3) {
+      fprintf(stderr, "[AUDIO] soundp_output: NO STREAM! stream=%p samples=%u\n",
+              (void*)soundp_stream, samples);
+      debug_count++;
+    }
     return;
+  }
+
+  /* Debug: show first few outputs */
+  if (debug_count < 5) {
+    /* Check for non-zero audio data */
+    int has_audio = 0;
+    for (unsigned int j = 0; j < samples && j < 50; j++) {
+      if (left[j] != 0 || right[j] != 0) {
+        has_audio = 1;
+        break;
+      }
+    }
+    /* Check device state */
+    bool paused = SDL_AudioDevicePaused(soundp_dev);
+    fprintf(stderr, "[AUDIO] soundp_output: %u samples, has_audio=%d, queued=%d, dev_paused=%d\n",
+            samples, has_audio, SDL_GetAudioStreamQueued(soundp_stream), (int)paused);
+    debug_count++;
+  }
 
   /* Allocate interleaved buffer */
   interleaved = malloc(samples * 2 * sizeof(int16_t));
@@ -237,7 +289,11 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 
   /* Push audio data to the stream */
   if (!SDL_PutAudioStreamData(soundp_stream, interleaved, samples * 4)) {
-    /* Note: Don't log here - this is in the hot audio path */
+    static int err_count = 0;
+    if (err_count < 3) {
+      fprintf(stderr, "[AUDIO] SDL_PutAudioStreamData FAILED: %s\n", SDL_GetError());
+      err_count++;
+    }
   }
 
   free(interleaved);
