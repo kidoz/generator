@@ -16,7 +16,9 @@ typedef struct {
   void (*store_long)(uint32 addr, uint32 data);
 } t_mem68k_def;
 
+/* Controller button state - supports both 3-button and 6-button controllers */
 typedef struct {
+  /* Standard 3-button controller */
   unsigned int a;
   unsigned int b;
   unsigned int c;
@@ -25,6 +27,11 @@ typedef struct {
   unsigned int left;
   unsigned int right;
   unsigned int start;
+  /* 6-button controller extensions */
+  unsigned int x;
+  unsigned int y;
+  unsigned int z;
+  unsigned int mode;  /* Mode button on 6-button controller */
 } t_keys;
 
 extern t_mem68k_def mem68k_def[];

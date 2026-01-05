@@ -33,7 +33,9 @@ typedef enum {
   FILTER_XBRZ4X = 6   /* xBRZ 4x - High quality */
 } t_filter_type;
 
+/* Keyboard mapping for controllers - supports 6-button mode */
 typedef struct {
+  /* Standard 3-button */
   unsigned int a;
   unsigned int b;
   unsigned int c;
@@ -42,6 +44,11 @@ typedef struct {
   unsigned int left;
   unsigned int right;
   unsigned int start;
+  /* 6-button extensions */
+  unsigned int x;
+  unsigned int y;
+  unsigned int z;
+  unsigned int mode;
 } t_gtk4keys;
 
 /* SDL3 Gamepad slot for hot-plug support */

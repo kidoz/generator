@@ -88,6 +88,28 @@ static uint8 mem68k_cont1output;
 static uint8 mem68k_cont2output;
 static uint8 mem68k_contEoutput;
 
+/* 6-button controller state machine
+ * The Genesis 6-button controller uses TH line toggling to cycle through states.
+ * When TH (bit 6) is toggled rapidly, the controller advances through states
+ * that expose the extra X, Y, Z, Mode buttons.
+ *
+ * State machine (TH transitions):
+ *   State 0 (TH=0): UP, DOWN, 0, 0, A, START
+ *   State 1 (TH=1): UP, DOWN, LEFT, RIGHT, B, C
+ *   State 2 (TH=0): UP, DOWN, 0, 0, A, START
+ *   State 3 (TH=1): UP, DOWN, LEFT, RIGHT, B, C
+ *   State 4 (TH=0): 0, 0, 0, 0, 0, 0 (6-button detection)
+ *   State 5 (TH=1): Z, Y, X, MODE, 1, 1
+ *   State 6 (TH=0): 1, 1, 1, 1, A, START
+ *   State 7 (TH=1): UP, DOWN, LEFT, RIGHT, B, C (resets to 0)
+ *
+ * After ~1.5ms without TH toggle, state resets to 0.
+ */
+static uint8 mem68k_cont_state[2];       /* Current state (0-7) per controller */
+static uint8 mem68k_cont_th_prev[2];     /* Previous TH value to detect edges */
+static unsigned int mem68k_cont_timer[2]; /* Timer for state reset */
+#define CONT_6BTN_TIMEOUT 25000          /* ~1.5ms at 7.67MHz */
+
 /*** memory map ***/
 
 t_mem68k_def mem68k_def[] = {
@@ -559,11 +581,103 @@ void mem68k_store_bank_long(uint32 addr, uint32 data)
 }
 
 
+/*** 6-button controller helper ***/
+
+/* Read controller state based on 6-button protocol state machine */
+static uint8 mem68k_read_controller(int player, uint8 th_high)
+{
+  t_keys *cont = &mem68k_cont[player];
+  uint8 state = mem68k_cont_state[player];
+  uint8 result;
+
+  /* Increment timeout counter (approximate timing based on reads) */
+  mem68k_cont_timer[player] += 100;
+
+  /* Check for timeout - reset state if too much time passed */
+  if (mem68k_cont_timer[player] > CONT_6BTN_TIMEOUT) {
+    mem68k_cont_state[player] = 0;
+    state = 0;
+  }
+
+  /* State machine output based on current state and TH line */
+  if (th_high) {
+    /* TH = 1 states */
+    switch (state) {
+    case 5:
+      /* State 5: Extra buttons - Z, Y, X, MODE in low nibble, high nibble = 1s */
+      result = ((1 - cont->z)) |
+               ((1 - cont->y) << 1) |
+               ((1 - cont->x) << 2) |
+               ((1 - cont->mode) << 3) |
+               (1 << 4) | (1 << 5);
+      break;
+    case 1:
+    case 3:
+    case 7:
+    default:
+      /* Standard TH=1: UP, DOWN, LEFT, RIGHT, B, C */
+      result = ((1 - cont->up)) |
+               ((1 - cont->down) << 1) |
+               ((1 - cont->left) << 2) |
+               ((1 - cont->right) << 3) |
+               ((1 - cont->b) << 4) |
+               ((1 - cont->c) << 5);
+      break;
+    }
+  } else {
+    /* TH = 0 states */
+    switch (state) {
+    case 4:
+      /* State 4: All zeros (6-button detection signature) */
+      result = 0;
+      break;
+    case 6:
+      /* State 6: All ones in low nibble, A and START in high */
+      result = 0x0F |
+               ((1 - cont->a) << 4) |
+               ((1 - cont->start) << 5);
+      break;
+    case 0:
+    case 2:
+    default:
+      /* Standard TH=0: UP, DOWN, 0, 0, A, START */
+      result = ((1 - cont->up)) |
+               ((1 - cont->down) << 1) |
+               ((1 - cont->a) << 4) |
+               ((1 - cont->start) << 5);
+      break;
+    }
+  }
+
+  return result;
+}
+
+/* Update controller state machine when TH line changes */
+static void mem68k_update_controller_state(int player, uint8 th_high)
+{
+  uint8 th_prev = mem68k_cont_th_prev[player];
+
+  /* Detect TH edge transition */
+  if (th_high != th_prev) {
+    mem68k_cont_th_prev[player] = th_high;
+    mem68k_cont_timer[player] = 0;  /* Reset timeout */
+
+    /* Advance state on rising edge (TH: 0->1) */
+    if (th_high) {
+      mem68k_cont_state[player]++;
+      if (mem68k_cont_state[player] > 7) {
+        mem68k_cont_state[player] = 0;
+      }
+    }
+  }
+}
+
 /*** I/O fetch/store ***/
 
 uint8 mem68k_fetch_io_byte(uint32 addr)
 {
   uint8 in;
+  uint8 th_high;
 
   addr -= 0xA10000;
   if ((addr & 1) == 0) {
@@ -574,33 +688,21 @@ uint8 mem68k_fetch_io_byte(uint32 addr)
   case 0: /* 0x1 */
     /* version */
     return (1 << 5 | vdp_pal << 6 | vdp_overseas << 7);
-  case 1: /* 0x3 */
-    /* get input state */
-    in =
-        ((mem68k_cont1output & 1 << 6)
-             ? ((1 - mem68k_cont[0].up) | (1 - mem68k_cont[0].down) << 1 |
-                (1 - mem68k_cont[0].left) << 2 |
-                (1 - mem68k_cont[0].right) << 3 | (1 - mem68k_cont[0].b) << 4 |
-                (1 - mem68k_cont[0].c) << 5)
-             : ((1 - mem68k_cont[0].up) | (1 - mem68k_cont[0].down) << 1 |
-                (1 - mem68k_cont[0].a) << 4 | (1 - mem68k_cont[0].start) << 5));
+  case 1: /* 0x3 - Controller 1 data */
+    /* 6-button controller support: TH line (bit 6) controls state machine */
+    th_high = (mem68k_cont1output >> 6) & 1;
+    in = mem68k_read_controller(0, th_high);
     return (in & ~mem68k_cont1ctrl) | (mem68k_cont1output & mem68k_cont1ctrl);
-  case 2: /* 0x5 */
-    /* get input state */
-    in =
-        ((mem68k_cont2output & 1 << 6)
-             ? ((1 - mem68k_cont[1].up) | (1 - mem68k_cont[1].down) << 1 |
-                (1 - mem68k_cont[1].left) << 2 |
-                (1 - mem68k_cont[1].right) << 3 | (1 - mem68k_cont[1].b) << 4 |
-                (1 - mem68k_cont[1].c) << 5)
-             : ((1 - mem68k_cont[1].up) | (1 - mem68k_cont[1].down) << 1 |
-                (1 - mem68k_cont[1].a) << 4 | (1 - mem68k_cont[1].start) << 5));
+  case 2: /* 0x5 - Controller 2 data */
+    /* 6-button controller support: TH line (bit 6) controls state machine */
+    th_high = (mem68k_cont2output >> 6) & 1;
+    in = mem68k_read_controller(1, th_high);
     return (in & ~mem68k_cont2ctrl) | (mem68k_cont2output & mem68k_cont2ctrl);
-  case 3: /* 0x7 */
+  case 3: /* 0x7 - External port */
     LOG_NORMAL(("%08X [IO] EXT port read", regs.pc));
     /* get input state */
-    in = 0; /* BUG: unsupported */
-    return (in & ~mem68k_cont1ctrl) | (mem68k_cont1output & mem68k_cont1ctrl);
+    in = 0; /* External port unsupported (used for mouse/multitap) */
+    return (in & ~mem68k_contEctrl) | (mem68k_contEoutput & mem68k_contEctrl);
   case 4: /* 0x9 */
     return mem68k_cont1ctrl;
   case 5: /* 0xB */
@@ -628,9 +730,13 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
   addr -= 0xA10000;
   switch (addr) {
   case 0x3:
+    /* Controller 1 output - update 6-button state machine on TH change */
+    mem68k_update_controller_state(0, (data >> 6) & 1);
     mem68k_cont1output = data;
     return;
   case 0x5:
+    /* Controller 2 output - update 6-button state machine on TH change */
+    mem68k_update_controller_state(1, (data >> 6) & 1);
     mem68k_cont2output = data;
     return;
   case 0x7:
@@ -639,17 +745,11 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
     return;
   case 0x9:
     mem68k_cont1ctrl = data;
-    if (data != 0x40) {
-      LOG_CRITICAL(
-          ("%08X [IO] Unknown controller 1 setting (0x%X)", regs.pc, data));
-    }
+    /* 0x40 is standard, but games may use different values for 6-button */
     return;
   case 0xB:
     mem68k_cont2ctrl = data;
-    if (data != 0x40) {
-      LOG_CRITICAL(
-          ("%08X [IO] Unknown controller 2 setting (0x%X)", regs.pc, data));
-    }
+    /* 0x40 is standard, but games may use different values for 6-button */
     return;
   case 0xD:
     mem68k_contEctrl = data;

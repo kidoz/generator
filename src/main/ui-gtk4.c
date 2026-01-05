@@ -919,15 +919,18 @@ static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data)
 
 /*** Input handling ***/
 
-/* Default keyboard mappings for two players
-   Player 1: Arrow keys + Z/X/C/Enter
-   Player 2: WASD + J/K/L/Space */
+/* Default keyboard mappings for two players (6-button mode)
+   Player 1: Arrow keys + Z/X/C/Enter + A/S/D/Tab (X/Y/Z/Mode)
+   Player 2: WASD + J/K/L/Space + U/I/O/RShift (X/Y/Z/Mode) */
 static const struct {
   guint up, down, left, right, a, b, c, start;
+  guint x, y, z, mode;  /* 6-button extensions */
 } default_keys[2] = {{GDK_KEY_Up, GDK_KEY_Down, GDK_KEY_Left, GDK_KEY_Right,
-                      GDK_KEY_z, GDK_KEY_x, GDK_KEY_c, GDK_KEY_Return},
+                      GDK_KEY_z, GDK_KEY_x, GDK_KEY_c, GDK_KEY_Return,
+                      GDK_KEY_a, GDK_KEY_s, GDK_KEY_d, GDK_KEY_Tab},
                      {GDK_KEY_w, GDK_KEY_s, GDK_KEY_a, GDK_KEY_d, GDK_KEY_j,
-                      GDK_KEY_k, GDK_KEY_l, GDK_KEY_space}};
+                      GDK_KEY_k, GDK_KEY_l, GDK_KEY_space,
+                      GDK_KEY_u, GDK_KEY_i, GDK_KEY_o, GDK_KEY_Shift_R}};
 
 static void ui_update_controller_from_keys(int player, guint keyval,
                                            gboolean pressed)
@@ -939,6 +942,7 @@ static void ui_update_controller_from_keys(int player, guint keyval,
   t_gtk4keys *keys = &gen_ui->controllers[player];
 
   /* Check which button this key corresponds to and update mem68k_cont */
+  /* Standard 3-button controller */
   if (keyval == keys->up || keyval == default_keys[player].up) {
     mem68k_cont[player].up = pressed ? 1 : 0;
   } else if (keyval == keys->down || keyval == default_keys[player].down) {
@@ -955,6 +959,16 @@ static void ui_update_controller_from_keys(int player, guint keyval,
     mem68k_cont[player].c = pressed ? 1 : 0;
   } else if (keyval == keys->start || keyval == default_keys[player].start) {
     mem68k_cont[player].start = pressed ? 1 : 0;
+  }
+  /* 6-button controller extensions */
+  else if (keyval == keys->x || keyval == default_keys[player].x) {
+    mem68k_cont[player].x = pressed ? 1 : 0;
+  } else if (keyval == keys->y || keyval == default_keys[player].y) {
+    mem68k_cont[player].y = pressed ? 1 : 0;
+  } else if (keyval == keys->z || keyval == default_keys[player].z) {
+    mem68k_cont[player].z = pressed ? 1 : 0;
+  } else if (keyval == keys->mode || keyval == default_keys[player].mode) {
+    mem68k_cont[player].mode = pressed ? 1 : 0;
   }
 }
 
@@ -2244,16 +2258,37 @@ static void ui_handle_gamepad_button(SDL_GamepadButtonEvent *event)
 
   gboolean pressed = (event->down != 0);
 
+  /* 6-button controller mapping for modern gamepads:
+   * Genesis A = Gamepad A (SOUTH)
+   * Genesis B = Gamepad B (EAST)
+   * Genesis C = Gamepad X (WEST)
+   * Genesis X = Gamepad Y (NORTH)
+   * Genesis Y = Gamepad LB (LEFT_SHOULDER)
+   * Genesis Z = Gamepad RB (RIGHT_SHOULDER)
+   * Genesis Mode = Gamepad Back/Select (BACK)
+   * Genesis Start = Gamepad Start
+   */
   switch (event->button) {
-  case SDL_GAMEPAD_BUTTON_SOUTH: /* A button */
+  case SDL_GAMEPAD_BUTTON_SOUTH: /* Gamepad A -> Genesis A */
     mem68k_cont[player].a = pressed ? 1 : 0;
     break;
-  case SDL_GAMEPAD_BUTTON_EAST: /* B button */
+  case SDL_GAMEPAD_BUTTON_EAST: /* Gamepad B -> Genesis B */
     mem68k_cont[player].b = pressed ? 1 : 0;
     break;
-  case SDL_GAMEPAD_BUTTON_WEST: /* X -> C button */
-  case SDL_GAMEPAD_BUTTON_NORTH: /* Y -> C button (alternative) */
+  case SDL_GAMEPAD_BUTTON_WEST: /* Gamepad X -> Genesis C */
     mem68k_cont[player].c = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_NORTH: /* Gamepad Y -> Genesis X */
+    mem68k_cont[player].x = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: /* Gamepad LB -> Genesis Y */
+    mem68k_cont[player].y = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: /* Gamepad RB -> Genesis Z */
+    mem68k_cont[player].z = pressed ? 1 : 0;
+    break;
+  case SDL_GAMEPAD_BUTTON_BACK: /* Gamepad Back/Select -> Genesis Mode */
+    mem68k_cont[player].mode = pressed ? 1 : 0;
     break;
   case SDL_GAMEPAD_BUTTON_START:
     mem68k_cont[player].start = pressed ? 1 : 0;
