@@ -3,7 +3,7 @@
 
 gtkopts_lib = static_library('gtkopts',
   sources: 'gtkopts.c',
-  include_directories: include_directories('../hdr', '.')
+  include_directories: include_directories('../../../hdr', '.')
 )
 
 gtkopts_dep = declare_dependency(

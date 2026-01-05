@@ -2,7 +2,7 @@
 
 cmz80_lib = static_library('cmz80',
   sources: 'z80.c',
-  include_directories: include_directories('../hdr')
+  include_directories: include_directories('../../../hdr')
 )
 
 cmz80_dep = declare_dependency(

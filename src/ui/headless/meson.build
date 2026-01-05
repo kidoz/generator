@@ -6,20 +6,26 @@ headless_sources = files(
   'soundp-null.c'
 )
 
-# Common sources for headless - generator.c main() excluded via GENERATOR_LIB_ONLY
-headless_common_sources = files(
-  '../../main/cpu68k.c',
-  '../../main/mem68k.c',
-  '../../main/reg68k.c',
-  '../../main/event.c',
-  '../../main/generator.c',
-  '../../main/state.c',
-  '../../main/cpuz80.c',
-  '../../main/vdp.c',
-  '../../main/gensound.c',
-  '../../main/memz80.c',
-  '../../main/snprintf.c'
-)
+# Common sources for headless - from various subsystems
+headless_common_sources = [
+  # Core entry point (with GENERATOR_LIB_ONLY to exclude main())
+  files('../../main/generator.c', '../../main/event.c'),
+  # CPU subsystem (without diss68k.c to avoid tab68k dependency)
+  files(
+    '../../cpu/68k/cpu68k.c',
+    '../../cpu/68k/mem68k.c',
+    '../../cpu/68k/reg68k.c'
+  ),
+  cpuz80_sources,
+  # Audio subsystem
+  audio_sources,
+  # Video subsystem (VDP only, no rendering needed)
+  files('../../video/vdp.c'),
+  # Persistence (needed for state_* functions)
+  files('../../persist/state.c'),
+  # Utilities
+  util_sources
+]
 
 # Build dependencies for headless
 headless_deps = [
@@ -38,9 +44,7 @@ else
   headless_deps += raze_dep
 endif
 
-# Headless backend needs minimal dependencies - no SDL2, no GTK
-# - GENERATOR_LIB_ONLY excludes main() from generator.c
-# - _GNU_SOURCE enables POSIX functions like strcasecmp
+# Headless backend needs minimal dependencies - no SDL3, no GTK
 executable('generator-headless',
   sources: headless_sources + headless_common_sources,
   include_directories: inc,

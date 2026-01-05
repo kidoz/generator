@@ -36,8 +36,6 @@ add_project_arguments('-D_GNU_SOURCE', language: 'c')
 optimum = true
 if host_cpu == 'x86' or host_cpu == 'x86_64'
   message('Turning on x86 processor optimizations')
-  # Note: PROCESSOR_INTEL register optimizations disabled for C99/x86_64 compatibility
-  # add_project_arguments('-DPROCESSOR_INTEL=1', language: 'c')
   alignlongs = 1
   if not enable_debug and gcc_opt_version != 'no'
     if host_cpu == 'x86'
@@ -61,9 +59,6 @@ else
 endif
 
 add_project_arguments('-DALIGNLONGS=@0@'.format(alignlongs), language: 'c')
-
-# C23 Migration: Using latest C standard (ISO/IEC 9899:2024)
-# Features: nullptr, bool/true/false built-in, [[]] attributes, typeof, constexpr
 
 # GCC optimization flags
 if enable_debug
@@ -128,57 +123,55 @@ elif z80_backend == 'raze'
   add_project_arguments('-DRAZE=1', language: 'c')
 endif
 
-# UI backend dependencies and sources
+# UI backend dependencies
 ui_deps = []
-ui_sources = []
-ui_libs = []
 
 if ui_backend == 'gtk4'
   gtk4_dep = dependency('gtk4', version: '>=4.10.0')
   adwaita_dep = dependency('libadwaita-1', version: '>=1.4.0')
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
   ui_deps = [gtk4_dep, adwaita_dep, sdl3_dep]
-  ui_sources = files('src/main/ui-gtk4.c', 'src/main/uiplot.c', 'src/main/gensoundp-sdl3.c')
 
 elif ui_backend == 'console'
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
   ui_deps = [sdl3_dep]
-  ui_sources = files('src/main/ui-console.c', 'src/main/uip-sdl3.c',
-                     'src/main/uiplot.c', 'src/main/gensoundp-sdl3.c',
-                     'src/main/logo.c', 'src/main/font.c')
-
 endif
 
-# Include directories (defined before subdirs so all can use it)
-inc = include_directories('src/hdr', 'src/cpu68k', 'src/ym2612', 'src/sn76496', 'src/gtkopts', 'src/xbrz', 'src/core', 'src/cmz80')
+# Include directories - organized by domain
+inc = include_directories(
+  'src/hdr',
+  'src/core',
+  'src/cpu/68k/codegen',
+  'src/cpu/z80/cmz80',
+  'src/audio/ym2612',
+  'src/audio/sn76496',
+  'src/xbrz'
+)
 
-# Build subdirectories
+# Build subdirectories - core libraries
 subdir('src/core')
-subdir('src/cpu68k')
-subdir('src/ym2612')
-subdir('src/sn76496')
+subdir('src/cpu')
+subdir('src/audio')
+subdir('src/video')
+subdir('src/platform')
+subdir('src/persist')
+subdir('src/data')
+subdir('src/util')
 subdir('src/xbrz')
-
-# Z80 emulator
-if z80_backend == 'cmz80'
-  subdir('src/cmz80')
-  z80_lib = cmz80_lib
-elif z80_backend == 'raze'
-  subdir('src/raze')
-  z80_lib = raze_lib
-endif
 
 # UI-specific libraries
 if ui_backend == 'gtk4'
-  subdir('src/gtkopts')
-  ui_libs = [gtkopts_lib]
+  subdir('src/ui/gtk4')
+  ui_libs = [gtkopts_dep]
+elif ui_backend == 'console'
+  subdir('src/ui/console')
+  ui_libs = []
 endif
 
 # Main executable
 subdir('src/main')
 
 # Headless backend (always built alongside main executable)
-# Useful for testing, benchmarking, and automated processing
 subdir('src/ui/headless')
 
 # Summary

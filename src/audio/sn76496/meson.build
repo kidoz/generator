@@ -2,7 +2,7 @@
 
 sn76496_lib = static_library('sn76496',
   sources: 'sn76496.c',
-  include_directories: include_directories('../hdr')
+  include_directories: include_directories('../../hdr')
 )
 
 sn76496_dep = declare_dependency(
