@@ -98,7 +98,7 @@ static uint8 mem68k_contEoutput;
  *   State 1 (TH=1): UP, DOWN, LEFT, RIGHT, B, C
  *   State 2 (TH=0): UP, DOWN, 0, 0, A, START
  *   State 3 (TH=1): UP, DOWN, LEFT, RIGHT, B, C
- *   State 4 (TH=0): 0, 0, 0, 0, 0, 0 (6-button detection)
+ *   State 4 (TH=0): 0, 0, 0, 0, A, START (6-button detection: low nibble=0)
  *   State 5 (TH=1): Z, Y, X, MODE, 1, 1
  *   State 6 (TH=0): 1, 1, 1, 1, A, START
  *   State 7 (TH=1): UP, DOWN, LEFT, RIGHT, B, C (resets to 0)
@@ -192,6 +192,12 @@ int mem68k_init(void)
   mem68k_cont2output = 0;
   mem68k_contEoutput = 0;
   memset(&mem68k_cont, 0, sizeof(mem68k_cont));
+
+  /* Reset 6-button controller state machine */
+  memset(mem68k_cont_state, 0, sizeof(mem68k_cont_state));
+  memset(mem68k_cont_th_prev, 0, sizeof(mem68k_cont_th_prev));
+  memset(mem68k_cont_timer, 0, sizeof(mem68k_cont_timer));
+
   return 0;
 }
 
@@ -628,8 +634,11 @@ static uint8 mem68k_read_controller(int player, uint8 th_high)
     /* TH = 0 states */
     switch (state) {
     case 4:
-      /* State 4: All zeros (6-button detection signature) */
-      result = 0;
+      /* State 4: 6-button detection signature
+       * Bits 0-3 = 0 (LOW) - this signals 6-button controller
+       * Bits 4-5 = A, Start (active-LOW as normal) */
+      result = ((1 - cont->a) << 4) |
+               ((1 - cont->start) << 5);
       break;
     case 6:
       /* State 6: All ones in low nibble, A and START in high */
@@ -656,19 +665,31 @@ static uint8 mem68k_read_controller(int player, uint8 th_high)
 static void mem68k_update_controller_state(int player, uint8 th_high)
 {
   uint8 th_prev = mem68k_cont_th_prev[player];
+  unsigned int timer = mem68k_cont_timer[player];
 
   /* Detect TH edge transition */
   if (th_high != th_prev) {
     mem68k_cont_th_prev[player] = th_high;
-    mem68k_cont_timer[player] = 0;  /* Reset timeout */
 
     /* Advance state on rising edge (TH: 0->1) */
     if (th_high) {
-      mem68k_cont_state[player]++;
-      if (mem68k_cont_state[player] > 7) {
+      /* 6-button mode requires rapid TH toggles (within ~1.5ms).
+       * If the previous toggle was too slow, reset to 3-button mode.
+       * This prevents 3-button games from accidentally triggering
+       * 6-button mode with slow polling. */
+      if (timer > CONT_6BTN_TIMEOUT) {
+        /* Too slow - reset to state 0 (3-button mode) */
         mem68k_cont_state[player] = 0;
+      } else {
+        /* Fast enough - advance to next state */
+        mem68k_cont_state[player]++;
+        if (mem68k_cont_state[player] > 7) {
+          mem68k_cont_state[player] = 0;
+        }
       }
     }
+
+    mem68k_cont_timer[player] = 0;  /* Reset timeout after any transition */
   }
 }
 
