@@ -69,6 +69,7 @@ typedef struct {
   /* Dialogs */
   GtkWidget *prefs_window;
   GtkWidget *audio_driver_row;
+  GtkWidget *scaler_row;
   GtkWidget *about_dialog;
   GtkWidget *console_window;
 

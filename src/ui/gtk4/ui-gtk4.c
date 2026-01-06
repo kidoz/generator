@@ -84,6 +84,9 @@ static guint ui_gtk4_find_driver_index(const char *driver_id);
 static gboolean ui_gtk4_driver_is_available(const char *driver_id);
 static char *ui_gtk4_normalize_audio_driver(const char *driver);
 static char *ui_gtk4_format_driver_label(const char *driver_id);
+static void ui_gtk4_apply_scaler(const char *scaler_name);
+static void ui_gtk4_on_scaler_changed(GObject *row, GParamSpec *pspec,
+                                      gpointer user_data);
 
 /*** New Architecture: gen_context callbacks ***/
 static void gtk4_cb_line(gen_context_t *ctx, int line);
@@ -261,6 +264,9 @@ int ui_init(int argc, char *argv[])
 
   /* Apply preferred audio backend before SDL initialises audio */
   ui_gtk4_apply_audio_driver(gtkopts_getvalue("audio_driver"), FALSE, TRUE);
+
+  /* Apply scaler setting from config */
+  ui_gtk4_apply_scaler(gtkopts_getvalue("scaler"));
 
   /* Initialize SDL for gamepad support only.
    * NOTE: We do NOT initialize SDL_INIT_VIDEO because GTK4 handles all rendering.
@@ -1853,6 +1859,79 @@ static void ui_gtk4_on_audio_driver_changed(GObject *row_object,
   }
 }
 
+/* Scaler name to filter type mapping */
+static const struct {
+  const char *name;
+  t_filter_type type;
+  int scale;
+} scaler_map[] = {
+    {"none", FILTER_NONE, 1},     {"scale2x", FILTER_SCALE2X, 2},
+    {"scale3x", FILTER_SCALE3X, 3}, {"scale4x", FILTER_SCALE4X, 4},
+    {"xbrz2x", FILTER_XBRZ2X, 2},   {"xbrz3x", FILTER_XBRZ3X, 3},
+    {"xbrz4x", FILTER_XBRZ4X, 4},   {nullptr, FILTER_NONE, 1}};
+
+static void ui_gtk4_apply_scaler(const char *scaler_name)
+{
+  if (!gen_ui)
+    return;
+
+  /* Default to scale2x if not specified */
+  if (!scaler_name || !*scaler_name)
+    scaler_name = "scale2x";
+
+  /* Find matching scaler */
+  for (int i = 0; scaler_map[i].name; i++) {
+    if (g_ascii_strcasecmp(scaler_name, scaler_map[i].name) == 0) {
+      gen_ui->filter_type = scaler_map[i].type;
+      gen_ui->scale_factor = scaler_map[i].scale;
+      fprintf(stderr, "Video scaler set to: %s (%dx)\n", scaler_map[i].name,
+              scaler_map[i].scale);
+      return;
+    }
+  }
+
+  /* Unknown scaler, default to scale2x */
+  fprintf(stderr, "Unknown scaler '%s', defaulting to scale2x\n", scaler_name);
+  gen_ui->filter_type = FILTER_SCALE2X;
+  gen_ui->scale_factor = 2;
+}
+
+static void ui_gtk4_on_scaler_changed(GObject *row_object, GParamSpec *pspec,
+                                      gpointer user_data)
+{
+  (void)pspec;
+  (void)user_data;
+
+  if (!gen_ui)
+    return;
+
+  AdwComboRow *row = ADW_COMBO_ROW(row_object);
+  guint index = adw_combo_row_get_selected(row);
+  if (index == GTK_INVALID_LIST_POSITION || index >= G_N_ELEMENTS(scaler_map) - 1)
+    return;
+
+  const char *scaler_name = scaler_map[index].name;
+  ui_gtk4_apply_scaler(scaler_name);
+  gtkopts_setvalue("scaler", scaler_name);
+
+  /* Save config immediately */
+  if (gen_ui->configfile)
+    gtkopts_save(gen_ui->configfile);
+
+  /* Force redraw */
+  if (gen_ui->drawing_area)
+    gtk_widget_queue_draw(gen_ui->drawing_area);
+}
+
+static guint ui_gtk4_find_scaler_index(t_filter_type filter_type)
+{
+  for (guint i = 0; scaler_map[i].name; i++) {
+    if (scaler_map[i].type == filter_type)
+      return i;
+  }
+  return 1; /* Default to scale2x (index 1) */
+}
+
 static void ui_gtk4_ensure_preferences_window(void)
 {
   if (!gen_ui)
@@ -1870,6 +1949,8 @@ static void ui_gtk4_ensure_preferences_window(void)
 
   GtkWidget *audio_page = adw_preferences_page_new();
   adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(audio_page), "Audio");
+  adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(audio_page),
+                                     "audio-speakers-symbolic");
 
   GtkWidget *audio_group = adw_preferences_group_new();
   adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(audio_group), "Output");
@@ -1900,6 +1981,49 @@ static void ui_gtk4_ensure_preferences_window(void)
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(audio_page),
                            ADW_PREFERENCES_GROUP(audio_group));
   adw_preferences_window_add(prefs, ADW_PREFERENCES_PAGE(audio_page));
+
+  /* Video preferences page */
+  GtkWidget *video_page = adw_preferences_page_new();
+  adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(video_page), "Video");
+  adw_preferences_page_set_icon_name(ADW_PREFERENCES_PAGE(video_page),
+                                     "video-display-symbolic");
+
+  GtkWidget *video_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(video_group),
+                                  "Upscaling");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(video_group),
+      "Select the video upscaling filter. Scale2x/3x/4x are fast EPX-based "
+      "algorithms. xBRZ provides higher quality but uses more CPU.");
+
+  /* Build scaler model - list of display names */
+  GtkStringList *scaler_model = gtk_string_list_new(nullptr);
+  gtk_string_list_append(scaler_model, "None (Nearest Neighbor)");
+  gtk_string_list_append(scaler_model, "Scale2x (2× - Fast)");
+  gtk_string_list_append(scaler_model, "Scale3x (3× - Fast)");
+  gtk_string_list_append(scaler_model, "Scale4x (4× - Fast)");
+  gtk_string_list_append(scaler_model, "xBRZ 2× (High Quality)");
+  gtk_string_list_append(scaler_model, "xBRZ 3× (High Quality)");
+  gtk_string_list_append(scaler_model, "xBRZ 4× (High Quality)");
+
+  AdwComboRow *scaler_row = ADW_COMBO_ROW(adw_combo_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(scaler_row), "Scaler");
+  adw_combo_row_set_model(scaler_row, G_LIST_MODEL(scaler_model));
+
+  gen_ui->scaler_row = GTK_WIDGET(scaler_row);
+
+  /* Set current selection */
+  guint scaler_index = ui_gtk4_find_scaler_index(gen_ui->filter_type);
+  adw_combo_row_set_selected(scaler_row, scaler_index);
+
+  g_signal_connect(scaler_row, "notify::selected",
+                   G_CALLBACK(ui_gtk4_on_scaler_changed), nullptr);
+
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(video_group),
+                            GTK_WIDGET(scaler_row));
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(video_page),
+                           ADW_PREFERENCES_GROUP(video_group));
+  adw_preferences_window_add(prefs, ADW_PREFERENCES_PAGE(video_page));
 
   gen_ui->prefs_window = GTK_WIDGET(prefs);
   ui_gtk4_update_audio_backend_subtitle();
@@ -2143,12 +2267,23 @@ static gpointer ui_emu_thread_func(gpointer data)
 {
   GenUI *ui = (GenUI *)data;
 
+  /* Frame timing for autonomous operation during UI blocking (e.g., resize)
+   * NTSC: ~16.7ms, PAL: ~20ms. Use 18ms as safe middle ground. */
+  const gint64 FRAME_TIMEOUT_US = 18000;
+
   while (ui->emu_thread_running) {
     g_mutex_lock(&ui->emu_mutex);
 
-    /* Wait for frame request from main thread */
-    while (!ui->frame_requested && ui->emu_thread_running) {
-      g_cond_wait(&ui->emu_cond, &ui->emu_mutex);
+    /* Use timed wait instead of indefinite wait to prevent audio starvation
+     * when the main thread is blocked (e.g., during fullscreen resize).
+     * If timeout expires, we run a frame anyway to keep audio flowing. */
+    gboolean frame_was_requested = ui->frame_requested;
+
+    if (!frame_was_requested && ui->emu_thread_running) {
+      gint64 end_time = g_get_monotonic_time() + FRAME_TIMEOUT_US;
+      /* Wait for signal OR timeout */
+      g_cond_wait_until(&ui->emu_cond, &ui->emu_mutex, end_time);
+      frame_was_requested = ui->frame_requested;
     }
 
     if (!ui->emu_thread_running) {
@@ -2159,12 +2294,23 @@ static gpointer ui_emu_thread_func(gpointer data)
     ui->frame_requested = FALSE;
     g_mutex_unlock(&ui->emu_mutex);
 
-    /* Run one frame of emulation (outside mutex for performance) */
+    /* Run frame if:
+     * 1. Main thread requested it (normal operation)
+     * 2. Timeout expired AND we're running (autonomous mode for audio)
+     * In autonomous mode, audio keeps flowing even if UI is blocked */
     if (ui->running && ui->ctx != nullptr) {
-      gen_core_run_frame(ui->ctx);
+      /* Check audio buffer - only run if buffer needs filling
+       * This prevents runaway frame generation if UI is blocked long-term */
+      int pending = soundp_samplesbuffered();
+      int threshold = (int)gen_ctx_sound_threshold();
+
+      /* Run frame if requested, or if audio buffer is getting low */
+      if (frame_was_requested || pending < threshold * 2) {
+        gen_core_run_frame(ui->ctx);
+      }
     }
 
-    /* Signal frame completion */
+    /* Signal frame completion (main thread uses this to trigger redraw) */
     atomic_store(&ui->render_complete, 1);
   }
 

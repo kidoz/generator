@@ -80,6 +80,8 @@ static t_opts gtkopts_opts[] = {
      "JPEG quality - 100 is least compression but best picture"},
     {"lowpassfilter", "0-100", "50",
      "Low-pass sound filter - 0 turns it off, 100 filters too much"},
+    {"scaler", "none, scale2x, scale3x, scale4x, xbrz2x, xbrz3x, xbrz4x",
+     "scale2x", "Video upscaling filter (xBRZ is higher quality but slower)"},
     {nullptr, nullptr, nullptr, nullptr}};
 
 /* *INDENT-ON* */
