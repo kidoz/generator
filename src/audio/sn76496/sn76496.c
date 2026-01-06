@@ -40,24 +40,37 @@
 #define STEP 0x10000
 
 /* Formulas for noise generator */
-/* bit0 = output */
+/* The SN76489/SN76496 uses a 16-bit Linear Feedback Shift Register (LFSR).
+ * Output is bit 0 of the shift register.
+ *
+ * For the Sega Genesis/Megadrive (SN76489AN variant):
+ * - White noise: tapped feedback from bits 0 and 3 (XOR)
+ * - Periodic noise: single tap at bit 0 (creates 15-stage cycling pattern)
+ *
+ * The feedback is calculated, then the register shifts right, and the
+ * feedback bit enters at bit 15.
+ */
 
-/* noise feedback for white noise mode */
-#define FB_WNOISE 0x12000 /* bit15.d(16bits) = bit0(out) ^ bit2 */
-// #define FB_WNOISE 0x14000     /* bit15.d(16bits) = bit0(out) ^ bit1 */
-// #define FB_WNOISE 0x28000     /* bit16.d(17bits) = bit0(out) ^ bit2 (same to
-// AY-3-8910) */ #define FB_WNOISE 0x50000     /* bit17.d(18bits) = bit0(out) ^
-// bit2 */
+/* White noise feedback taps: bits 0 and 3 (Sega Genesis verified) */
+#define FB_WNOISE_TAPS 0x0009
 
-/* noise feedback for periodic noise mode */
-/* it is correct maybe (it was in the Megadrive sound manual) */
-// #define FB_PNOISE 0x10000     /* 16bit rorate */
-#define FB_PNOISE 0x08000 /* JH 981127 - fixes Do Run Run */
+/* Periodic noise: single tap creates rotating pattern */
+#define FB_PNOISE_TAPS 0x0001
 
-/* noise generator start preset (for periodic noise) */
-#define NG_PRESET 0x0f35
+/* Noise generator initial state - bit 15 set (standard for SN76489) */
+#define NG_PRESET 0x8000
 
 struct SN76496 sn[MAX_76496];
+
+/* Helper: calculate parity of masked bits (for LFSR feedback) */
+static inline int parity(unsigned int val)
+{
+  val ^= val >> 8;
+  val ^= val >> 4;
+  val ^= val >> 2;
+  val ^= val >> 1;
+  return val & 1;
+}
 
 void SN76496Write(int chip, int data)
 {
@@ -75,13 +88,18 @@ void SN76496Write(int chip, int data)
     case 0: /* tone 0 : frequency */
     case 2: /* tone 1 : frequency */
     case 4: /* tone 2 : frequency */
-      R->Period[c] = R->UpdateStep * R->Register[r];
-      if (R->Period[c] == 0)
-        R->Period[c] = R->UpdateStep;
+      /* Period 0 and 1 produce DC output (channel held high).
+       * We use Period=0 to signal this special case in SN76496Update. */
+      if (R->Register[r] <= 1) {
+        R->Period[c] = 0; /* DC output */
+        R->Output[c] = 1; /* held high */
+      } else {
+        R->Period[c] = R->UpdateStep * R->Register[r];
+      }
       if (r == 4) {
         /* update noise shift frequency */
         if ((R->Register[6] & 0x03) == 0x03)
-          R->Period[3] = 2 * R->Period[2];
+          R->Period[3] = R->Period[2] ? 2 * R->Period[2] : 0;
       }
       break;
     case 1: /* tone 0 : volume */
@@ -93,10 +111,12 @@ void SN76496Write(int chip, int data)
     case 6: /* noise  : frequency, mode */
     {
       int n = R->Register[6];
-      R->NoiseFB = (n & 4) ? FB_WNOISE : FB_PNOISE;
+      /* Store tap mask for feedback calculation */
+      R->NoiseFB = (n & 4) ? FB_WNOISE_TAPS : FB_PNOISE_TAPS;
       n &= 3;
       /* N/512,N/1024,N/2048,Tone #3 output */
-      R->Period[3] = (n == 3) ? 2 * R->Period[2] : (R->UpdateStep << (5 + n));
+      R->Period[3] = (n == 3) ? (R->Period[2] ? 2 * R->Period[2] : 0)
+                              : (R->UpdateStep << (5 + n));
 
       /* reset noise shifter */
       R->RNG = NG_PRESET;
@@ -112,13 +132,17 @@ void SN76496Write(int chip, int data)
     case 2: /* tone 1 : frequency */
     case 4: /* tone 2 : frequency */
       R->Register[r] = (R->Register[r] & 0x0f) | ((data & 0x3f) << 4);
-      R->Period[c] = R->UpdateStep * R->Register[r];
-      if (R->Period[c] == 0)
-        R->Period[c] = R->UpdateStep;
+      /* Period 0 and 1 produce DC output (channel held high) */
+      if (R->Register[r] <= 1) {
+        R->Period[c] = 0; /* DC output */
+        R->Output[c] = 1; /* held high */
+      } else {
+        R->Period[c] = R->UpdateStep * R->Register[r];
+      }
       if (r == 4) {
         /* update noise shift frequency */
         if ((R->Register[6] & 0x03) == 0x03)
-          R->Period[3] = 2 * R->Period[2];
+          R->Period[3] = R->Period[2] ? 2 * R->Period[2] : 0;
       }
       break;
     }
@@ -152,6 +176,12 @@ void SN76496Update(int chip, uint16 *buffer, int length)
     vol[0] = vol[1] = vol[2] = vol[3] = 0;
 
     for (i = 0; i < 3; i++) {
+      /* Period 0 means DC output - channel held high */
+      if (R->Period[i] == 0) {
+        vol[i] = STEP; /* full high for entire sample */
+        continue;
+      }
+
       if (R->Output[i])
         vol[i] += R->Count[i];
       R->Count[i] -= STEP;
@@ -178,30 +208,39 @@ void SN76496Update(int chip, uint16 *buffer, int length)
         vol[i] -= R->Count[i];
     }
 
+    /* Noise channel processing */
     left = STEP;
-    do {
-      int nextevent;
 
-      if (R->Count[3] < left)
-        nextevent = R->Count[3];
-      else
-        nextevent = left;
-      if (R->Output[3])
-        vol[3] += R->Count[3];
-      R->Count[3] -= nextevent;
-      if (R->Count[3] <= 0) {
-        if (R->RNG & 1)
-          R->RNG ^= R->NoiseFB;
-        R->RNG >>= 1;
-        R->Output[3] = R->RNG & 1;
-        R->Count[3] += R->Period[3];
+    /* Period 0 for noise means DC output (when using tone 2 freq with period 0) */
+    if (R->Period[3] == 0) {
+      vol[3] = R->Output[3] ? STEP : 0;
+    } else {
+      do {
+        int nextevent;
+
+        if (R->Count[3] < left)
+          nextevent = R->Count[3];
+        else
+          nextevent = left;
         if (R->Output[3])
-          vol[3] += R->Period[3];
-      }
-      if (R->Output[3])
-        vol[3] -= R->Count[3];
-      left -= nextevent;
-    } while (left > 0);
+          vol[3] += R->Count[3];
+        R->Count[3] -= nextevent;
+        if (R->Count[3] <= 0) {
+          /* Correct LFSR shift with parity-based feedback.
+           * Feedback bit = parity of (RNG AND tap_mask)
+           * Then shift right and insert feedback at bit 15. */
+          int feedback = parity(R->RNG & R->NoiseFB);
+          R->RNG = (R->RNG >> 1) | (feedback << 15);
+          R->Output[3] = R->RNG & 1;
+          R->Count[3] += R->Period[3];
+          if (R->Output[3])
+            vol[3] += R->Period[3];
+        }
+        if (R->Output[3])
+          vol[3] -= R->Count[3];
+        left -= nextevent;
+      } while (left > 0);
+    }
 
     out = vol[0] * R->Volume[0] + vol[1] * R->Volume[1] +
           vol[2] * R->Volume[2] + vol[3] * R->Volume[3];
@@ -231,47 +270,70 @@ static void SN76496_set_gain(int chip, int gain)
   int i;
   double out;
 
+  /*
+   * SN76489/SN76496 volume attenuation:
+   * - 4-bit value (0-15)
+   * - Each step is 2dB attenuation
+   * - Volume 0 = full output (0dB attenuation)
+   * - Volume 14 = -28dB
+   * - Volume 15 = off (effectively infinite attenuation)
+   *
+   * We divide by 4 to leave headroom for mixing 4 channels.
+   * The actual mixing levels are adjusted in gensound.c.
+   */
+
   gain &= 0xff;
-  /* increase max output basing on gain (0.2 dB per step) */
-  out = MAX_OUTPUT / 3;
+  /* Base output level (divided by 4 for 4-channel headroom) */
+  out = MAX_OUTPUT / 4.0;
+
+  /* Apply gain adjustment (0.2 dB per step) */
   while (gain-- > 0)
-    out *= 1.023292992; /* = (10 ^ (0.2/20)) */
-  /* build volume table (2dB per step) */
+    out *= 1.023292992; /* = 10 ^ (0.2/20) */
+
+  /* Build volume table with 2dB per step attenuation */
   for (i = 0; i < 15; i++) {
-    /* limit volume to avoid clipping */
-    if (out > MAX_OUTPUT / 3)
-      R->VolTable[i] = MAX_OUTPUT / 3;
+    /* Clamp to avoid overflow */
+    if (out > MAX_OUTPUT / 4.0)
+      R->VolTable[i] = MAX_OUTPUT / 4;
     else
-      R->VolTable[i] = out;
-    out /= 1.258925412; /* = 10 ^ (2/20) = 2dB */
+      R->VolTable[i] = (int)(out + 0.5); /* round to nearest */
+    out /= 1.258925412; /* = 10 ^ (2/20) = 2dB attenuation */
   }
-  R->VolTable[15] = 0;
+  R->VolTable[15] = 0; /* Volume 15 = silence */
 }
 
 int SN76496Init(int chip, int clock, int gain, int sample_rate)
 {
   int i;
   struct SN76496 *R = &sn[chip];
-  char name[40];
 
   R->SampleRate = sample_rate;
   SN76496_set_clock(chip, clock);
 
+  /* Initialize all volumes to 0 (will use VolTable[0x0f] = 0 = silence) */
   for (i = 0; i < 4; i++)
     R->Volume[i] = 0;
 
   R->LastRegister = 0;
   for (i = 0; i < 8; i += 2) {
     R->Register[i] = 0;
-    R->Register[i + 1] = 0x0f; /* volume = 0 */
+    R->Register[i + 1] = 0x0f; /* volume = 0 (silence) */
   }
 
-  for (i = 0; i < 4; i++) {
-    R->Output[i] = 0;
-    R->Period[i] = R->Count[i] = R->UpdateStep;
+  /* Initialize tone channels: Register 0 means DC output (held high) */
+  for (i = 0; i < 3; i++) {
+    R->Output[i] = 1;  /* DC high */
+    R->Period[i] = 0;  /* 0 = DC mode */
+    R->Count[i] = 0;
   }
+
+  /* Initialize noise channel */
+  R->NoiseFB = FB_PNOISE_TAPS; /* Default to periodic noise */
+  R->Period[3] = R->UpdateStep << 5; /* Default N/512 rate */
+  R->Count[3] = R->Period[3];
   R->RNG = NG_PRESET;
   R->Output[3] = R->RNG & 1;
+
   SN76496_set_gain(chip, gain & 0xff);
 
   return 0;

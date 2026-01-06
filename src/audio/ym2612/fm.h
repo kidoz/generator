@@ -27,11 +27,11 @@ void YM2612_save_state(void);
 #define FM_INTERNAL_TIMER 1
 
 /* --- speedup optimize --- */
-/* support OPN SSG type envelope mode */
-#define FM_SEG_SUPPORT 0
-/* busy flag enulation , The definition of FM_GET_TIME_NOW() is necessary. */
-/* James Ponder 2001-09-30: XXX: no busy flag emulation - needs fixing? */
-#define FM_BUSY_FLAG_SUPPORT 0
+/* support OPN SSG type envelope mode (SSG-EG) */
+/* SSG-EG provides looping/alternating envelope patterns used by many games */
+#define FM_SEG_SUPPORT 1
+/* busy flag emulation using sample counter (no external timer required) */
+#define FM_BUSY_FLAG_SUPPORT 1
 
 /* --- external SSG(YM2149/AY-3-8910)emulator interface port */
 /* used by YM2203,YM2608,and YM2610 */
