@@ -51,3 +51,11 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
   (void)samples;
   /* Discard audio in headless mode */
 }
+
+/*** soundp_reset - reset audio subsystem (no-op) ***/
+
+int soundp_reset(void)
+{
+  /* No audio in headless mode */
+  return 0;
+}

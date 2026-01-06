@@ -249,6 +249,26 @@ int soundp_samplesbuffered(void)
    The emulation thread calls this function to push samples, and SDL3's
    audio callback thread consumes them safely. */
 
+/*** soundp_reset - full audio subsystem restart ***/
+
+int soundp_reset(void)
+{
+  fprintf(stderr, "[AUDIO] soundp_reset() - full subsystem restart\n");
+
+  /* Stop current audio */
+  soundp_stop();
+
+  /* Quit SDL audio subsystem completely */
+  if (SDL_WasInit(SDL_INIT_AUDIO)) {
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+  }
+
+  /* Restart audio */
+  return soundp_start();
+}
+
+/*** soundp_output - output samples to SDL3 ***/
+
 void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 {
   int16_t *interleaved;

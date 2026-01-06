@@ -1736,6 +1736,20 @@ static gboolean ui_gtk4_apply_audio_driver(const char *requested,
       gen_ui->audio_driver_selection ? gen_ui->audio_driver_selection : "auto";
   gboolean driver_changed = (g_ascii_strcasecmp(current, target) != 0);
 
+  /* Always set environment variable to ensure SDL uses correct driver.
+   * This is critical at startup (restart_audio=FALSE) when sound_init()
+   * is called later - SDL_AUDIODRIVER must already be configured. */
+  if (g_strcmp0(target, "auto") == 0) {
+    g_unsetenv("SDL_AUDIODRIVER");
+  } else {
+    g_setenv("SDL_AUDIODRIVER", target, TRUE);
+  }
+
+  /* Update selection tracking (needed even when driver hasn't changed,
+   * as audio_driver_selection may be NULL on first run) */
+  g_free(gen_ui->audio_driver_selection);
+  gen_ui->audio_driver_selection = g_strdup(target);
+
   if (!driver_changed) {
     if (persist_config)
       gtkopts_setvalue("audio_driver", target);
@@ -1750,12 +1764,6 @@ static gboolean ui_gtk4_apply_audio_driver(const char *requested,
     SDL_QuitSubSystem(SDL_INIT_AUDIO);
   }
 
-  if (g_strcmp0(target, "auto") == 0) {
-    g_unsetenv("SDL_AUDIODRIVER");
-  } else {
-    g_setenv("SDL_AUDIODRIVER", target, TRUE);
-  }
-
   gboolean restart_ok = TRUE;
   if (restart_audio && sound_on) {
     if (sound_start() != 0) {
@@ -1766,11 +1774,16 @@ static gboolean ui_gtk4_apply_audio_driver(const char *requested,
   }
 
   if (!restart_ok) {
+    /* Restore environment variable to previous value */
     if (g_strcmp0(previous, "auto") == 0) {
       g_unsetenv("SDL_AUDIODRIVER");
     } else {
       g_setenv("SDL_AUDIODRIVER", previous, TRUE);
     }
+    /* Restore selection tracking */
+    g_free(gen_ui->audio_driver_selection);
+    gen_ui->audio_driver_selection = g_strdup(previous);
+
     if (sound_on) {
       SDL_QuitSubSystem(SDL_INIT_AUDIO);
       if (sound_start() != 0) {
@@ -1795,9 +1808,6 @@ static gboolean ui_gtk4_apply_audio_driver(const char *requested,
 
   if (persist_config)
     gtkopts_setvalue("audio_driver", target);
-
-  g_free(gen_ui->audio_driver_selection);
-  gen_ui->audio_driver_selection = g_strdup(target);
 
   if (restart_audio)
     ui_gtk4_update_audio_backend_subtitle();

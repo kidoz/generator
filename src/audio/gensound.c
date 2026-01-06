@@ -125,10 +125,21 @@ void sound_final(void)
 
 int sound_start(void)
 {
-  if (sound_active)
-    sound_stop();
-  LOG_VERBOSE(("Starting sound..."));
-  if (soundp_start() != 0) {
+  int result;
+
+  if (sound_active) {
+    /* Already active - do a full reset including SDL audio subsystem restart.
+     * This fixes issues where audio doesn't work after stop/start cycles
+     * without a full SDL audio subsystem reinit. */
+    LOG_VERBOSE(("Restarting sound (full reset)..."));
+    result = soundp_reset();
+  } else {
+    /* First start - just initialize */
+    LOG_VERBOSE(("Starting sound..."));
+    result = soundp_start();
+  }
+
+  if (result != 0) {
     LOG_VERBOSE(("Failed to start sound hardware"));
     return -1;
   }
@@ -153,8 +164,59 @@ void sound_stop(void)
 
 int sound_reset(void)
 {
-  sound_final();
-  return sound_init();
+  /* Use soundp_reset() directly for a full audio subsystem restart.
+   * This fixes issues where audio doesn't work after reset cycles
+   * without a full SDL audio subsystem reinit. */
+  LOG_VERBOSE(("Resetting sound (full subsystem restart)..."));
+
+  /* Stop and shutdown sound chips */
+  if (sound_active) {
+    soundp_stop();
+    sound_active = 0;
+  }
+#ifdef JFM
+  jfm_final(sound_ctx);
+#else
+  YM2612Shutdown();
+#endif
+
+  /* Recalculate timing parameters */
+  sound_sampsperfield = sound_speed / vdp_framerate;
+  sound_threshold = sound_sampsperfield * sound_minfields;
+
+  /* Do full audio subsystem restart */
+  if (soundp_reset() != 0) {
+    LOG_VERBOSE(("Failed to reset sound hardware"));
+    return 1;
+  }
+  sound_active = 1;
+
+  /* Reinitialize sound chips */
+#ifdef JFM
+  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_speed, nullptr,
+                            nullptr)) == nullptr) {
+#else
+  if (YM2612Init(1, vdp_clock / 7, sound_speed, nullptr, nullptr)) {
+#endif
+    LOG_VERBOSE(("YM2612 failed init during reset"));
+    soundp_stop();
+    sound_active = 0;
+    return 1;
+  }
+  if (SN76496Init(0, vdp_clock / 15, 0, sound_speed)) {
+    LOG_VERBOSE(("SN76496 failed init during reset"));
+    soundp_stop();
+    sound_active = 0;
+#ifdef JFM
+    jfm_final(sound_ctx);
+#else
+    YM2612Shutdown();
+#endif
+    return 1;
+  }
+
+  LOG_VERBOSE(("Sound reset complete."));
+  return 0;
 }
 
 /*** sound_startfield - start of frame ***/
