@@ -650,20 +650,16 @@ static void on_open_rom_response(GObject *source, GAsyncResult *result,
 
     /* Stop currently running game before loading new ROM */
     gen_ui->running = FALSE;
-    sound_stop();
 
     char *error = gen_loadimage(filename);
     if (error) {
       fprintf(stderr, "ROM load error: %s\n", error);
       ui_gtk4_messageerror(error);
       /* ROM load failed - restart previous ROM and audio */
-      sound_start();
       gen_ui->running = TRUE;
     } else {
-      /* ROM loaded successfully - restart sound and emulation */
-      fprintf(stderr, "ROM loaded successfully, resetting...\n");
-      sound_start();
-      gen_reset();
+      /* ROM loaded successfully - gen_loadimage already reset the system */
+      fprintf(stderr, "ROM loaded successfully.\n");
       gen_ui->running = TRUE;
     }
     g_free(filename);
