@@ -1,5 +1,7 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 
+#define _GNU_SOURCE 1  /* For strcasestr() */
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -244,6 +246,38 @@ char *gen_loadimage(const char *filename)
 
   switch (imagetype) {
   case 1: /* BIN */
+    /* Strip 512-byte header if present (common in some .gen dumps). */
+    if (cpu68k_romlen > 0x300) {
+      const uint8 *hdr_sega = (const uint8 *)(cpu68k_rom + 0x300);
+      const uint8 *rom_sega = (const uint8 *)(cpu68k_rom + 0x100);
+      int hdr_has_sega = (!memcmp(hdr_sega, "SEGA", 4) ||
+                          !memcmp(hdr_sega, "ESAG", 4));
+      int rom_has_sega = (!memcmp(rom_sega, "SEGA", 4) ||
+                          !memcmp(rom_sega, "ESAG", 4));
+      if (hdr_has_sega && !rom_has_sega) {
+        uint8 *trim = malloc(cpu68k_romlen - 512 + 16);
+        if (trim == nullptr) {
+          cpu68k_rom = nullptr;
+          cpu68k_romlen = 0;
+          return ("Out of memory!");
+        }
+        memcpy(trim, cpu68k_rom + 512, cpu68k_romlen - 512);
+        memset(trim + (cpu68k_romlen - 512), 0, 16);
+        free(cpu68k_rom);
+        cpu68k_rom = trim;
+        cpu68k_romlen -= 512;
+      }
+    }
+
+    /* Fix word-swapped ROMs (e.g., 'ESAG' header) */
+    if (cpu68k_romlen > 0x104 &&
+        !memcmp(cpu68k_rom + 0x100, "ESAG", 4)) {
+      for (i = 0; i + 1 < cpu68k_romlen; i += 2) {
+        uint8 tmp = cpu68k_rom[i];
+        cpu68k_rom[i] = cpu68k_rom[i + 1];
+        cpu68k_rom[i + 1] = tmp;
+      }
+    }
     break;
   case 2: /* SMD */
     blocks = (cpu68k_romlen - 512) / 16384;
@@ -285,15 +319,48 @@ char *gen_loadimage(const char *filename)
   if (gen_leafname[0] == '\0')
     snprintf(gen_leafname, sizeof(gen_leafname), "rom");
 
+  /* Parse ROM header for region flags - MUST happen before autodetect */
+  gen_setupcartinfo();
 
   if (gen_autodetect) {
-    vdp_pal = (!gen_cartinfo.flag_usa && !gen_cartinfo.flag_japan &&
-               gen_cartinfo.flag_europe)
-                  ? 1
-                  : 0;
-  }
+    /* Improved autodetect: check filename hints first, then ROM header flags.
+     * Filename patterns like "(Europe)", "(E)", "(PAL)" are reliable indicators
+     * since ROM headers may have multiple region flags (e.g., "JUE"). */
+    int pal_from_filename = 0;
+    int ntsc_from_filename = 0;
 
-  gen_setupcartinfo();
+    /* Check filename for region hints (case-insensitive) */
+    if (strcasestr(gen_leafname, "(Europe)") ||
+        strcasestr(gen_leafname, "(PAL)") ||
+        strcasestr(gen_leafname, "(E)") ||
+        strcasestr(gen_leafname, "(F)") ||      /* France */
+        strcasestr(gen_leafname, "(G)") ||      /* Germany */
+        strcasestr(gen_leafname, "(I)") ||      /* Italy */
+        strcasestr(gen_leafname, "(S)") ||      /* Spain */
+        strcasestr(gen_leafname, "(EU)")) {
+      pal_from_filename = 1;
+    } else if (strcasestr(gen_leafname, "(USA)") ||
+               strcasestr(gen_leafname, "(U)") ||
+               strcasestr(gen_leafname, "(Japan)") ||
+               strcasestr(gen_leafname, "(J)") ||
+               strcasestr(gen_leafname, "(JU)") ||
+               strcasestr(gen_leafname, "(NTSC)")) {
+      ntsc_from_filename = 1;
+    }
+
+    /* Priority: filename hint > ROM header flags */
+    if (pal_from_filename) {
+      vdp_pal = 1;
+    } else if (ntsc_from_filename) {
+      vdp_pal = 0;
+    } else {
+      /* Fallback to ROM header: PAL only if Europe-only */
+      vdp_pal = (!gen_cartinfo.flag_usa && !gen_cartinfo.flag_japan &&
+                 gen_cartinfo.flag_europe)
+                    ? 1
+                    : 0;
+    }
+  }
 
   /* reset system */
   gen_reset();
