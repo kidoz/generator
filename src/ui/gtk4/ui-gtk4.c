@@ -57,8 +57,7 @@ static void ui_startup(GtkApplication *app, gpointer user_data);
 static void ui_shutdown(GtkApplication *app, gpointer user_data);
 static void ui_create_main_window(GtkApplication *app);
 static void ui_setup_actions(GtkApplication *app);
-static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width,
-                             int height, gpointer user_data);
+static void ui_update_texture(void);
 static gboolean ui_key_pressed(GtkEventControllerKey *controller, guint keyval,
                                guint keycode, GdkModifierType state,
                                gpointer user_data);
@@ -574,14 +573,14 @@ static void ui_create_main_window(GtkApplication *app)
   /* Create content box for emulation display and status */
   content_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
-  /* Create drawing area for emulation display */
-  gen_ui->drawing_area = gtk_drawing_area_new();
-  gtk_widget_set_hexpand(gen_ui->drawing_area, TRUE);
-  gtk_widget_set_vexpand(gen_ui->drawing_area, TRUE);
-  gtk_widget_set_size_request(gen_ui->drawing_area, 320, 224);
-  gtk_drawing_area_set_draw_func(GTK_DRAWING_AREA(gen_ui->drawing_area),
-                                 ui_draw_callback, nullptr, nullptr);
-  gtk_box_append(GTK_BOX(content_box), gen_ui->drawing_area);
+  /* Create picture widget for emulation display
+   * GtkPicture with GdkMemoryTexture provides GPU-accelerated rendering */
+  gen_ui->picture = gtk_picture_new();
+  gtk_widget_set_hexpand(gen_ui->picture, TRUE);
+  gtk_widget_set_vexpand(gen_ui->picture, TRUE);
+  gtk_widget_set_size_request(gen_ui->picture, 320, 224);
+  gtk_picture_set_content_fit(GTK_PICTURE(gen_ui->picture), GTK_CONTENT_FIT_CONTAIN);
+  gtk_box_append(GTK_BOX(content_box), gen_ui->picture);
 
   /* Create status bar using AdwActionRow for better styling */
   GtkWidget *status_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
@@ -619,7 +618,7 @@ static void ui_create_main_window(GtkApplication *app)
 
   /* Drive the emulation loop from the GTK frame clock so we receive a steady
      pulse that matches the window's refresh rate (typically vblank). */
-  gtk_widget_add_tick_callback(gen_ui->drawing_area, ui_tick_callback, nullptr,
+  gtk_widget_add_tick_callback(gen_ui->picture, ui_tick_callback, nullptr,
                                nullptr);
 
   /* Show window */
@@ -862,10 +861,11 @@ void ui_action_quit(GSimpleAction *action, GVariant *parameter,
 
 /*** Drawing and rendering ***/
 
-static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width,
-                             int height, gpointer user_data)
+/* Update GtkPicture with current frame using GdkMemoryTexture
+ * This replaces the Cairo-based ui_draw_callback for better GTK4 integration.
+ * GdkMemoryTexture is GPU-accelerated and integrates with GTK4's scene graph. */
+static void ui_update_texture(void)
 {
-  cairo_surface_t *surface;
   uint8 *screen_data;
   unsigned int base_width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
   unsigned int base_height = gen_ctx_vdp_vislines();
@@ -879,7 +879,7 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width,
   unsigned int scaled_xoffset = xoffset * scale;
   unsigned int scaled_yoffset = yoffset * scale;
 
-  if (!gen_ui || !gen_ui->screen0 || !gen_ui->screen1)
+  if (!gen_ui || !gen_ui->screen0 || !gen_ui->screen1 || !gen_ui->picture)
     return;
 
   /* Double buffering: display the buffer indicated by whichbank
@@ -888,30 +888,33 @@ static void ui_draw_callback(GtkDrawingArea *area, cairo_t *cr, int width,
   int current_bank = atomic_load(&gen_ui->whichbank);
   screen_data = (current_bank == 0) ? gen_ui->screen0 : gen_ui->screen1;
 
-  /* Create Cairo image surface from emulator buffer
-     Format: CAIRO_FORMAT_RGB24 which is 32-bit with unused alpha */
-  surface = cairo_image_surface_create_for_data(
-      screen_data + (scaled_yoffset * HMAXSIZE + scaled_xoffset) *
-                        4, /* offset into buffer */
-      CAIRO_FORMAT_RGB24, display_width, display_height,
-      HMAXSIZE * 4 /* stride: full buffer width including borders */
+  /* Calculate pointer to actual display region within the buffer */
+  uint8 *display_start = screen_data +
+      (scaled_yoffset * HMAXSIZE + scaled_xoffset) * 4;
+
+  /* Create GBytes from display data - using static to avoid copy since
+   * the buffer remains valid until the next frame swap */
+  GBytes *bytes = g_bytes_new_static(display_start,
+                                      display_height * HMAXSIZE * 4);
+
+  /* Create texture with stride (HMAXSIZE * 4 bytes per row)
+   * Format: GDK_MEMORY_B8G8R8X8 matches our buffer layout
+   * (Blue at byte 0, Green at byte 1, Red at byte 2, unused at byte 3) */
+  GdkTexture *texture = gdk_memory_texture_new(
+      display_width,
+      display_height,
+      GDK_MEMORY_B8G8R8X8,
+      bytes,
+      HMAXSIZE * 4  /* stride: full buffer width including borders */
   );
 
-  /* Scale to fit drawing area while maintaining aspect ratio */
-  cairo_scale(cr, (double)width / display_width,
-              (double)height / display_height);
+  /* Update the GtkPicture with the new texture */
+  gtk_picture_set_paintable(GTK_PICTURE(gen_ui->picture),
+                            GDK_PAINTABLE(texture));
 
-  /* Draw the emulator screen */
-  cairo_set_source_surface(cr, surface, 0, 0);
-
-  /* Use bilinear filtering for smooth scaling to window size
-     The upscaling filter (Scale2x/3x/4x) has already been applied to the
-     buffer, so Cairo only needs to scale from the upscaled buffer to the window
-     size */
-  cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
-  cairo_paint(cr);
-
-  cairo_surface_destroy(surface);
+  /* Release our references - GtkPicture holds its own reference */
+  g_object_unref(texture);
+  g_bytes_unref(bytes);
 }
 
 /*** Window close handling ***/
@@ -1102,9 +1105,9 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
     if (atomic_load(&gen_ui->render_complete)) {
       atomic_store(&gen_ui->render_complete, 0);
 
-      /* Swap display buffer (already done in gtk4_cb_end_field via
-       * ui_rendertoscreen) */
-      gtk_widget_queue_draw(gen_ui->drawing_area);
+      /* Update GtkPicture with new frame texture
+       * Buffer swap already done in gtk4_cb_end_field via ui_rendertoscreen */
+      ui_update_texture();
 
       /* Update timing for rate control */
       gen_ui->last_frame_time = current_time;
@@ -1924,9 +1927,9 @@ static void ui_gtk4_on_scaler_changed(GObject *row_object, GParamSpec *pspec,
   if (gen_ui->configfile)
     gtkopts_save(gen_ui->configfile);
 
-  /* Force redraw */
-  if (gen_ui->drawing_area)
-    gtk_widget_queue_draw(gen_ui->drawing_area);
+  /* Force texture update with new settings */
+  if (gen_ui->picture)
+    ui_update_texture();
 }
 
 static guint ui_gtk4_find_scaler_index(t_filter_type filter_type)

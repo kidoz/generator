@@ -62,7 +62,7 @@ typedef struct {
   AdwApplication *app;
   AdwApplicationWindow *window;
   GtkWidget *header_bar;
-  GtkWidget *drawing_area;
+  GtkWidget *picture;  /* GtkPicture for video display (replaces GtkDrawingArea) */
   GtkWidget *status_label;
   GMenuModel *menu_model;
 
