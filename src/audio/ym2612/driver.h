@@ -73,9 +73,6 @@ struct MachineDriver {
 
   /* sound hardware */
   int sound_attributes;
-  int obsolete1;
-  int obsolete2;
-  int obsolete3;
   const struct MachineSound sound[MAX_SOUND];
 
   /*

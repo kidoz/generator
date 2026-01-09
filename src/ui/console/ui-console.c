@@ -563,16 +563,7 @@ void ui_setupscreen(void)
   ui_drawbox(grey, 0, 416, 640, 1);
   ui_drawbox(red, 0, 65, 640, 1);
   ui_drawbox(grey, 0, 66, 640, 1);
-  ;
-  /* draw marker for 320x224 box */
-  // ui_drawbox(grey, 160, 128, 320, 224);
-  /* draw marker for 320x240 box */
-  // ui_drawbox(grey, 160, 120, 320, 240);
-  /* draw marker for 256x224 box */
-  // ui_drawbox(grey, 192, 128, 256, 224);
-  /* draw marker for 256x240 box */
-  // ui_drawbox(grey, 192, 120, 256, 240);
-  ;
+
   ui_plotstring("Generator is (c) James Ponder 1997-2001, "
                 "all rights reserved.",
                 0, 0);
