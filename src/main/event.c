@@ -9,6 +9,7 @@
 #include "gensound.h"
 #include "gen_context.h"
 #include "gen_ui_callbacks.h"
+#include "mem68k.h"
 
 #include "snprintf.h"
 
@@ -207,6 +208,9 @@ void event_nextevent(void)
      * concurrently with the 68k. We sync it here to keep audio in lockstep. */
     cpuz80_sync();
     sound_line();
+
+    /* Update 6-button controller timeout (resets counter if no TH activity) */
+    mem68k_controller_refresh();
 
     /* Advance to next scanline */
     vdp_line++;

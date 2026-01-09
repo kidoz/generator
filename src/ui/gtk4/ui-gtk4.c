@@ -2481,6 +2481,18 @@ static void ui_handle_gamepad_axis(SDL_GamepadAxisEvent *event)
   if (player < 0 || player > 1)
     return;
 
+  /* Find the gamepad slot to track axis state */
+  t_gamepad_slot *slot = nullptr;
+  for (int i = 0; i < MAX_GAMEPADS; i++) {
+    if (gen_ui->gamepads[i].gamepad != nullptr &&
+        gen_ui->gamepads[i].id == event->which) {
+      slot = &gen_ui->gamepads[i];
+      break;
+    }
+  }
+  if (slot == nullptr)
+    return;
+
   const int deadzone = 8000;
 
   switch (event->axis) {
@@ -2488,25 +2500,37 @@ static void ui_handle_gamepad_axis(SDL_GamepadAxisEvent *event)
     if (event->value < -deadzone) {
       mem68k_cont[player].left = 1;
       mem68k_cont[player].right = 0;
+      slot->axis_x_active = 1;
     } else if (event->value > deadzone) {
       mem68k_cont[player].left = 0;
       mem68k_cont[player].right = 1;
-    } else {
+      slot->axis_x_active = 1;
+    } else if (slot->axis_x_active) {
+      /* Only clear if analog stick was previously active */
       mem68k_cont[player].left = 0;
       mem68k_cont[player].right = 0;
+      slot->axis_x_active = 0;
     }
+    /* If axis was not active and is still in deadzone, do nothing -
+       preserve D-pad/keyboard input */
     break;
   case SDL_GAMEPAD_AXIS_LEFTY:
     if (event->value < -deadzone) {
       mem68k_cont[player].up = 1;
       mem68k_cont[player].down = 0;
+      slot->axis_y_active = 1;
     } else if (event->value > deadzone) {
       mem68k_cont[player].up = 0;
       mem68k_cont[player].down = 1;
-    } else {
+      slot->axis_y_active = 1;
+    } else if (slot->axis_y_active) {
+      /* Only clear if analog stick was previously active */
       mem68k_cont[player].up = 0;
       mem68k_cont[player].down = 0;
+      slot->axis_y_active = 0;
     }
+    /* If axis was not active and is still in deadzone, do nothing -
+       preserve D-pad/keyboard input */
     break;
   default:
     break;

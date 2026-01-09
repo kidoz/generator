@@ -56,6 +56,9 @@ typedef struct {
   SDL_Gamepad *gamepad; /* SDL3 gamepad handle */
   SDL_JoystickID id;    /* Joystick ID for event matching */
   int player;           /* Player index (0, 1) or -1 if unassigned */
+  /* Analog stick state tracking - prevents clearing D-pad/keyboard input */
+  int axis_x_active;    /* 1 if X axis is outside deadzone */
+  int axis_y_active;    /* 1 if Y axis is outside deadzone */
 } t_gamepad_slot;
 
 typedef struct {

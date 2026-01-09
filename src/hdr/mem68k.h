@@ -38,6 +38,7 @@ extern t_mem68k_def mem68k_def[];
 extern t_keys mem68k_cont[2];
 
 int mem68k_init(void);
+void mem68k_controller_refresh(void);  /* Called per scanline for 6-button timeout */
 
 extern uint8 *(*mem68k_memptr[0x1000])(uint32 addr);
 extern uint8 (*mem68k_fetch_byte[0x1000])(uint32 addr);

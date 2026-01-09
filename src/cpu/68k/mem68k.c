@@ -88,27 +88,21 @@ static uint8 mem68k_cont1output;
 static uint8 mem68k_cont2output;
 static uint8 mem68k_contEoutput;
 
-/* 6-button controller state machine
- * The Genesis 6-button controller uses TH line toggling to cycle through states.
- * When TH (bit 6) is toggled rapidly, the controller advances through states
- * that expose the extra X, Y, Z, Mode buttons.
+/* 6-button controller state machine (based on Genesis Plus GX)
  *
- * State machine (TH transitions):
- *   State 0 (TH=0): UP, DOWN, 0, 0, A, START
- *   State 1 (TH=1): UP, DOWN, LEFT, RIGHT, B, C
- *   State 2 (TH=0): UP, DOWN, 0, 0, A, START
- *   State 3 (TH=1): UP, DOWN, LEFT, RIGHT, B, C
- *   State 4 (TH=0): 0, 0, 0, 0, A, START (6-button detection: low nibble=0)
- *   State 5 (TH=1): Z, Y, X, MODE, 1, 1
- *   State 6 (TH=0): 1, 1, 1, 1, A, START
- *   State 7 (TH=1): UP, DOWN, LEFT, RIGHT, B, C (resets to 0)
+ * The 6-button protocol uses a counter that increments by 2 on each TH rising edge:
+ * - Counter 0,2: Normal 3-button responses
+ * - Counter 4, TH=0: First signature (low nibble = 0)
+ * - Counter 6, TH=1: Extra buttons (X, Y, Z, Mode)
+ * - Counter 6, TH=0: Second signature (low nibble = F)
+ * - Counter wraps at 8
  *
- * After ~1.5ms without TH toggle, state resets to 0.
+ * Timeout: Counter resets after ~25 scanlines without TH activity.
+ * This ensures 3-button games (which toggle TH once per frame) never reach counter 4+.
  */
-static uint8 mem68k_cont_state[2];       /* Current state (0-7) per controller */
-static uint8 mem68k_cont_th_prev[2];     /* Previous TH value to detect edges */
-static unsigned int mem68k_cont_timer[2]; /* Timer for state reset */
-#define CONT_6BTN_TIMEOUT 25000          /* ~1.5ms at 7.67MHz */
+static uint8 mem68k_cont_counter[2];  /* Counter (0,2,4,6) per controller */
+static uint8 mem68k_cont_timeout[2];  /* Timeout counter per controller */
+static uint8 mem68k_cont_th_prev[2];  /* Previous TH value for edge detection */
 
 /*** memory map ***/
 
@@ -193,10 +187,10 @@ int mem68k_init(void)
   mem68k_contEoutput = 0;
   memset(&mem68k_cont, 0, sizeof(mem68k_cont));
 
-  /* Reset 6-button controller state machine */
-  memset(mem68k_cont_state, 0, sizeof(mem68k_cont_state));
+  /* Initialize 6-button controller state machine */
+  memset(mem68k_cont_counter, 0, sizeof(mem68k_cont_counter));
+  memset(mem68k_cont_timeout, 0, sizeof(mem68k_cont_timeout));
   memset(mem68k_cont_th_prev, 0, sizeof(mem68k_cont_th_prev));
-  memset(mem68k_cont_timer, 0, sizeof(mem68k_cont_timer));
 
   return 0;
 }
@@ -587,109 +581,88 @@ void mem68k_store_bank_long(uint32 addr, uint32 data)
 }
 
 
-/*** 6-button controller helper ***/
+/*** 6-button controller implementation (based on Genesis Plus GX) ***/
 
-/* Read controller state based on 6-button protocol state machine */
-static uint8 mem68k_read_controller(int player, uint8 th_high)
+/* Called every scanline to handle timeout */
+void mem68k_controller_refresh(void)
 {
-  t_keys *cont = &mem68k_cont[player];
-  uint8 state = mem68k_cont_state[player];
-  uint8 result;
-
-  /* Increment timeout counter (approximate timing based on reads) */
-  mem68k_cont_timer[player] += 100;
-
-  /* Check for timeout - reset state if too much time passed */
-  if (mem68k_cont_timer[player] > CONT_6BTN_TIMEOUT) {
-    mem68k_cont_state[player] = 0;
-    state = 0;
-  }
-
-  /* State machine output based on current state and TH line */
-  if (th_high) {
-    /* TH = 1 states */
-    switch (state) {
-    case 5:
-      /* State 5: Extra buttons - Z, Y, X, MODE in low nibble, high nibble = 1s */
-      result = ((1 - cont->z)) |
-               ((1 - cont->y) << 1) |
-               ((1 - cont->x) << 2) |
-               ((1 - cont->mode) << 3) |
-               (1 << 4) | (1 << 5);
-      break;
-    case 1:
-    case 3:
-    case 7:
-    default:
-      /* Standard TH=1: UP, DOWN, LEFT, RIGHT, B, C */
-      result = ((1 - cont->up)) |
-               ((1 - cont->down) << 1) |
-               ((1 - cont->left) << 2) |
-               ((1 - cont->right) << 3) |
-               ((1 - cont->b) << 4) |
-               ((1 - cont->c) << 5);
-      break;
-    }
-  } else {
-    /* TH = 0 states */
-    switch (state) {
-    case 4:
-      /* State 4: 6-button detection signature
-       * Bits 0-3 = 0 (LOW) - this signals 6-button controller
-       * Bits 4-5 = A, Start (active-LOW as normal) */
-      result = ((1 - cont->a) << 4) |
-               ((1 - cont->start) << 5);
-      break;
-    case 6:
-      /* State 6: All ones in low nibble, A and START in high */
-      result = 0x0F |
-               ((1 - cont->a) << 4) |
-               ((1 - cont->start) << 5);
-      break;
-    case 0:
-    case 2:
-    default:
-      /* Standard TH=0: UP, DOWN, 0, 0, A, START */
-      result = ((1 - cont->up)) |
-               ((1 - cont->down) << 1) |
-               ((1 - cont->a) << 4) |
-               ((1 - cont->start) << 5);
-      break;
+  for (int i = 0; i < 2; i++) {
+    if (mem68k_cont_timeout[i]++ > 25) {
+      mem68k_cont_counter[i] = 0;
+      mem68k_cont_timeout[i] = 0;
     }
   }
-
-  return result;
 }
 
-/* Update controller state machine when TH line changes */
-static void mem68k_update_controller_state(int player, uint8 th_high)
+/* Called when game writes to controller port to update TH state machine */
+static void mem68k_controller_write(int player, uint8 new_th)
 {
-  uint8 th_prev = mem68k_cont_th_prev[player];
-  unsigned int timer = mem68k_cont_timer[player];
+  uint8 prev_th = mem68k_cont_th_prev[player];
+  mem68k_cont_th_prev[player] = new_th;
 
-  /* Detect TH edge transition */
-  if (th_high != th_prev) {
-    mem68k_cont_th_prev[player] = th_high;
+  /* Detect TH rising edge (0 -> 1) */
+  if (new_th && !prev_th) {
+    /* Increment counter by 2, wrap at 8 */
+    mem68k_cont_counter[player] = (mem68k_cont_counter[player] + 2) & 6;
+    mem68k_cont_timeout[player] = 0;
+  }
+}
 
-    /* Advance state on rising edge (TH: 0->1) */
-    if (th_high) {
-      /* 6-button mode requires rapid TH toggles (within ~1.5ms).
-       * If the previous toggle was too slow, reset to 3-button mode.
-       * This prevents 3-button games from accidentally triggering
-       * 6-button mode with slow polling. */
-      if (timer > CONT_6BTN_TIMEOUT) {
-        /* Too slow - reset to state 0 (3-button mode) */
-        mem68k_cont_state[player] = 0;
-      } else {
-        /* Fast enough - advance to next state */
-        mem68k_cont_state[player]++;
-        if (mem68k_cont_state[player] > 7) {
-          mem68k_cont_state[player] = 0;
-        }
-      }
+/* Read controller state with 6-button support
+ *
+ * Counter values and responses:
+ *   Counter 0: TH=1: CBRLDU, TH=0: SA00DU (normal)
+ *   Counter 2: TH=1: CBRLDU, TH=0: SA00DU (normal)
+ *   Counter 4: TH=1: CBRLDU, TH=0: SA0000 (first signature)
+ *   Counter 6: TH=1: CBMXYZ, TH=0: SA1111 (extra buttons + second signature)
+ */
+static uint8 mem68k_read_controller(int player, int th_high)
+{
+  t_keys *cont = &mem68k_cont[player];
+  uint8 counter = mem68k_cont_counter[player];
+
+  if (th_high) {
+    /* TH = 1 */
+    if (counter == 6) {
+      /* Counter 6, TH=1: Return extra buttons
+       * Format: 0 0 C B | M Z Y X */
+      return ((1 - cont->x)) |
+             ((1 - cont->y) << 1) |
+             ((1 - cont->z) << 2) |
+             ((1 - cont->mode) << 3) |
+             ((1 - cont->b) << 4) |
+             ((1 - cont->c) << 5);
+    } else {
+      /* Counter 0,2,4, TH=1: Normal response
+       * Format: 0 0 C B | R L D U */
+      return ((1 - cont->up)) |
+             ((1 - cont->down) << 1) |
+             ((1 - cont->left) << 2) |
+             ((1 - cont->right) << 3) |
+             ((1 - cont->b) << 4) |
+             ((1 - cont->c) << 5);
     }
-
-    mem68k_cont_timer[player] = 0;  /* Reset timeout after any transition */
+  } else {
+    /* TH = 0 */
+    if (counter == 4) {
+      /* Counter 4, TH=0: First signature (low nibble = 0)
+       * Format: 0 0 S A | 0 0 0 0 */
+      return ((1 - cont->a) << 4) |
+             ((1 - cont->start) << 5);
+    } else if (counter == 6) {
+      /* Counter 6, TH=0: Second signature (low nibble = F)
+       * Format: 0 0 S A | 1 1 1 1 */
+      return ((1 - cont->a) << 4) |
+             ((1 - cont->start) << 5) |
+             0x0F;
+    } else {
+      /* Counter 0,2, TH=0: Normal response
+       * Format: 0 0 S A | 0 0 D U */
+      return ((1 - cont->up)) |
+             ((1 - cont->down) << 1) |
+             ((1 - cont->a) << 4) |
+             ((1 - cont->start) << 5);
+    }
   }
 }
 
@@ -698,7 +671,6 @@ static void mem68k_update_controller_state(int player, uint8 th_high)
 uint8 mem68k_fetch_io_byte(uint32 addr)
 {
   uint8 in;
-  uint8 th_high;
 
   addr -= 0xA10000;
   if ((addr & 1) == 0) {
@@ -710,14 +682,12 @@ uint8 mem68k_fetch_io_byte(uint32 addr)
     /* version */
     return (1 << 5 | vdp_pal << 6 | vdp_overseas << 7);
   case 1: /* 0x3 - Controller 1 data */
-    /* 6-button controller support: TH line (bit 6) controls state machine */
-    th_high = (mem68k_cont1output >> 6) & 1;
-    in = mem68k_read_controller(0, th_high);
+    /* 6-button controller support */
+    in = mem68k_read_controller(0, (mem68k_cont1output >> 6) & 1);
     return (in & ~mem68k_cont1ctrl) | (mem68k_cont1output & mem68k_cont1ctrl);
   case 2: /* 0x5 - Controller 2 data */
-    /* 6-button controller support: TH line (bit 6) controls state machine */
-    th_high = (mem68k_cont2output >> 6) & 1;
-    in = mem68k_read_controller(1, th_high);
+    /* 6-button controller support */
+    in = mem68k_read_controller(1, (mem68k_cont2output >> 6) & 1);
     return (in & ~mem68k_cont2ctrl) | (mem68k_cont2output & mem68k_cont2ctrl);
   case 3: /* 0x7 - External port */
     LOG_NORMAL(("%08X [IO] EXT port read", regs.pc));
@@ -751,13 +721,13 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
   addr -= 0xA10000;
   switch (addr) {
   case 0x3:
-    /* Controller 1 output - update 6-button state machine on TH change */
-    mem68k_update_controller_state(0, (data >> 6) & 1);
+    /* Controller 1 output - update 6-button state machine */
+    mem68k_controller_write(0, (data >> 6) & 1);
     mem68k_cont1output = data;
     return;
   case 0x5:
-    /* Controller 2 output - update 6-button state machine on TH change */
-    mem68k_update_controller_state(1, (data >> 6) & 1);
+    /* Controller 2 output - update 6-button state machine */
+    mem68k_controller_write(1, (data >> 6) & 1);
     mem68k_cont2output = data;
     return;
   case 0x7:
