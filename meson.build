@@ -97,11 +97,6 @@ if host_machine.endian() == 'big'
   add_project_arguments('-DWORDS_BIGENDIAN=1', language: 'c')
 endif
 
-# Check for snprintf
-if cc.has_function('snprintf', prefix: '#include <stdio.h>')
-  add_project_arguments('-DHAVE_SNPRINTF=1', language: 'c')
-endif
-
 # Common dependencies
 m_dep = cc.find_library('m', required: false)
 common_deps = []
@@ -139,7 +134,7 @@ endif
 
 # Include directories - organized by domain
 inc = include_directories(
-  'src/hdr',
+  'include/generator',
   'src/core',
   'src/cpu/68k/codegen',
   'src/cpu/z80/cmz80',
@@ -169,7 +164,7 @@ elif ui_backend == 'console'
 endif
 
 # Main executable
-subdir('src/main')
+subdir('src/app')
 
 # Headless backend (always built alongside main executable)
 subdir('src/ui/headless')

@@ -22,7 +22,6 @@
 #include <errno.h>
 
 #include "generator.h"
-#include "snprintf.h"
 #include <SDL3/SDL.h>
 
 #include "cpu68k.h"

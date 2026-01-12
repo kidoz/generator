@@ -6,7 +6,7 @@
 # Stage 1: Build def68k tool and generate headers
 def68k_exe = executable('def68k',
   sources: ['def68k.c', 'tab68k.c'],
-  include_directories: include_directories('../../../hdr', '.'),
+  include_directories: include_directories('../../../../include/generator', '.'),
   c_args: ['-DGENERATOR_BUILD_TOOL=1'],
   override_options: ['c_std=c23'],
   native: true
@@ -23,7 +23,7 @@ def68k_headers = custom_target('def68k_headers',
 # Stage 2: Build gen68k tool
 gen68k_exe = executable('gen68k',
   sources: ['gen68k.c', 'tab68k.c'],
-  include_directories: include_directories('../../../hdr', '.'),
+  include_directories: include_directories('../../../../include/generator', '.'),
   dependencies: declare_dependency(sources: def68k_headers),
   c_args: ['-DGENERATOR_BUILD_TOOL=1'],
   override_options: ['c_std=c23'],
@@ -45,7 +45,7 @@ gen68k_sources = custom_target('gen68k_sources',
 # Build the 68k emulation library
 cpu68k_lib = static_library('68k',
   sources: gen68k_sources,
-  include_directories: include_directories('../../../hdr', '.'),
+  include_directories: include_directories('../../../../include/generator', '.'),
   dependencies: declare_dependency(sources: def68k_headers)
 )
 
@@ -59,6 +59,6 @@ cpu68k_dep = declare_dependency(
 # Also export tab68k.o for programs that need it (tcltk, etc)
 tab68k_lib = static_library('tab68k',
   sources: 'tab68k.c',
-  include_directories: include_directories('../../../hdr', '.'),
+  include_directories: include_directories('../../../../include/generator', '.'),
   dependencies: declare_dependency(sources: def68k_headers)
 )

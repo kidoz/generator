@@ -14,7 +14,6 @@
 #include <errno.h>
 
 #include "generator.h"
-#include "snprintf.h"
 
 /* Signal handler return type (typically void on POSIX systems) */
 #ifndef RETSIGTYPE

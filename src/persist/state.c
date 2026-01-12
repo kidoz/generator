@@ -10,7 +10,6 @@
 #include <errno.h>
 
 #include "generator.h"
-#include "snprintf.h"
 
 #include "state.h"
 #include "ui.h"

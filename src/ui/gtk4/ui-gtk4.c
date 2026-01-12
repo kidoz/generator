@@ -18,7 +18,6 @@
 #include <SDL3/SDL.h>
 
 #include "generator.h"
-#include "snprintf.h"
 #include "ui.h"
 #include "ui-gtk4.h"
 #include "gen_core.h"
