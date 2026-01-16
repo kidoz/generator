@@ -505,7 +505,7 @@ static void ui_create_main_window(GtkApplication *app)
   gen_ui->window =
       ADW_APPLICATION_WINDOW(adw_application_window_new(GTK_APPLICATION(app)));
   gtk_window_set_title(GTK_WINDOW(gen_ui->window), "Generator");
-  gtk_window_set_default_size(GTK_WINDOW(gen_ui->window), 640, 480);
+  gtk_window_set_default_size(GTK_WINDOW(gen_ui->window), 640, 540);
 
   /* Create toolbar view (HIG recommended pattern for header bars) */
   toolbar_view = adw_toolbar_view_new();
