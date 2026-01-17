@@ -19,7 +19,7 @@ meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80
 meson compile -C build
 
 # Run
-./build/src/main/generator-gtk4 [rom-file.bin]
+./build/src/app/generator-gtk4 [rom-file.bin]
 ```
 
 ### Console UI (no GTK required)
@@ -34,7 +34,7 @@ meson setup build -Dui-backend=console -Dz80-backend=cmz80
 meson compile -C build
 
 # Run
-./build/src/main/generator-console [rom-file.bin]
+./build/src/app/generator-console [rom-file.bin]
 ```
 
 ## Build Options
@@ -88,10 +88,10 @@ meson setup build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
 
 ```bash
 # Run with ROM
-./build/src/main/generator-gtk4 ~/roms/sonic.bin
+./build/src/app/generator-gtk4 ~/roms/sonic.bin
 
 # Run console version
-./build/src/main/generator-console ~/roms/sonic.bin
+./build/src/app/generator-console ~/roms/sonic.bin
 ```
 
 ### Keyboard Shortcuts (GTK4)
@@ -130,16 +130,18 @@ meson setup build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
 
 ```
 generator/
+├── include/
+│   └── generator/  # Header files (shared across components)
 ├── src/
-│   ├── cpu68k/    # Motorola 68000 CPU emulation (code generation)
-│   ├── cmz80/     # Portable C Z80 emulator
-│   ├── raze/      # x86 assembly Z80 emulator
-│   ├── ym2612/    # YM2612 FM synthesizer
-│   ├── sn76496/   # SN76496 PSG sound chip
-│   ├── xbrz/      # xBRZ image upscaler (C++23)
-│   ├── gtkopts/   # GTK options handling
-│   ├── main/      # Main emulator and UI code
-│   └── hdr/       # Header files
+│   ├── core/       # Emulator core and context
+│   ├── cpu/        # 68k and Z80 emulation
+│   ├── audio/      # YM2612 + SN76496
+│   ├── video/      # VDP and rendering helpers
+│   ├── platform/   # SDL3 platform layer
+│   ├── persist/    # Save states, AVI, patching
+│   ├── ui/         # GTK4, console, headless
+│   ├── xbrz/       # xBRZ image upscaler (C++23)
+│   └── app/        # Entry point and event loop
 └── meson.build    # Build configuration
 ```
 
@@ -162,7 +164,7 @@ just --list
 
 ## License
 
-Generator is licensed under the GPL-2.0-or-later license.
+Generator is licensed under the GPL-2.0-or-later license. See [LICENSE](LICENSE).
 
 Original: (c) James Ponder 1997-2003
 GTK4/Meson fork: (c) 2025

@@ -1,5 +1,3 @@
-/* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
-
 /* generic 640x480 console mode */
 
 /* I call the first field the even field and the second field the odd field,
@@ -40,6 +38,10 @@
 #include "gen_context.h"
 #include "gen_ui_callbacks.h"
 #include "gen_core.h"
+
+#ifdef NETPLAY
+#include "netplay.h"
+#endif
 
 #define UI_LOGLINESIZE 128
 #define UI_LOGLINES 64
@@ -705,6 +707,16 @@ int ui_loop(void)
       if (ui_fkeys & 1 << 12)
         ui_resetscreen();
       ui_fkeys = 0;
+#ifdef NETPLAY
+      /* Synchronize with remote player if in netplay game */
+      if (netplay_get_state() == NETPLAY_IN_GAME) {
+        if (netplay_sync_frame() < 0) {
+          /* Connection lost */
+          netplay_disconnect();
+          printf("Netplay: Connection lost\n");
+        }
+      }
+#endif
       ui_newframe();
       event_doframe();
       break;

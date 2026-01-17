@@ -1,5 +1,3 @@
-/* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
-
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -44,6 +42,7 @@
  *  The main file header specifies how many streams are present.  For
  *  each one, there must be a stream header chunk and a stream format
  *  chunk, enlosed in a 'strl' LIST chunk.  The 'strf' chunk contains
+ *
  *  type-specific format information; for a video stream, this should
  *  be a BITMAPINFO structure, including palette.  For an audio stream,
  *  this should be a WAVEFORMAT (or PCMWAVEFORMAT) structure.

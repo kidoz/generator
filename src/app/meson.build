@@ -24,6 +24,11 @@ else
   build_deps += raze_dep
 endif
 
+# Add network library (if enabled)
+if enable_netplay
+  build_deps += network_dep
+endif
+
 # Determine program name and sources based on UI backend
 if ui_backend == 'gtk4'
   program_name = 'generator-gtk4'

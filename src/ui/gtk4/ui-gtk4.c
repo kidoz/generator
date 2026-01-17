@@ -1,4 +1,3 @@
-/* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 /* GTK4/libadwaita user interface */
 
 #include <sys/types.h>
@@ -38,6 +37,10 @@
 #include "patch.h"
 #include "dib.h"
 #include "avi.h"
+
+#ifdef NETPLAY
+#include "netplay.h"
+#endif
 
 /* Global UI instance */
 GenUI *gen_ui = nullptr;
@@ -85,6 +88,16 @@ static char *ui_gtk4_format_driver_label(const char *driver_id);
 static void ui_gtk4_apply_scaler(const char *scaler_name);
 static void ui_gtk4_on_scaler_changed(GObject *row, GParamSpec *pspec,
                                       gpointer user_data);
+
+#ifdef NETPLAY
+/*** Netplay UI functions ***/
+static void ui_action_netplay_connect(GSimpleAction *action, GVariant *parameter,
+                                      gpointer user_data);
+static void ui_action_netplay_disconnect(GSimpleAction *action, GVariant *parameter,
+                                         gpointer user_data);
+static void ui_netplay_show_connect_dialog(void);
+static void ui_netplay_update_status(void);
+#endif
 
 /*** New Architecture: gen_context callbacks ***/
 static void gtk4_cb_line(gen_context_t *ctx, int line);
@@ -465,7 +478,12 @@ static void ui_setup_actions(GtkApplication *app)
       {"pause", ui_action_pause, nullptr, "false", nullptr},
       {"preferences", ui_action_preferences, nullptr, nullptr, nullptr},
       {"about", ui_action_about, nullptr, nullptr, nullptr},
-      {"quit", ui_action_quit, nullptr, nullptr, nullptr}};
+      {"quit", ui_action_quit, nullptr, nullptr, nullptr},
+#ifdef NETPLAY
+      {"netplay-connect", ui_action_netplay_connect, nullptr, nullptr, nullptr},
+      {"netplay-disconnect", ui_action_netplay_disconnect, nullptr, nullptr, nullptr},
+#endif
+  };
 
   g_action_map_add_action_entries(G_ACTION_MAP(app), app_entries,
                                   G_N_ELEMENTS(app_entries), app);
@@ -553,6 +571,14 @@ static void ui_create_main_window(GtkApplication *app)
   g_menu_append_section(primary_menu, "Emulation",
                         G_MENU_MODEL(emulation_section));
 
+#ifdef NETPLAY
+  /* Netplay section */
+  GMenu *netplay_section = g_menu_new();
+  g_menu_append(netplay_section, "_Connect to Server…", "app.netplay-connect");
+  g_menu_append(netplay_section, "_Disconnect", "app.netplay-disconnect");
+  g_menu_append_section(primary_menu, "Netplay", G_MENU_MODEL(netplay_section));
+#endif
+
   /* App section (preferences, about, quit) */
   GMenu *app_section = g_menu_new();
   g_menu_append(app_section, "_Preferences", "app.preferences");
@@ -594,6 +620,13 @@ static void ui_create_main_window(GtkApplication *app)
   gtk_widget_set_halign(gen_ui->status_label, GTK_ALIGN_START);
   gtk_widget_set_hexpand(gen_ui->status_label, TRUE);
   gtk_box_append(GTK_BOX(status_box), gen_ui->status_label);
+
+#ifdef NETPLAY
+  /* Netplay status indicator */
+  gen_ui->netplay_status_label = gtk_label_new("");
+  gtk_widget_set_halign(gen_ui->netplay_status_label, GTK_ALIGN_END);
+  gtk_box_append(GTK_BOX(status_box), gen_ui->netplay_status_label);
+#endif
 
   gtk_box_append(GTK_BOX(content_box), status_box);
 
@@ -857,6 +890,137 @@ void ui_action_quit(GSimpleAction *action, GVariant *parameter,
   gen_quit = 1;
   g_application_quit(G_APPLICATION(gen_ui->app));
 }
+
+#ifdef NETPLAY
+/*** Netplay UI Implementation ***/
+
+static void ui_netplay_update_status(void)
+{
+  if (gen_ui == nullptr || gen_ui->netplay_status_label == nullptr)
+    return;
+
+  netplay_state_t state = netplay_get_state();
+
+  switch (state) {
+  case NETPLAY_DISCONNECTED:
+    gtk_label_set_text(GTK_LABEL(gen_ui->netplay_status_label), "");
+    gen_ui->netplay_active = FALSE;
+    break;
+  case NETPLAY_CONNECTING:
+    gtk_label_set_text(GTK_LABEL(gen_ui->netplay_status_label), "Connecting...");
+    break;
+  case NETPLAY_LOBBY:
+    gtk_label_set_text(GTK_LABEL(gen_ui->netplay_status_label), "In Lobby");
+    gen_ui->netplay_active = TRUE;
+    break;
+  case NETPLAY_IN_GAME:
+    gtk_label_set_text(GTK_LABEL(gen_ui->netplay_status_label), "Online");
+    gen_ui->netplay_active = TRUE;
+    break;
+  case NETPLAY_ERROR:
+    gtk_label_set_text(GTK_LABEL(gen_ui->netplay_status_label), "Error");
+    gen_ui->netplay_active = FALSE;
+    break;
+  }
+}
+
+static void on_netplay_connect_response(AdwAlertDialog *dialog,
+                                        const char *response,
+                                        gpointer user_data)
+{
+  GtkWidget *entry = GTK_WIDGET(user_data);
+
+  if (g_strcmp0(response, "connect") != 0) {
+    return;
+  }
+
+  const char *server_str = gtk_editable_get_text(GTK_EDITABLE(entry));
+  if (server_str == nullptr || strlen(server_str) == 0) {
+    return;
+  }
+
+  /* Parse server:port (default Kaillera port is 27888) */
+  char server[256];
+  uint16_t port = 27888;
+
+  strncpy(server, server_str, sizeof(server) - 1);
+  server[sizeof(server) - 1] = '\0';
+
+  char *colon = strchr(server, ':');
+  if (colon != nullptr) {
+    *colon = '\0';
+    port = (uint16_t)atoi(colon + 1);
+    if (port == 0)
+      port = 27888;
+  }
+
+  /* Initialize netplay if not already done */
+  if (netplay_get_state() == NETPLAY_DISCONNECTED) {
+    netplay_init();
+  }
+
+  /* Configure and connect */
+  netplay_config_t config = {
+    .port = port,
+    .conn_type = NETPLAY_CONN_GOOD,
+    .local_player = 0
+  };
+  strncpy(config.server, server, sizeof(config.server) - 1);
+  strncpy(config.username, "Player", sizeof(config.username) - 1);
+
+  if (netplay_connect(&config) < 0) {
+    const char *error = netplay_get_error();
+    AdwDialog *err_dialog = adw_alert_dialog_new("Connection Failed",
+                                                  error ? error : "Unknown error");
+    adw_alert_dialog_add_response(ADW_ALERT_DIALOG(err_dialog), "ok", "OK");
+    adw_dialog_present(err_dialog, GTK_WIDGET(gen_ui->window));
+  }
+
+  ui_netplay_update_status();
+}
+
+static void ui_netplay_show_connect_dialog(void)
+{
+  AdwDialog *dialog = adw_alert_dialog_new("Connect to Kaillera Server", nullptr);
+
+  /* Create entry for server address */
+  GtkWidget *entry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(entry), "server:27888");
+  gtk_editable_set_width_chars(GTK_EDITABLE(entry), 30);
+  adw_alert_dialog_set_extra_child(ADW_ALERT_DIALOG(dialog), entry);
+
+  adw_alert_dialog_add_response(ADW_ALERT_DIALOG(dialog), "cancel", "Cancel");
+  adw_alert_dialog_add_response(ADW_ALERT_DIALOG(dialog), "connect", "Connect");
+  adw_alert_dialog_set_response_appearance(ADW_ALERT_DIALOG(dialog), "connect",
+                                           ADW_RESPONSE_SUGGESTED);
+  adw_alert_dialog_set_default_response(ADW_ALERT_DIALOG(dialog), "connect");
+
+  g_signal_connect(dialog, "response", G_CALLBACK(on_netplay_connect_response), entry);
+  adw_dialog_present(dialog, GTK_WIDGET(gen_ui->window));
+}
+
+static void ui_action_netplay_connect(GSimpleAction *action, GVariant *parameter,
+                                      gpointer user_data)
+{
+  (void)action;
+  (void)parameter;
+  (void)user_data;
+
+  ui_netplay_show_connect_dialog();
+}
+
+static void ui_action_netplay_disconnect(GSimpleAction *action, GVariant *parameter,
+                                         gpointer user_data)
+{
+  (void)action;
+  (void)parameter;
+  (void)user_data;
+
+  netplay_disconnect();
+  ui_netplay_update_status();
+}
+
+#endif /* NETPLAY */
 
 /*** Drawing and rendering ***/
 
@@ -2314,6 +2478,15 @@ static gpointer ui_emu_thread_func(gpointer data)
 
       /* Run frame if requested, or if audio buffer is getting low */
       if (frame_was_requested || pending < threshold * 2) {
+#ifdef NETPLAY
+        /* Synchronize with remote player if in netplay game */
+        if (netplay_get_state() == NETPLAY_IN_GAME) {
+          if (netplay_sync_frame() < 0) {
+            /* Connection lost - will be handled in main thread via poll */
+            netplay_disconnect();
+          }
+        }
+#endif
         gen_core_run_frame(ui->ctx);
       }
     }

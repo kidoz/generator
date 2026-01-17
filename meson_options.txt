@@ -29,3 +29,9 @@ option('gcc-version',
   value: 'auto',
   description: 'GCC optimization version (auto=detect, no=disable optimizations)'
 )
+
+option('netplay',
+  type: 'boolean',
+  value: false,
+  description: 'Enable Kaillera network multiplayer support'
+)

@@ -132,6 +132,12 @@ elif ui_backend == 'console'
   ui_deps = [sdl3_dep]
 endif
 
+# Netplay configuration
+enable_netplay = get_option('netplay')
+if enable_netplay
+  add_project_arguments('-DNETPLAY=1', language: 'c')
+endif
+
 # Include directories - organized by domain
 inc = include_directories(
   'include/generator',
@@ -153,6 +159,13 @@ subdir('src/persist')
 subdir('src/data')
 subdir('src/util')
 subdir('src/xbrz')
+
+# Network library (optional)
+if enable_netplay
+  subdir('src/network')
+else
+  network_dep = declare_dependency()
+endif
 
 # UI-specific libraries
 if ui_backend == 'gtk4'
@@ -178,6 +191,7 @@ summary({
   'Logging': enable_logging,
   'Optimizations': optimum ? 'enabled' : 'disabled',
   'JPEG Support': jpeg_dep.found(),
+  'Netplay': enable_netplay,
 }, section: 'Configuration')
 
 if ui_backend == 'gtk4'

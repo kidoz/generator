@@ -1,4 +1,3 @@
-/* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 /* GTK4/libadwaita user interface header */
 
 #ifndef UI_GTK4_H
@@ -152,6 +151,12 @@ typedef struct {
   /* Config */
   char *configfile;
   char *initload;
+
+#ifdef NETPLAY
+  /* Netplay state */
+  gboolean netplay_active;
+  GtkWidget *netplay_status_label;
+#endif
 } GenUI;
 
 /* Global UI instance */
