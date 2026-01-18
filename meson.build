@@ -138,6 +138,19 @@ if enable_netplay
   add_project_arguments('-DNETPLAY=1', language: 'c')
 endif
 
+# Audio quality configuration
+audio_rate = get_option('audio-rate')
+audio_oversampling = get_option('audio-oversampling')
+audio_hq_filter = get_option('audio-hq-filter')
+
+add_project_arguments('-DSOUND_SAMPLERATE=@0@'.format(audio_rate), language: 'c')
+add_project_arguments('-DSOUND_OVERSAMPLING=@0@'.format(audio_oversampling), language: 'c')
+if audio_hq_filter
+  add_project_arguments('-DSOUND_HQ_FILTER=1', language: 'c')
+else
+  add_project_arguments('-DSOUND_HQ_FILTER=0', language: 'c')
+endif
+
 # Include directories - organized by domain
 inc = include_directories(
   'include/generator',
@@ -193,6 +206,12 @@ summary({
   'JPEG Support': jpeg_dep.found(),
   'Netplay': enable_netplay,
 }, section: 'Configuration')
+
+summary({
+  'Sample Rate': '@0@ Hz'.format(audio_rate),
+  'Oversampling': '@0@x'.format(audio_oversampling),
+  'HQ Filter': audio_hq_filter,
+}, section: 'Audio Quality')
 
 if ui_backend == 'gtk4'
   summary({

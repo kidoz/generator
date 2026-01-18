@@ -1,7 +1,10 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
+/* Audiophile-quality sound system with oversampling, float processing, and dithering */
 
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
+#include <stdint.h>
 
 #include "generator.h"
 #include "gensound.h"
@@ -21,28 +24,31 @@
 
 /*** variables externed ***/
 
-int sound_debug = 0;              /* debug mode */
-int sound_feedback = 0;           /* -1, running out of sound
-                                     +0, lots of sound, do something */
-unsigned int sound_minfields = 5; /* min fields to try to buffer (optimized with
-                                     g_idle_add architecture) */
-unsigned int sound_maxfields = 10;           /* max fields before blocking */
-unsigned int sound_speed = SOUND_SAMPLERATE; /* sample rate */
-unsigned int sound_sampsperfield;            /* samples per field */
-unsigned int sound_threshold;                /* samples in buffer aiming for */
+int sound_debug = 0;
+int sound_feedback = 0;
+unsigned int sound_minfields = 5;
+unsigned int sound_maxfields = 10;
+unsigned int sound_speed = SOUND_SAMPLERATE;
+unsigned int sound_internal_rate = SOUND_INTERNAL_RATE;
+unsigned int sound_oversampling = SOUND_OVERSAMPLING;
+unsigned int sound_sampsperfield;
+unsigned int sound_threshold;
 uint8 sound_regs1[256];
 uint8 sound_regs2[256];
 uint8 sound_address1 = 0;
 uint8 sound_address2 = 0;
 uint8 sound_keys[8];
-int sound_logsample = 0;        /* sample to log or -1 if none */
-unsigned int sound_on = 1;      /* sound enabled */
-unsigned int sound_psg = 1;     /* psg enabled */
-unsigned int sound_fm = 1;      /* fm enabled */
-unsigned int sound_filter = 50; /* low-pass filter percentage (0-100) */
+int sound_logsample = 0;
+unsigned int sound_on = 1;
+unsigned int sound_psg = 1;
+unsigned int sound_fm = 1;
+unsigned int sound_filter = 50;
+unsigned int sound_hq_filter = SOUND_HQ_FILTER;
+sound_dither_t sound_dither_mode = SOUND_DITHER_TRIANGULAR;
 
-/* pal is lowest framerate */
-uint16 sound_soundbuf[2][SOUND_MAXRATE / 50];
+/* Audio buffers */
+uint16 sound_soundbuf[2][SOUND_BUFFER_SAMPLES];
+float sound_floatbuf[2][SOUND_BUFFER_SAMPLES * 4];
 
 /*** forward references ***/
 
@@ -52,14 +58,168 @@ static void sound_writetolog(unsigned char c);
 /*** file scoped variables ***/
 
 static int sound_active = 0;
-static uint8 *sound_logdata;               /* log data */
-static unsigned int sound_logdata_size;    /* sound_logdata size */
-static unsigned int sound_logdata_p;       /* current log data offset */
-static unsigned int sound_fieldhassamples; /* flag if field has samples */
+static uint8 *sound_logdata;
+static unsigned int sound_logdata_size;
+static unsigned int sound_logdata_p;
+static unsigned int sound_fieldhassamples;
+
+/* Internal oversampled buffers (for chip emulation at higher rate) */
+static int16_t *sound_oversample_buf[2];
+static size_t sound_oversample_buf_size;
+
+/* Dithering state (for TPDF) */
+static float dither_state_l = 0.0f;
+static float dither_state_r = 0.0f;
 
 #ifdef JFM
 static t_jfm_ctx *sound_ctx;
 #endif
+
+/*
+ * High-Quality Biquad Filter (float-based)
+ *
+ * Implements a cascaded biquad filter for audiophile-grade filtering.
+ * Uses double precision for coefficient calculation, float for processing.
+ */
+typedef struct {
+  float b0, b1, b2;  /* feedforward coefficients */
+  float a1, a2;      /* feedback coefficients (a0 normalized to 1) */
+  float z1, z2;      /* delay elements */
+} biquad_float_t;
+
+/* Initialize biquad for Butterworth low-pass */
+static void biquad_init_lowpass(biquad_float_t *f, double sample_rate, double cutoff_hz)
+{
+  double omega = 2.0 * M_PI * cutoff_hz / sample_rate;
+  double sin_omega = sin(omega);
+  double cos_omega = cos(omega);
+  double alpha = sin_omega / (2.0 * 0.7071067811865476); /* Q = 1/sqrt(2) for Butterworth */
+
+  double a0 = 1.0 + alpha;
+  f->b0 = (float)((1.0 - cos_omega) / 2.0 / a0);
+  f->b1 = (float)((1.0 - cos_omega) / a0);
+  f->b2 = (float)((1.0 - cos_omega) / 2.0 / a0);
+  f->a1 = (float)((-2.0 * cos_omega) / a0);
+  f->a2 = (float)((1.0 - alpha) / a0);
+  f->z1 = 0.0f;
+  f->z2 = 0.0f;
+}
+
+/* Initialize biquad for high-pass (DC blocking) */
+static void biquad_init_highpass(biquad_float_t *f, double sample_rate, double cutoff_hz)
+{
+  double omega = 2.0 * M_PI * cutoff_hz / sample_rate;
+  double sin_omega = sin(omega);
+  double cos_omega = cos(omega);
+  double alpha = sin_omega / (2.0 * 0.7071067811865476);
+
+  double a0 = 1.0 + alpha;
+  f->b0 = (float)((1.0 + cos_omega) / 2.0 / a0);
+  f->b1 = (float)(-(1.0 + cos_omega) / a0);
+  f->b2 = (float)((1.0 + cos_omega) / 2.0 / a0);
+  f->a1 = (float)((-2.0 * cos_omega) / a0);
+  f->a2 = (float)((1.0 - alpha) / a0);
+  f->z1 = 0.0f;
+  f->z2 = 0.0f;
+}
+
+/* Process sample through biquad (Direct Form II Transposed) */
+static inline float biquad_process_float(biquad_float_t *f, float in)
+{
+  float out = f->b0 * in + f->z1;
+  f->z1 = f->b1 * in - f->a1 * out + f->z2;
+  f->z2 = f->b2 * in - f->a2 * out;
+  return out;
+}
+
+/* Filter state for HQ filtering (cascaded stages) */
+static biquad_float_t hpf_l, hpf_r;           /* DC blocking high-pass */
+static biquad_float_t lpf1_l, lpf1_r;         /* Anti-aliasing low-pass stage 1 */
+static biquad_float_t lpf2_l, lpf2_r;         /* Anti-aliasing low-pass stage 2 */
+static biquad_float_t downsample_lpf_l, downsample_lpf_r; /* Decimation filter */
+static int filters_initialized = 0;
+
+/* Initialize all filters for current sample rate */
+static void init_filters(void)
+{
+  double output_rate = (double)sound_speed;
+  double internal_rate = (double)sound_internal_rate;
+
+  /* DC blocking high-pass at 10 Hz (removes DC offset) */
+  biquad_init_highpass(&hpf_l, internal_rate, 10.0);
+  biquad_init_highpass(&hpf_r, internal_rate, 10.0);
+
+  /* Nyquist frequency for output */
+  double nyquist = output_rate / 2.0;
+
+  /* Anti-aliasing low-pass: cutoff at 95% of Nyquist for gentle rolloff */
+  double cutoff = nyquist * 0.95;
+
+  /* Two cascaded 2nd-order Butterworth = 4th order (24 dB/octave) */
+  biquad_init_lowpass(&lpf1_l, internal_rate, cutoff);
+  biquad_init_lowpass(&lpf1_r, internal_rate, cutoff);
+  biquad_init_lowpass(&lpf2_l, internal_rate, cutoff * 0.9);
+  biquad_init_lowpass(&lpf2_r, internal_rate, cutoff * 0.9);
+
+  /* Decimation filter: steep cutoff just below Nyquist */
+  if (sound_oversampling > 1) {
+    biquad_init_lowpass(&downsample_lpf_l, internal_rate, nyquist * 0.85);
+    biquad_init_lowpass(&downsample_lpf_r, internal_rate, nyquist * 0.85);
+  }
+
+  filters_initialized = 1;
+
+  LOG_VERBOSE(("Audio filters initialized: output=%u Hz, internal=%u Hz, %ux oversampling",
+               sound_speed, sound_internal_rate, sound_oversampling));
+}
+
+/* Simple PRNG for dithering (fast, good quality) */
+static uint32_t dither_seed = 0x12345678;
+
+static inline float dither_random(void)
+{
+  /* Xorshift32 */
+  dither_seed ^= dither_seed << 13;
+  dither_seed ^= dither_seed >> 17;
+  dither_seed ^= dither_seed << 5;
+  /* Convert to float in range [-1, 1] */
+  return (float)((int32_t)dither_seed) / (float)0x7FFFFFFF;
+}
+
+/* Apply TPDF dithering (triangular probability density function) */
+static inline int16_t apply_dither(float sample, float *state)
+{
+  float dithered;
+
+  switch (sound_dither_mode) {
+  case SOUND_DITHER_NONE:
+    /* Simple truncation */
+    dithered = sample;
+    break;
+
+  case SOUND_DITHER_RECTANGULAR:
+    /* RPDF: single random value, +-0.5 LSB */
+    dithered = sample + dither_random() * 0.5f;
+    break;
+
+  case SOUND_DITHER_TRIANGULAR:
+  default:
+    /* TPDF: sum of two random values for triangular distribution, +-1 LSB */
+    {
+      float r1 = dither_random();
+      float r2 = *state;
+      *state = dither_random();
+      dithered = sample + (r1 + r2) * 0.5f;
+    }
+    break;
+  }
+
+  /* Clamp and convert to int16 */
+  if (dithered > 32767.0f) dithered = 32767.0f;
+  if (dithered < -32768.0f) dithered = -32768.0f;
+
+  return (int16_t)dithered;
+}
 
 /*** sound_init - initialise this sub-unit ***/
 
@@ -67,29 +227,43 @@ int sound_init(void)
 {
   int ret;
 
-  /* The sound_minfields parameter specifies how many fields worth of sound we
-     should try and keep around (a display field is 1/50th or 1/60th of a
-     second) - generator works by trying to keep sound_minfields number of
-     fields worth of sound around, and drops plotting frames to keep up on slow
-     machines */
-
-  sound_sampsperfield = sound_speed / vdp_framerate;
+  /* Calculate timing parameters - guard against division by zero */
+  unsigned int framerate = vdp_framerate ? vdp_framerate : 60;
+  sound_sampsperfield = sound_speed / framerate;
   sound_threshold = sound_sampsperfield * sound_minfields;
+
+  /* Allocate oversampling buffers if needed */
+  if (sound_oversampling > 1) {
+    size_t needed = (size_t)(sound_sampsperfield * sound_oversampling + 16);
+    if (needed > sound_oversample_buf_size) {
+      free(sound_oversample_buf[0]);
+      free(sound_oversample_buf[1]);
+      sound_oversample_buf[0] = malloc(needed * sizeof(int16_t));
+      sound_oversample_buf[1] = malloc(needed * sizeof(int16_t));
+      if (!sound_oversample_buf[0] || !sound_oversample_buf[1]) {
+        LOG_CRITICAL(("Failed to allocate oversampling buffers"));
+        return 1;
+      }
+      sound_oversample_buf_size = needed;
+    }
+  }
 
   ret = sound_start();
   if (ret)
     return ret;
+
+  /* Initialize sound chips at internal (oversampled) rate */
 #ifdef JFM
-  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_speed, nullptr,
+  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_internal_rate, nullptr,
                             nullptr)) == nullptr) {
 #else
-  if (YM2612Init(1, vdp_clock / 7, sound_speed, nullptr, nullptr)) {
+  if (YM2612Init(1, vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
 #endif
     LOG_VERBOSE(("YM2612 failed init"));
     sound_stop();
     return 1;
   }
-  if (SN76496Init(0, vdp_clock / 15, 0, sound_speed)) {
+  if (SN76496Init(0, vdp_clock / 15, 0, sound_internal_rate)) {
     LOG_VERBOSE(("SN76496 failed init"));
     sound_stop();
 #ifdef JFM
@@ -99,13 +273,20 @@ int sound_init(void)
 #endif
     return 1;
   }
+
+  /* Initialize filters */
+  init_filters();
+
   if (sound_logdata)
     free(sound_logdata);
   sound_logdata_size = 8192;
   sound_logdata = malloc(sound_logdata_size);
   if (!sound_logdata)
     ui_err("out of memory");
-  LOG_VERBOSE(("YM2612 Initialised @ sample rate %d", sound_speed));
+
+  LOG_VERBOSE(("Sound initialized: output=%u Hz, internal=%u Hz, %ux oversampling, HQ filter=%s",
+               sound_speed, sound_internal_rate, sound_oversampling,
+               sound_hq_filter ? "enabled" : "disabled"));
   return 0;
 }
 
@@ -119,6 +300,12 @@ void sound_final(void)
 #else
   YM2612Shutdown();
 #endif
+
+  free(sound_oversample_buf[0]);
+  free(sound_oversample_buf[1]);
+  sound_oversample_buf[0] = nullptr;
+  sound_oversample_buf[1] = nullptr;
+  sound_oversample_buf_size = 0;
 }
 
 /*** sound_start - start sound ***/
@@ -128,13 +315,9 @@ int sound_start(void)
   int result;
 
   if (sound_active) {
-    /* Already active - do a full reset including SDL audio subsystem restart.
-     * This fixes issues where audio doesn't work after stop/start cycles
-     * without a full SDL audio subsystem reinit. */
     LOG_VERBOSE(("Restarting sound (full reset)..."));
     result = soundp_reset();
   } else {
-    /* First start - just initialize */
     LOG_VERBOSE(("Starting sound..."));
     result = soundp_start();
   }
@@ -164,12 +347,8 @@ void sound_stop(void)
 
 int sound_reset(void)
 {
-  /* Use soundp_reset() directly for a full audio subsystem restart.
-   * This fixes issues where audio doesn't work after reset cycles
-   * without a full SDL audio subsystem reinit. */
   LOG_VERBOSE(("Resetting sound (full subsystem restart)..."));
 
-  /* Stop and shutdown sound chips */
   if (sound_active) {
     soundp_stop();
     sound_active = 0;
@@ -180,30 +359,29 @@ int sound_reset(void)
   YM2612Shutdown();
 #endif
 
-  /* Recalculate timing parameters */
-  sound_sampsperfield = sound_speed / vdp_framerate;
+  /* Calculate timing parameters - guard against division by zero */
+  unsigned int framerate = vdp_framerate ? vdp_framerate : 60;
+  sound_sampsperfield = sound_speed / framerate;
   sound_threshold = sound_sampsperfield * sound_minfields;
 
-  /* Do full audio subsystem restart */
   if (soundp_reset() != 0) {
     LOG_VERBOSE(("Failed to reset sound hardware"));
     return 1;
   }
   sound_active = 1;
 
-  /* Reinitialize sound chips */
 #ifdef JFM
-  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_speed, nullptr,
+  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_internal_rate, nullptr,
                             nullptr)) == nullptr) {
 #else
-  if (YM2612Init(1, vdp_clock / 7, sound_speed, nullptr, nullptr)) {
+  if (YM2612Init(1, vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
 #endif
     LOG_VERBOSE(("YM2612 failed init during reset"));
     soundp_stop();
     sound_active = 0;
     return 1;
   }
-  if (SN76496Init(0, vdp_clock / 15, 0, sound_speed)) {
+  if (SN76496Init(0, vdp_clock / 15, 0, sound_internal_rate)) {
     LOG_VERBOSE(("SN76496 failed init during reset"));
     soundp_stop();
     sound_active = 0;
@@ -214,6 +392,9 @@ int sound_reset(void)
 #endif
     return 1;
   }
+
+  /* Re-initialize filters */
+  init_filters();
 
   LOG_VERBOSE(("Sound reset complete."));
   return 0;
@@ -231,6 +412,7 @@ void sound_startfield(void)
     sound_fieldhassamples = 0;
   }
 }
+
 /*** sound_endfield - end frame and output sound ***/
 
 void sound_endfield(void)
@@ -240,16 +422,11 @@ void sound_endfield(void)
 
   if (gen_musiclog) {
     if (gen_musiclog == musiclog_gym) {
-      /* GYM format ends a field with a 0 byte */
       sound_writetolog(0);
     } else {
-      /* GNM format requires sifting through the data */
       if (!sound_fieldhassamples) {
-        /* we're only removing data, so we're going to write to the buffer
-           we're reading from */
         o = sound_logdata + 3;
-        for (p = sound_logdata + 3; p < (sound_logdata + sound_logdata_p);
-             p++) {
+        for (p = sound_logdata + 3; p < (sound_logdata + sound_logdata_p); p++) {
           if ((*p & 0xF0) != 0x00 || *p == 4)
             ui_err("assertion of no samples failed");
           switch (*p) {
@@ -257,42 +434,32 @@ void sound_endfield(void)
             ui_err("field marker in middle of field data");
           case 1:
           case 2:
-            /* FM data, copy 2 and two bytes to output */
             *o++ = *p++;
             *o++ = *p++;
             *o++ = *p;
             break;
           case 3:
-            /* PSG data, copy 3 and one byte to output */
             *o++ = *p++;
             *o++ = *p;
             break;
           case 5:
-            /* these are the bytes we're trying to strip */
-            /* do nothing */
             break;
           default:
             ui_err("invalid data in sound log buffer");
           }
         }
-        /* update new end of buffer */
         sound_logdata_p = o - sound_logdata;
-        sound_logdata[1] = 0; /* high byte number of samples */
-        sound_logdata[2] = 0; /* low byte number of samples */
+        sound_logdata[1] = 0;
+        sound_logdata[2] = 0;
       }
     }
-    /* write data */
     GEN_UI_CALL(g_ctx, musiclog, sound_logdata, sound_logdata_p);
-    /* sound_startfield resets everything */
   }
 
   if (!sound_on) {
-    /* sound is turned off - let generator continue */
     sound_feedback = 0;
     return;
   }
-
-  /* work out feedback from sound system */
 
   if ((pending = soundp_samplesbuffered()) == -1)
     ui_err("Failed to read pending bytes in output sound buffer");
@@ -302,10 +469,8 @@ void sound_endfield(void)
     sound_feedback = 0;
 
   if (sound_debug) {
-    LOG_VERBOSE(
-        ("End of field - sound system says %d bytes buffered", pending));
-    LOG_VERBOSE(("Threshold %d, therefore feedback = %d ", sound_threshold,
-                 sound_feedback));
+    LOG_VERBOSE(("End of field - %d samples buffered, threshold %d, feedback %d",
+                 pending, sound_threshold, sound_feedback));
   }
   soundp_output(sound_soundbuf[0], sound_soundbuf[1], sound_sampsperfield);
 }
@@ -331,12 +496,10 @@ void sound_ym2612store(uint8 addr, uint8 data)
     break;
   case 1:
     if (sound_address1 == 0x2a) {
-      /* sample data */
       sound_keys[7] = 0;
       sound_logsample = data;
     } else {
       if (gen_musiclog != musiclog_off) {
-        /* GYM and GNM */
         sound_writetolog(1);
         sound_writetolog(sound_address1);
         sound_writetolog(data);
@@ -350,7 +513,6 @@ void sound_ym2612store(uint8 addr, uint8 data)
     break;
   case 2:
     if (gen_musiclog != musiclog_off) {
-      /* GYM and GNM */
       sound_writetolog(2);
       sound_writetolog(sound_address2);
       sound_writetolog(data);
@@ -373,7 +535,6 @@ void sound_ym2612store(uint8 addr, uint8 data)
 void sound_sn76496store(uint8 data)
 {
   if (gen_musiclog != musiclog_off) {
-    /* GYM and GNM */
     sound_writetolog(3);
     sound_writetolog(data);
   }
@@ -396,7 +557,6 @@ void sound_genreset(void)
 void sound_line(void)
 {
   if (gen_musiclog == musiclog_gnm) {
-    /* GNM log */
     if (sound_logsample == -1) {
       sound_writetolog(5);
     } else {
@@ -405,191 +565,195 @@ void sound_line(void)
       }
       sound_writetolog(sound_logsample);
       sound_logsample = -1;
-      /* mark the fact that we have encountered a sample this field */
       sound_fieldhassamples = 1;
     }
   }
   sound_process();
 }
 
-/*** sound_process - process sound ***/
-
-/* Audio processing improvements:
- * - High-pass filter (DC blocking) to remove DC offset
- * - Improved mixing ratios based on hardware analysis
- * - Two-pole (biquad) low-pass filter for better anti-aliasing
- *
- * The real Genesis uses:
- * - YM2612: Main FM synthesis, louder in the mix
- * - SN76496: PSG for square waves/noise, softer in the mix
- *
- * High-pass filter: Removes DC offset and very low frequencies (< 20 Hz)
- * This prevents speaker damage and removes any DC bias from the DAC.
- *
- * Two-pole Butterworth low-pass filter:
- * Provides 12dB/octave rolloff (vs 6dB/octave for single-pole).
- * Uses biquad Direct Form II transposed for numerical stability.
- * Cutoff adjustable via sound_filter parameter.
- * At 50% setting, cutoff is approximately 14kHz at 44.1kHz sample rate.
- */
-
-/* Biquad filter state structure */
-typedef struct {
-  sint32 z1, z2;  /* delay elements (16.16 fixed point) */
-} biquad_state_t;
-
-/* Biquad filter coefficients (16.16 fixed point)
- * Precomputed for Butterworth low-pass at ~14kHz cutoff, 44.1kHz sample rate
- * These are the default coefficients; they get scaled by sound_filter */
-static const sint32 BIQUAD_B0 = 0x1E00;  /* ~0.117 */
-static const sint32 BIQUAD_B1 = 0x3C00;  /* ~0.234 */
-static const sint32 BIQUAD_B2 = 0x1E00;  /* ~0.117 */
-static const sint32 BIQUAD_A1 = -0x6000; /* ~-0.375 (negated for subtraction) */
-static const sint32 BIQUAD_A2 = 0x0400;  /* ~0.016 */
-
-/* Apply biquad filter to a sample (Direct Form II transposed) */
-static inline sint32 biquad_process(biquad_state_t *state, sint32 input,
-                                     sint32 b0, sint32 b1, sint32 b2,
-                                     sint32 a1, sint32 a2)
-{
-  /* y[n] = b0*x[n] + z1
-   * z1 = b1*x[n] + z2 - a1*y[n]
-   * z2 = b2*x[n] - a2*y[n] */
-  sint32 output = ((b0 * input) >> 16) + (state->z1 >> 16);
-  state->z1 = ((b1 * input) + state->z2) - (a1 * output);
-  state->z2 = (b2 * input) - (a2 * output);
-  return output;
-}
+/*** sound_process - process sound with oversampling and HQ filtering ***/
 
 static void sound_process(void)
 {
-  static sint16 *tbuf[2];
-  int s1 = (sound_sampsperfield * (vdp_line)) / vdp_totlines;
+  /* Calculate output sample range for this scanline */
+  int s1 = (sound_sampsperfield * vdp_line) / vdp_totlines;
   int s2 = (sound_sampsperfield * (vdp_line + 1)) / vdp_totlines;
-  /* pal is lowest framerate */
-  uint16 sn76496buf[SOUND_MAXRATE / 50]; /* far too much but who cares */
-  unsigned int samples = s2 - s1;
-  unsigned int i;
+  unsigned int output_samples = s2 - s1;
 
-  /* Biquad low-pass filter state (two-pole for better anti-aliasing) */
-  static biquad_state_t lpf_l = {0, 0};
-  static biquad_state_t lpf_r = {0, 0};
+  if (output_samples == 0 || s2 <= s1)
+    return;
 
-  /* High-pass filter state (DC blocking filter)
-   * Uses a simple single-pole high-pass: y[n] = alpha * (y[n-1] + x[n] - x[n-1])
-   * Alpha ~= 0.995 gives cutoff around 15 Hz at 44.1 kHz */
-  static sint32 hp_prev_in_l, hp_prev_in_r;
-  static sint32 hp_prev_out_l, hp_prev_out_r;
-  const sint32 HP_ALPHA = 0xFEB8; /* ~0.995 in 16.16 fixed point */
+  /* Initialize filters if not done */
+  if (!filters_initialized)
+    init_filters();
 
-  /* Scale biquad coefficients based on sound_filter (0-100%)
-   * 0% = no filtering (bypass), 100% = maximum filtering
-   * We interpolate the b coefficients toward unity gain at 0% */
-  sint32 filter_scale = (0x10000 * sound_filter) / 100;
-  sint32 b0 = BIQUAD_B0 + (((0x10000 - BIQUAD_B0) * (0x10000 - filter_scale)) >> 16);
-  sint32 b1 = (BIQUAD_B1 * filter_scale) >> 16;
-  sint32 b2 = (BIQUAD_B2 * filter_scale) >> 16;
-  sint32 a1 = (BIQUAD_A1 * filter_scale) >> 16;
-  sint32 a2 = (BIQUAD_A2 * filter_scale) >> 16;
+  /* Calculate internal (oversampled) sample count */
+  unsigned int internal_samples = output_samples * sound_oversampling;
 
-  tbuf[0] = sound_soundbuf[0] + s1;
-  tbuf[1] = sound_soundbuf[1] + s1;
+  /* Temporary buffers for chip output */
+  static int16_t fm_buf_l[SOUND_BUFFER_SAMPLES * 4];
+  static int16_t fm_buf_r[SOUND_BUFFER_SAMPLES * 4];
+  static uint16 psg_buf[SOUND_BUFFER_SAMPLES * 4];
+  int16_t *fm_bufs[2] = { fm_buf_l, fm_buf_r };
 
-  if (s2 > s1) {
-    if (sound_fm)
+  /* Generate samples at internal rate */
+  if (sound_fm) {
 #ifdef JFM
-      jfm_update(sound_ctx, (void **)tbuf, samples1);
+    jfm_update(sound_ctx, (void **)fm_bufs, internal_samples);
 #else
-      YM2612UpdateOne(0, tbuf, samples);
+    YM2612UpdateOne(0, fm_bufs, internal_samples);
 #endif
+  } else {
+    memset(fm_buf_l, 0, internal_samples * sizeof(int16_t));
+    memset(fm_buf_r, 0, internal_samples * sizeof(int16_t));
+  }
 
-    /* Mixing ratios (improved based on hardware analysis):
-     * YM2612: Full level (14-bit output after internal limiting)
-     * SN76496: Outputs in range 0 to 0x7fff, subtract 0x4000 for signed
-     *
-     * Real hardware has PSG slightly quieter than FM.
-     * We use: FM * 7/8 + PSG * 3/8 for better balance.
-     * This gives more headroom and prevents clipping. */
+  if (sound_psg) {
+    SN76496Update(0, psg_buf, internal_samples);
+  }
 
-    if (sound_fm && sound_psg) {
-      SN76496Update(0, sn76496buf, samples);
-      for (i = 0; i < samples; i++) {
-        /* Convert PSG to signed and scale */
-        sint32 snsample = ((sint32)sn76496buf[i] - 0x4000) * 3 / 8;
-        /* Scale FM for headroom */
-        sint32 l = snsample + ((tbuf[0][i] * 7) >> 3);
-        sint32 r = snsample + ((tbuf[1][i] * 7) >> 3);
+  /* Process through float pipeline */
+  float *out_l = sound_floatbuf[0];
+  float *out_r = sound_floatbuf[1];
 
-        /* High-pass filter (DC blocking) */
-        sint32 hp_l = (HP_ALPHA * (hp_prev_out_l + l - hp_prev_in_l)) >> 16;
-        sint32 hp_r = (HP_ALPHA * (hp_prev_out_r + r - hp_prev_in_r)) >> 16;
-        hp_prev_in_l = l;
-        hp_prev_in_r = r;
-        hp_prev_out_l = hp_l;
-        hp_prev_out_r = hp_r;
+  for (unsigned int i = 0; i < internal_samples; i++) {
+    /* Convert to float and mix
+     * FM: already signed 16-bit
+     * PSG: unsigned 16-bit, convert to signed and scale
+     * Mix ratio: FM * 0.875 + PSG * 0.375 (leaves headroom) */
+    float fm_l = (float)fm_buf_l[i];
+    float fm_r = (float)fm_buf_r[i];
+    float psg = sound_psg ? ((float)psg_buf[i] - 16384.0f) : 0.0f;
 
-        /* Two-pole low-pass filter (biquad for better anti-aliasing) */
-        sint32 lp_l = biquad_process(&lpf_l, hp_l, b0, b1, b2, a1, a2);
-        sint32 lp_r = biquad_process(&lpf_r, hp_r, b0, b1, b2, a1, a2);
-        tbuf[0][i] = lp_l;
-        tbuf[1][i] = lp_r;
+    float mix_l = fm_l * 0.875f + psg * 0.375f;
+    float mix_r = fm_r * 0.875f + psg * 0.375f;
+
+    /* Apply HQ filtering if enabled */
+    if (sound_hq_filter) {
+      /* DC blocking high-pass */
+      mix_l = biquad_process_float(&hpf_l, mix_l);
+      mix_r = biquad_process_float(&hpf_r, mix_r);
+
+      /* Anti-aliasing low-pass (cascaded for steeper rolloff) */
+      mix_l = biquad_process_float(&lpf1_l, mix_l);
+      mix_r = biquad_process_float(&lpf1_r, mix_r);
+      mix_l = biquad_process_float(&lpf2_l, mix_l);
+      mix_r = biquad_process_float(&lpf2_r, mix_r);
+    }
+
+    out_l[i] = mix_l;
+    out_r[i] = mix_r;
+  }
+
+  /* Downsample if oversampling is active */
+  uint16 *dest_l = sound_soundbuf[0] + s1;
+  uint16 *dest_r = sound_soundbuf[1] + s1;
+
+  if (sound_oversampling > 1) {
+    /* Apply decimation filter and downsample */
+    for (unsigned int i = 0; i < output_samples; i++) {
+      float sum_l = 0.0f, sum_r = 0.0f;
+
+      /* Average oversampled values with filtering */
+      for (unsigned int j = 0; j < sound_oversampling; j++) {
+        unsigned int idx = i * sound_oversampling + j;
+        float sample_l = out_l[idx];
+        float sample_r = out_r[idx];
+
+        /* Apply decimation filter */
+        if (sound_hq_filter) {
+          sample_l = biquad_process_float(&downsample_lpf_l, sample_l);
+          sample_r = biquad_process_float(&downsample_lpf_r, sample_r);
+        }
+
+        sum_l += sample_l;
+        sum_r += sample_r;
       }
-    } else if (!sound_fm && !sound_psg) {
-      /* no sound */
-      memset(tbuf[0], 0, 2 * samples);
-      memset(tbuf[1], 0, 2 * samples);
-    } else if (sound_fm) {
-      /* fm only */
-      for (i = 0; i < samples; i++) {
-        sint32 l = (tbuf[0][i] * 7) >> 3;
-        sint32 r = (tbuf[1][i] * 7) >> 3;
 
-        /* High-pass filter (DC blocking) */
-        sint32 hp_l = (HP_ALPHA * (hp_prev_out_l + l - hp_prev_in_l)) >> 16;
-        sint32 hp_r = (HP_ALPHA * (hp_prev_out_r + r - hp_prev_in_r)) >> 16;
-        hp_prev_in_l = l;
-        hp_prev_in_r = r;
-        hp_prev_out_l = hp_l;
-        hp_prev_out_r = hp_r;
+      /* Average and convert to int16 with dithering */
+      float final_l = sum_l / (float)sound_oversampling;
+      float final_r = sum_r / (float)sound_oversampling;
 
-        /* Two-pole low-pass filter (biquad for better anti-aliasing) */
-        sint32 lp_l = biquad_process(&lpf_l, hp_l, b0, b1, b2, a1, a2);
-        sint32 lp_r = biquad_process(&lpf_r, hp_r, b0, b1, b2, a1, a2);
-        tbuf[0][i] = lp_l;
-        tbuf[1][i] = lp_r;
-      }
-    } else {
-      /* psg only */
-      SN76496Update(0, sn76496buf, samples);
-      for (i = 0; i < samples; i++) {
-        sint32 snsample = ((sint32)sn76496buf[i] - 0x4000) * 3 / 8;
-
-        /* High-pass filter (DC blocking) */
-        sint32 hp_l = (HP_ALPHA * (hp_prev_out_l + snsample - hp_prev_in_l)) >> 16;
-        sint32 hp_r = (HP_ALPHA * (hp_prev_out_r + snsample - hp_prev_in_r)) >> 16;
-        hp_prev_in_l = snsample;
-        hp_prev_in_r = snsample;
-        hp_prev_out_l = hp_l;
-        hp_prev_out_r = hp_r;
-
-        /* Two-pole low-pass filter (biquad for better anti-aliasing) */
-        sint32 lp_l = biquad_process(&lpf_l, hp_l, b0, b1, b2, a1, a2);
-        sint32 lp_r = biquad_process(&lpf_r, hp_r, b0, b1, b2, a1, a2);
-        tbuf[0][i] = lp_l;
-        tbuf[1][i] = lp_r;
-      }
+      dest_l[i] = (uint16)apply_dither(final_l, &dither_state_l);
+      dest_r[i] = (uint16)apply_dither(final_r, &dither_state_r);
+    }
+  } else {
+    /* No oversampling - direct conversion with dithering */
+    for (unsigned int i = 0; i < output_samples; i++) {
+      dest_l[i] = (uint16)apply_dither(out_l[i], &dither_state_l);
+      dest_r[i] = (uint16)apply_dither(out_r[i], &dither_state_r);
     }
   }
+}
+
+/*** Audio quality control API ***/
+
+int sound_set_quality(sound_quality_t quality)
+{
+  switch (quality) {
+  case SOUND_QUALITY_LOW:
+    sound_speed = 44100;
+    sound_oversampling = 1;
+    sound_hq_filter = 0;
+    break;
+  case SOUND_QUALITY_MEDIUM:
+    sound_speed = 48000;
+    sound_oversampling = 2;
+    sound_hq_filter = 1;
+    break;
+  case SOUND_QUALITY_HIGH:
+    sound_speed = 96000;
+    sound_oversampling = 4;
+    sound_hq_filter = 1;
+    break;
+  case SOUND_QUALITY_CUSTOM:
+    /* Keep current settings */
+    break;
+  }
+
+  sound_internal_rate = sound_speed * sound_oversampling;
+  filters_initialized = 0; /* Force filter recalculation */
+
+  return sound_reset();
+}
+
+int sound_set_sample_rate(unsigned int rate)
+{
+  if (rate != 44100 && rate != 48000 && rate != 96000) {
+    LOG_VERBOSE(("Invalid sample rate %u, must be 44100, 48000, or 96000", rate));
+    return -1;
+  }
+
+  sound_speed = rate;
+  sound_internal_rate = sound_speed * sound_oversampling;
+  filters_initialized = 0;
+
+  return sound_reset();
+}
+
+int sound_set_oversampling(unsigned int factor)
+{
+  if (factor != 1 && factor != 2 && factor != 4) {
+    LOG_VERBOSE(("Invalid oversampling factor %u, must be 1, 2, or 4", factor));
+    return -1;
+  }
+
+  sound_oversampling = factor;
+  sound_internal_rate = sound_speed * sound_oversampling;
+  filters_initialized = 0;
+
+  return sound_reset();
+}
+
+void sound_set_dither_mode(sound_dither_t mode)
+{
+  sound_dither_mode = mode;
 }
 
 /*** sound_writetolog - write to music log buffer ***/
 
 static void sound_writetolog(unsigned char c)
 {
-  /* write the byte to the self-expanding memory log - when we have the whole
-     field's worth of data we then sift through the data (see the
-     documentation on the GNM log format) and then pass it to ui_writelog */
-
   sound_logdata[sound_logdata_p++] = c;
   if (sound_logdata_p >= sound_logdata_size) {
     LOG_VERBOSE(("sound log buffer limit increased"));

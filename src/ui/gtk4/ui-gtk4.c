@@ -89,6 +89,21 @@ static void ui_gtk4_apply_scaler(const char *scaler_name);
 static void ui_gtk4_on_scaler_changed(GObject *row, GParamSpec *pspec,
                                       gpointer user_data);
 
+/* Audio quality settings */
+static void ui_gtk4_apply_audio_samplerate(const char *rate);
+static void ui_gtk4_apply_audio_oversampling(const char *factor);
+static void ui_gtk4_apply_audio_hqfilter(gboolean enabled);
+static void ui_gtk4_apply_audio_dither(const char *mode);
+static void ui_gtk4_on_audio_samplerate_changed(GObject *row, GParamSpec *pspec,
+                                                gpointer user_data);
+static void ui_gtk4_on_audio_oversampling_changed(GObject *row, GParamSpec *pspec,
+                                                  gpointer user_data);
+static void ui_gtk4_on_audio_hqfilter_changed(GObject *row, GParamSpec *pspec,
+                                              gpointer user_data);
+static void ui_gtk4_on_audio_dither_changed(GObject *row, GParamSpec *pspec,
+                                            gpointer user_data);
+void ui_gtk4_mark_audio_ready(void);
+
 #ifdef NETPLAY
 /*** Netplay UI functions ***/
 static void ui_action_netplay_connect(GSimpleAction *action, GVariant *parameter,
@@ -279,6 +294,15 @@ int ui_init(int argc, char *argv[])
   /* Apply scaler setting from config */
   ui_gtk4_apply_scaler(gtkopts_getvalue("scaler"));
 
+  /* Apply audio quality settings from config */
+  ui_gtk4_apply_audio_samplerate(gtkopts_getvalue("audio_samplerate"));
+  ui_gtk4_apply_audio_oversampling(gtkopts_getvalue("audio_oversampling"));
+  {
+    const char *hq = gtkopts_getvalue("audio_hqfilter");
+    ui_gtk4_apply_audio_hqfilter(hq == nullptr || strcmp(hq, "on") == 0);
+  }
+  ui_gtk4_apply_audio_dither(gtkopts_getvalue("audio_dither"));
+
   /* Initialize SDL for gamepad support only.
    * NOTE: We do NOT initialize SDL_INIT_VIDEO because GTK4 handles all rendering.
    * Initializing SDL video can conflict with GTK4's Wayland/X11 display handling. */
@@ -382,6 +406,9 @@ int ui_loop(void)
     /* Default ROM loaded, start emulation */
     gen_ui->running = TRUE;
   }
+
+  /* Mark audio system as ready for runtime changes */
+  ui_gtk4_mark_audio_ready();
 
   /* Run GTK application */
   int status = g_application_run(G_APPLICATION(gen_ui->app), 0, nullptr);
@@ -2095,6 +2122,190 @@ static void ui_gtk4_on_scaler_changed(GObject *row_object, GParamSpec *pspec,
     ui_update_texture();
 }
 
+/*** Audio Quality Settings ***/
+
+/* Flag to track if sound system is initialized (enables runtime changes) */
+static gboolean audio_system_ready = FALSE;
+
+void ui_gtk4_mark_audio_ready(void)
+{
+  audio_system_ready = TRUE;
+}
+
+static void ui_gtk4_apply_audio_samplerate(const char *rate)
+{
+  if (!rate)
+    rate = "48000";
+
+  unsigned int sample_rate = 48000;
+  if (strcmp(rate, "44100") == 0)
+    sample_rate = 44100;
+  else if (strcmp(rate, "96000") == 0)
+    sample_rate = 96000;
+
+  if (audio_system_ready) {
+    /* Runtime change - do full reset */
+    if (sound_set_sample_rate(sample_rate) == 0) {
+      fprintf(stderr, "Audio sample rate changed to: %u Hz\n", sample_rate);
+    } else {
+      fprintf(stderr, "Failed to change audio sample rate to %u Hz\n", sample_rate);
+    }
+  } else {
+    /* Startup - just set variables, sound_init() will use them later */
+    sound_speed = sample_rate;
+    sound_internal_rate = sample_rate * sound_oversampling;
+    fprintf(stderr, "Audio sample rate configured: %u Hz\n", sample_rate);
+  }
+}
+
+static void ui_gtk4_apply_audio_oversampling(const char *factor)
+{
+  if (!factor)
+    factor = "2";
+
+  unsigned int os = 2;
+  if (strcmp(factor, "1") == 0)
+    os = 1;
+  else if (strcmp(factor, "4") == 0)
+    os = 4;
+
+  if (audio_system_ready) {
+    /* Runtime change - do full reset */
+    if (sound_set_oversampling(os) == 0) {
+      fprintf(stderr, "Audio oversampling changed to: %ux\n", os);
+    } else {
+      fprintf(stderr, "Failed to change audio oversampling to %ux\n", os);
+    }
+  } else {
+    /* Startup - just set variables, sound_init() will use them later */
+    sound_oversampling = os;
+    sound_internal_rate = sound_speed * os;
+    fprintf(stderr, "Audio oversampling configured: %ux\n", os);
+  }
+}
+
+static void ui_gtk4_apply_audio_hqfilter(gboolean enabled)
+{
+  sound_hq_filter = enabled ? 1 : 0;
+  fprintf(stderr, "Audio HQ filter %s\n", enabled ? "enabled" : "disabled");
+}
+
+static void ui_gtk4_apply_audio_dither(const char *mode)
+{
+  if (!mode)
+    mode = "triangular";
+
+  sound_dither_t dither_mode = SOUND_DITHER_TRIANGULAR;
+  if (strcmp(mode, "none") == 0)
+    dither_mode = SOUND_DITHER_NONE;
+  else if (strcmp(mode, "rectangular") == 0)
+    dither_mode = SOUND_DITHER_RECTANGULAR;
+
+  sound_set_dither_mode(dither_mode);
+  fprintf(stderr, "Audio dithering set to: %s\n", mode);
+}
+
+static void ui_gtk4_on_audio_samplerate_changed(GObject *row_object,
+                                                GParamSpec *pspec,
+                                                gpointer user_data)
+{
+  (void)pspec;
+  (void)user_data;
+
+  if (!gen_ui)
+    return;
+
+  AdwComboRow *row = ADW_COMBO_ROW(row_object);
+  guint index = adw_combo_row_get_selected(row);
+  if (index == GTK_INVALID_LIST_POSITION)
+    return;
+
+  const char *rates[] = {"44100", "48000", "96000"};
+  if (index >= G_N_ELEMENTS(rates))
+    return;
+
+  const char *rate = rates[index];
+  ui_gtk4_apply_audio_samplerate(rate);
+  gtkopts_setvalue("audio_samplerate", rate);
+
+  if (gen_ui->configfile)
+    gtkopts_save(gen_ui->configfile);
+}
+
+static void ui_gtk4_on_audio_oversampling_changed(GObject *row_object,
+                                                  GParamSpec *pspec,
+                                                  gpointer user_data)
+{
+  (void)pspec;
+  (void)user_data;
+
+  if (!gen_ui)
+    return;
+
+  AdwComboRow *row = ADW_COMBO_ROW(row_object);
+  guint index = adw_combo_row_get_selected(row);
+  if (index == GTK_INVALID_LIST_POSITION)
+    return;
+
+  const char *factors[] = {"1", "2", "4"};
+  if (index >= G_N_ELEMENTS(factors))
+    return;
+
+  const char *factor = factors[index];
+  ui_gtk4_apply_audio_oversampling(factor);
+  gtkopts_setvalue("audio_oversampling", factor);
+
+  if (gen_ui->configfile)
+    gtkopts_save(gen_ui->configfile);
+}
+
+static void ui_gtk4_on_audio_hqfilter_changed(GObject *row_object,
+                                              GParamSpec *pspec,
+                                              gpointer user_data)
+{
+  (void)pspec;
+  (void)user_data;
+
+  if (!gen_ui)
+    return;
+
+  AdwSwitchRow *row = ADW_SWITCH_ROW(row_object);
+  gboolean enabled = adw_switch_row_get_active(row);
+
+  ui_gtk4_apply_audio_hqfilter(enabled);
+  gtkopts_setvalue("audio_hqfilter", enabled ? "on" : "off");
+
+  if (gen_ui->configfile)
+    gtkopts_save(gen_ui->configfile);
+}
+
+static void ui_gtk4_on_audio_dither_changed(GObject *row_object,
+                                            GParamSpec *pspec,
+                                            gpointer user_data)
+{
+  (void)pspec;
+  (void)user_data;
+
+  if (!gen_ui)
+    return;
+
+  AdwComboRow *row = ADW_COMBO_ROW(row_object);
+  guint index = adw_combo_row_get_selected(row);
+  if (index == GTK_INVALID_LIST_POSITION)
+    return;
+
+  const char *modes[] = {"none", "rectangular", "triangular"};
+  if (index >= G_N_ELEMENTS(modes))
+    return;
+
+  const char *mode = modes[index];
+  ui_gtk4_apply_audio_dither(mode);
+  gtkopts_setvalue("audio_dither", mode);
+
+  if (gen_ui->configfile)
+    gtkopts_save(gen_ui->configfile);
+}
+
 static guint ui_gtk4_find_scaler_index(t_filter_type filter_type)
 {
   for (guint i = 0; scaler_map[i].name; i++) {
@@ -2152,6 +2363,117 @@ static void ui_gtk4_ensure_preferences_window(void)
                             GTK_WIDGET(row));
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(audio_page),
                            ADW_PREFERENCES_GROUP(audio_group));
+
+  /* Audio Quality group */
+  GtkWidget *quality_group = adw_preferences_group_new();
+  adw_preferences_group_set_title(ADW_PREFERENCES_GROUP(quality_group), "Quality");
+  adw_preferences_group_set_description(
+      ADW_PREFERENCES_GROUP(quality_group),
+      "Configure audio quality settings. Higher values provide better sound "
+      "but use more CPU. Changes take effect immediately.");
+
+  /* Sample Rate dropdown */
+  GtkStringList *samplerate_model = gtk_string_list_new(nullptr);
+  gtk_string_list_append(samplerate_model, "44100 Hz (CD Quality)");
+  gtk_string_list_append(samplerate_model, "48000 Hz (Recommended)");
+  gtk_string_list_append(samplerate_model, "96000 Hz (High Resolution)");
+
+  AdwComboRow *samplerate_row = ADW_COMBO_ROW(adw_combo_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(samplerate_row), "Sample Rate");
+  adw_combo_row_set_model(samplerate_row, G_LIST_MODEL(samplerate_model));
+
+  gen_ui->audio_samplerate_row = GTK_WIDGET(samplerate_row);
+
+  /* Set current selection based on config */
+  const char *current_rate = gtkopts_getvalue("audio_samplerate");
+  guint rate_index = 1; /* default to 48000 */
+  if (current_rate) {
+    if (strcmp(current_rate, "44100") == 0) rate_index = 0;
+    else if (strcmp(current_rate, "96000") == 0) rate_index = 2;
+  }
+  adw_combo_row_set_selected(samplerate_row, rate_index);
+
+  g_signal_connect(samplerate_row, "notify::selected",
+                   G_CALLBACK(ui_gtk4_on_audio_samplerate_changed), nullptr);
+
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(quality_group),
+                            GTK_WIDGET(samplerate_row));
+
+  /* Oversampling dropdown */
+  GtkStringList *oversampling_model = gtk_string_list_new(nullptr);
+  gtk_string_list_append(oversampling_model, "1× (No Oversampling)");
+  gtk_string_list_append(oversampling_model, "2× (Recommended)");
+  gtk_string_list_append(oversampling_model, "4× (Best Quality)");
+
+  AdwComboRow *oversampling_row = ADW_COMBO_ROW(adw_combo_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(oversampling_row), "Oversampling");
+  adw_combo_row_set_model(oversampling_row, G_LIST_MODEL(oversampling_model));
+
+  gen_ui->audio_oversampling_row = GTK_WIDGET(oversampling_row);
+
+  /* Set current selection based on config */
+  const char *current_os = gtkopts_getvalue("audio_oversampling");
+  guint os_index = 1; /* default to 2x */
+  if (current_os) {
+    if (strcmp(current_os, "1") == 0) os_index = 0;
+    else if (strcmp(current_os, "4") == 0) os_index = 2;
+  }
+  adw_combo_row_set_selected(oversampling_row, os_index);
+
+  g_signal_connect(oversampling_row, "notify::selected",
+                   G_CALLBACK(ui_gtk4_on_audio_oversampling_changed), nullptr);
+
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(quality_group),
+                            GTK_WIDGET(oversampling_row));
+
+  /* HQ Filter switch */
+  AdwSwitchRow *hqfilter_row = ADW_SWITCH_ROW(adw_switch_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(hqfilter_row), "High-Quality Filter");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(hqfilter_row),
+                              "Multi-stage Butterworth filtering for cleaner sound");
+
+  gen_ui->audio_hqfilter_row = GTK_WIDGET(hqfilter_row);
+
+  /* Set current state based on config */
+  const char *current_hq = gtkopts_getvalue("audio_hqfilter");
+  gboolean hq_enabled = (current_hq == nullptr || strcmp(current_hq, "on") == 0);
+  adw_switch_row_set_active(hqfilter_row, hq_enabled);
+
+  g_signal_connect(hqfilter_row, "notify::active",
+                   G_CALLBACK(ui_gtk4_on_audio_hqfilter_changed), nullptr);
+
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(quality_group),
+                            GTK_WIDGET(hqfilter_row));
+
+  /* Dithering dropdown */
+  GtkStringList *dither_model = gtk_string_list_new(nullptr);
+  gtk_string_list_append(dither_model, "None (Truncation)");
+  gtk_string_list_append(dither_model, "Rectangular (RPDF)");
+  gtk_string_list_append(dither_model, "Triangular (TPDF, Recommended)");
+
+  AdwComboRow *dither_row = ADW_COMBO_ROW(adw_combo_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(dither_row), "Dithering");
+  adw_combo_row_set_model(dither_row, G_LIST_MODEL(dither_model));
+
+  gen_ui->audio_dither_row = GTK_WIDGET(dither_row);
+
+  /* Set current selection based on config */
+  const char *current_dither = gtkopts_getvalue("audio_dither");
+  guint dither_index = 2; /* default to triangular */
+  if (current_dither) {
+    if (strcmp(current_dither, "none") == 0) dither_index = 0;
+    else if (strcmp(current_dither, "rectangular") == 0) dither_index = 1;
+  }
+  adw_combo_row_set_selected(dither_row, dither_index);
+
+  g_signal_connect(dither_row, "notify::selected",
+                   G_CALLBACK(ui_gtk4_on_audio_dither_changed), nullptr);
+
+  adw_preferences_group_add(ADW_PREFERENCES_GROUP(quality_group),
+                            GTK_WIDGET(dither_row));
+
+  adw_preferences_page_add(ADW_PREFERENCES_PAGE(audio_page),
+                           ADW_PREFERENCES_GROUP(quality_group));
   adw_preferences_window_add(prefs, ADW_PREFERENCES_PAGE(audio_page));
 
   /* Video preferences page */

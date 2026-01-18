@@ -35,3 +35,24 @@ option('netplay',
   value: true,
   description: 'Enable Kaillera network multiplayer support'
 )
+
+# Audio quality options
+option('audio-rate',
+  type: 'combo',
+  choices: ['44100', '48000', '96000'],
+  value: '48000',
+  description: 'Audio sample rate in Hz (48000 recommended for modern systems)'
+)
+
+option('audio-oversampling',
+  type: 'combo',
+  choices: ['1', '2', '4'],
+  value: '2',
+  description: 'Internal oversampling factor for anti-aliasing (2x recommended)'
+)
+
+option('audio-hq-filter',
+  type: 'boolean',
+  value: true,
+  description: 'Enable high-quality multi-stage audio filtering'
+)

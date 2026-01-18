@@ -124,6 +124,12 @@ typedef struct {
   GPtrArray *audio_driver_ids;
   char *audio_driver_selection;
 
+  /* Audio quality settings */
+  GtkWidget *audio_samplerate_row;
+  GtkWidget *audio_oversampling_row;
+  GtkWidget *audio_hqfilter_row;
+  GtkWidget *audio_dither_row;
+
   /* Input - Keyboard */
   t_gtk4keys controllers[2];
 

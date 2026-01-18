@@ -82,6 +82,14 @@ static t_opts gtkopts_opts[] = {
      "Low-pass sound filter - 0 turns it off, 100 filters too much"},
     {"scaler", "none, scale2x, scale3x, scale4x, xbrz2x, xbrz3x, xbrz4x",
      "scale2x", "Video upscaling filter (xBRZ is higher quality but slower)"},
+    {"audio_samplerate", "44100, 48000, 96000", "48000",
+     "Audio output sample rate in Hz (higher = better quality)"},
+    {"audio_oversampling", "1, 2, 4", "2",
+     "Internal oversampling factor (higher = less aliasing, more CPU)"},
+    {"audio_hqfilter", "on, off", "on",
+     "High-quality multi-stage audio filtering"},
+    {"audio_dither", "none, rectangular, triangular", "triangular",
+     "Dithering mode for 16-bit output (triangular recommended)"},
     {nullptr, nullptr, nullptr, nullptr}};
 
 /* *INDENT-ON* */
