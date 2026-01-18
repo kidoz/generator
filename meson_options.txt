@@ -32,6 +32,6 @@ option('gcc-version',
 
 option('netplay',
   type: 'boolean',
-  value: false,
+  value: true,
   description: 'Enable Kaillera network multiplayer support'
 )
