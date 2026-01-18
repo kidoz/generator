@@ -1,3 +1,6 @@
+#ifndef GENERATOR_UIP_H
+#define GENERATOR_UIP_H
+
 /* this structure is used to pass information from the uip (ui platform
    dependent) bit to the main ui-console bit, it is passed to uip in the
    uip_init() function, but it is setup in uip_vgamode() function */
@@ -29,3 +32,5 @@ void uip_doublebank(void);
 uint8 uip_getchar(void);
 void uip_clearmiddle(void);
 int uip_setcolourbits(int red, int green, int blue);
+
+#endif /* GENERATOR_UIP_H */

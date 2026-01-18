@@ -3714,6 +3714,11 @@ static void YM2612_postload(void)
 {
   int num, r;
 
+  /* Ensure FM2612 is initialized before accessing */
+  if (FM2612 == nullptr) {
+    return;
+  }
+
   for (num = 0; num < YM2612NumChips; num++) {
     /* DAC data & port */
     /* James Ponder 2001-09-30 level setting of 5 found suitable */
@@ -3745,6 +3750,11 @@ void YM2612_save_state(void)
 {
   int num;
   const char statename[] = "YM2612";
+
+  /* Ensure FM2612 is initialized before accessing */
+  if (FM2612 == nullptr) {
+    return;
+  }
 
   for (num = 0; num < YM2612NumChips; num++) {
     state_save_register_UINT8(statename, num, "regs", FM2612[num].REGS, 512);

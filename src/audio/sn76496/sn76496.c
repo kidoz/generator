@@ -35,6 +35,7 @@
 #include "generator.h"
 
 #include "sn76496.h"
+#include "state.h"
 
 #define MAX_OUTPUT 0x7fff
 #define STEP 0x10000
@@ -337,4 +338,26 @@ int SN76496Init(int chip, int clock, int gain, int sample_rate)
   SN76496_set_gain(chip, gain & 0xff);
 
   return 0;
+}
+
+/*** SN76496_save_state - save/load SN76496 state ***/
+
+void SN76496_save_state(void)
+{
+  int chip;
+  const char statename[] = "SN76496";
+
+  for (chip = 0; chip < MAX_76496; chip++) {
+    struct SN76496 *R = &sn[chip];
+
+    /* Save/load register state */
+    state_transfer32(statename, "Register", chip, (uint32 *)R->Register, 8);
+    state_transfer32(statename, "LastReg", chip, (uint32 *)&R->LastRegister, 1);
+    state_transfer32(statename, "Volume", chip, (uint32 *)R->Volume, 4);
+    state_transfer32(statename, "RNG", chip, &R->RNG, 1);
+    state_transfer32(statename, "NoiseFB", chip, (uint32 *)&R->NoiseFB, 1);
+    state_transfer32(statename, "Period", chip, (uint32 *)R->Period, 4);
+    state_transfer32(statename, "Count", chip, (uint32 *)R->Count, 4);
+    state_transfer32(statename, "Output", chip, (uint32 *)R->Output, 4);
+  }
 }

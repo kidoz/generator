@@ -1,3 +1,6 @@
+#ifndef GENERATOR_UI_H
+#define GENERATOR_UI_H
+
 int ui_init(int argc, char *argv[]);
 int ui_loop(void);
 void ui_line(int line);
@@ -13,3 +16,5 @@ void ui_log_critical(const char *text, ...);
 void ui_log_request(const char *text, ...);
 [[noreturn]] void ui_err(const char *text, ...);
 void ui_musiclog(uint8 *data, unsigned int length);
+
+#endif /* GENERATOR_UI_H */

@@ -1,8 +1,8 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 /* Core API - Clean interface for emulator control */
 
-#ifndef GEN_CORE_H
-#define GEN_CORE_H
+#ifndef GENERATOR_GEN_CORE_H
+#define GENERATOR_GEN_CORE_H
 
 #include <time.h>
 #include "gen_context.h"
@@ -177,4 +177,4 @@ void gen_core_set_loglevel(gen_context_t *ctx, int level);
 /* Get current frame count. */
 unsigned int gen_core_get_frame_count(gen_context_t *ctx);
 
-#endif /* GEN_CORE_H */
+#endif /* GENERATOR_GEN_CORE_H */

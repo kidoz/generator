@@ -1,3 +1,8 @@
+#ifndef GENERATOR_CPU68K_H
+#define GENERATOR_CPU68K_H
+
+#include "generator.h"
+
 typedef struct _t_ipc {
   void (*function)(struct _t_ipc *ipc);
   uint8 used; /* bitmap of XNZVC flags inspected */
@@ -64,3 +69,5 @@ void cpu68k_clearcache(void);
 #define V_AUTO 25
 #define V_TRAP 32
 #define V_USER 64
+
+#endif /* GENERATOR_CPU68K_H */

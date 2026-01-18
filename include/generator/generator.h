@@ -1,3 +1,6 @@
+#ifndef GENERATOR_GENERATOR_H
+#define GENERATOR_GENERATOR_H
+
 /* #include "config.h" */ /* Meson passes all config via compiler flags */
 #include "machine.h"
 #include <signal.h> /* For sig_atomic_t type used by gen_quit */
@@ -373,3 +376,5 @@ extern unsigned int gen_autodetect;
 extern unsigned int gen_modifiedrom;
 extern t_musiclog gen_musiclog;
 extern char gen_leafname[];
+
+#endif /* GENERATOR_GENERATOR_H */

@@ -1,8 +1,8 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 /* UI Callback Interface - Decouples emulator core from UI implementation */
 
-#ifndef GEN_UI_CALLBACKS_H
-#define GEN_UI_CALLBACKS_H
+#ifndef GENERATOR_GEN_UI_CALLBACKS_H
+#define GENERATOR_GEN_UI_CALLBACKS_H
 
 #include "machine.h"
 
@@ -145,4 +145,4 @@ void gen_ui_set_callbacks(gen_context_t *ctx, const gen_ui_callbacks_t *callback
     ? (ctx)->ui->callback((ctx), ##__VA_ARGS__) \
     : (default_val))
 
-#endif /* GEN_UI_CALLBACKS_H */
+#endif /* GENERATOR_GEN_UI_CALLBACKS_H */

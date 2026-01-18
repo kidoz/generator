@@ -6,3 +6,6 @@ persist_sources = files(
   'avi.c',
   'patch.c'
 )
+
+# Unit tests
+subdir('test')

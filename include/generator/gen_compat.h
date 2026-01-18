@@ -1,8 +1,8 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 /* Compatibility macros for gradual migration to context-based architecture */
 
-#ifndef GEN_COMPAT_H
-#define GEN_COMPAT_H
+#ifndef GENERATOR_GEN_COMPAT_H
+#define GENERATOR_GEN_COMPAT_H
 
 #include "gen_context.h"
 
@@ -142,4 +142,4 @@
 
 #endif /* GEN_COMPAT_ENABLE */
 
-#endif /* GEN_COMPAT_H */
+#endif /* GENERATOR_GEN_COMPAT_H */

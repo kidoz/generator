@@ -1,3 +1,6 @@
+#ifndef GENERATOR_UIPLOT_H
+#define GENERATOR_UIPLOT_H
+
 extern uint32 uiplot_palcache[192];
 
 void uiplot_setshifts(int redshift, int greenshift, int blueshift);
@@ -37,3 +40,5 @@ void uiplot_scale4x_frame32(uint32 *srcdata, uint32 *dstdata, uint32 *temp,
 /* xBRZ high-quality upscaling algorithms */
 void uiplot_xbrz_frame32(int factor, uint32 *srcdata, uint32 *dstdata,
                          unsigned int src_width, unsigned int src_height);
+
+#endif /* GENERATOR_UIPLOT_H */

@@ -1,11 +1,12 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 
+#include "cpu68k.h"
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
 #include "generator.h"
-#include "cpu68k.h"
 #include "mem68k.h"
 #include "vdp.h"
 #include "ui.h"

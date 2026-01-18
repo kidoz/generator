@@ -22,5 +22,6 @@ extern struct SN76496 sn[MAX_76496];
 int SN76496Init(int chip, int clock, int gain, int sample_rate);
 void SN76496Write(int chip, int data);
 void SN76496Update(int chip, uint16 *buffer, int length);
+void SN76496_save_state(void);
 
 #endif

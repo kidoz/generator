@@ -1,3 +1,6 @@
+#ifndef GENERATOR_MEM68K_H
+#define GENERATOR_MEM68K_H
+
 typedef enum {
   mem_byte,
   mem_word,
@@ -109,4 +112,6 @@ static inline void storelong(uint32 addr, uint32 data)
 #define storelong(addr, data) \
   mem68k_store_long[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data)
 
-#endif
+#endif /* DIRECTRAM */
+
+#endif /* GENERATOR_MEM68K_H */

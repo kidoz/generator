@@ -1,8 +1,8 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 /* Core context - encapsulates all emulator state for clean architecture */
 
-#ifndef GEN_CONTEXT_H
-#define GEN_CONTEXT_H
+#ifndef GENERATOR_GEN_CONTEXT_H
+#define GENERATOR_GEN_CONTEXT_H
 
 #include "machine.h"
 #include "cmz80.h"
@@ -326,4 +326,4 @@ unsigned int gen_ctx_sound_threshold(void);
 int gen_ctx_sound_feedback(void);
 unsigned int gen_ctx_cpu68k_frames(void);
 
-#endif /* GEN_CONTEXT_H */
+#endif /* GENERATOR_GEN_CONTEXT_H */

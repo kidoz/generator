@@ -1,11 +1,12 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 /* Core API - Implementation of clean interface for emulator control */
 
+#include "gen_core.h"
+
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-#include "gen_core.h"
 #include "generator.h"
 #include "cpu68k.h"
 #include "cpuz80.h"

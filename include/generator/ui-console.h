@@ -1,3 +1,6 @@
+#ifndef GENERATOR_UI_CONSOLE_H
+#define GENERATOR_UI_CONSOLE_H
+
 typedef enum {
   DEINTERLACE_BOB,
   DEINTERLACE_WEAVE,
@@ -21,3 +24,5 @@ extern t_binding ui_bindings[2]; /* keyboard/joystick bindings for players */
 
 int ui_topbit(unsigned long int bits);
 void ui_setupscreen(void);
+
+#endif /* GENERATOR_UI_CONSOLE_H */

@@ -1,3 +1,6 @@
+#ifndef GENERATOR_DIB_H
+#define GENERATOR_DIB_H
+
 /* bit map info header BITMAPINFOHEADER */
 
 typedef struct {
@@ -15,3 +18,5 @@ typedef struct {
 } t_bmih;
 
 void dib_setheader(t_bmih *bmih, uint32 x, uint32 y);
+
+#endif /* GENERATOR_DIB_H */

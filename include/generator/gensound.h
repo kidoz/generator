@@ -1,3 +1,6 @@
+#ifndef GENERATOR_GENSOUND_H
+#define GENERATOR_GENSOUND_H
+
 #ifndef JFM
 #include "support.h"
 #include "fm.h"
@@ -44,3 +47,5 @@ void sound_ym2612store(uint8 addr, uint8 data);
 void sound_sn76496store(uint8 data);
 void sound_genreset(void);
 void sound_line(void);
+
+#endif /* GENERATOR_GENSOUND_H */

@@ -1,10 +1,11 @@
 /* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
 /* Core context - implementation of context lifecycle functions */
 
+#include "gen_context.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-#include "gen_context.h"
 #include "generator.h"
 #include "vdp.h"
 #include "gensound.h"

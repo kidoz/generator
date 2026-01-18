@@ -18,6 +18,7 @@
 #include "vdp.h"
 #include "gensound.h"
 #include "fm.h"
+#include "sn76496.h"
 
 typedef struct _t_statelist {
   struct _t_statelist *next;
@@ -39,6 +40,38 @@ t_statelist *state_statelist; /* loaded state */
  * NB:
  * states are only loaded/saved at the end of the frame
  */
+
+/*** state_check_version - check version compatibility from loaded state list
+ * Returns 0 if compatible, -1 if incompatible or version not found ***/
+
+static int state_check_version(void)
+{
+  t_statelist *l;
+  uint8 major = 0;
+  int found_major = 0;
+
+  for (l = state_statelist; l; l = l->next) {
+    if (!strcasecmp(l->mod, "ver") && !strcasecmp(l->name, "major") &&
+        l->instance == 0 && l->size == 1 && l->bytes == 1) {
+      major = l->data[0];
+      found_major = 1;
+      break;
+    }
+  }
+
+  if (!found_major) {
+    LOG_CRITICAL(("Save state file missing version information"));
+    return -1;
+  }
+
+  if (major != 2) {
+    LOG_CRITICAL(("Save state file is version %d, but we require version 2",
+                  major));
+    return -1;
+  }
+
+  return 0;
+}
 
 /*** state_date - return the modification date or 0 for non-existant ***/
 
@@ -352,6 +385,7 @@ static void state_dotransfer(unsigned int mode)
   }
 #endif
   YM2612_save_state();
+  SN76496_save_state();
 
   /* Z80 interrupt vector and line state */
 #ifdef RAZE
@@ -472,6 +506,19 @@ int state_loadfile(const char *filename)
     ent = nullptr;  /* Entry now in list, clear for next iteration */
   }
 
+  /* Check version compatibility BEFORE modifying emulator state */
+  if (state_check_version() != 0) {
+    LOG_CRITICAL(("Save state file '%s' has incompatible version", filename));
+    errno = EINVAL;
+    free(blk);
+    while (state_statelist) {
+      t_statelist *tmp = state_statelist;
+      state_statelist = state_statelist->next;
+      free(tmp);
+    }
+    return -1;
+  }
+
   /* reset */
   gen_reset();
 
@@ -483,13 +530,6 @@ int state_loadfile(const char *filename)
     ent = state_statelist;
     state_statelist = state_statelist->next;
     free(ent);
-  }
-
-  if (state_major != 2) {
-    LOG_CRITICAL(("Save state file '%s' is version %d, and we're version 2",
-                  filename, state_major));
-    errno = EINVAL;
-    return -1;
   }
 
   /* reset some other run-time stuff that isn't important enough to save */

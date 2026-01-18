@@ -1,7 +1,7 @@
 /* GTK4/libadwaita user interface header */
 
-#ifndef UI_GTK4_H
-#define UI_GTK4_H
+#ifndef GENERATOR_UI_GTK4_H
+#define GENERATOR_UI_GTK4_H
 
 #include <gtk/gtk.h>
 #include <adwaita.h>
@@ -194,4 +194,4 @@ void ui_action_quit(GSimpleAction *action, GVariant *parameter,
 void ui_gtk4_sizechange(void);
 void ui_gtk4_rendertoscreen(void);
 
-#endif /* UI_GTK4_H */
+#endif /* GENERATOR_UI_GTK4_H */

@@ -1,3 +1,6 @@
+#ifndef GENERATOR_PATCH_H
+#define GENERATOR_PATCH_H
+
 typedef struct _t_patchlist {
   struct _t_patchlist *next;
   char code[32];
@@ -11,3 +14,5 @@ int patch_savefile(const char *filename);
 void patch_clearlist(void);
 void patch_addcode(const char *code, const char *action);
 int patch_apply(const char *code, const char *action);
+
+#endif /* GENERATOR_PATCH_H */

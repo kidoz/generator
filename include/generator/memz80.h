@@ -1,3 +1,6 @@
+#ifndef GENERATOR_MEMZ80_H
+#define GENERATOR_MEMZ80_H
+
 int memz80_init(void);
 
 extern uint8 (*memz80_fetch_byte[0x100])(uint16 addr);
@@ -15,3 +18,5 @@ typedef struct {
 } t_memz80_def;
 
 extern t_memz80_def memz80_def[];
+
+#endif /* GENERATOR_MEMZ80_H */

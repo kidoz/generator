@@ -1,3 +1,6 @@
+#ifndef GENERATOR_REGISTERS_H
+#define GENERATOR_REGISTERS_H
+
 /* These registers must be registers that are preserved over function calls
    in C.  What I mean by this is that if we're using these registers and we
    call a C function, then when that C function returns these registers are
@@ -24,3 +27,5 @@ extern t_sr reg68k_sr;
 #endif
 #endif
 #endif
+
+#endif /* GENERATOR_REGISTERS_H */

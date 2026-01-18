@@ -1,3 +1,6 @@
+#ifndef GENERATOR_CPU68K_INLINE_H
+#define GENERATOR_CPU68K_INLINE_H
+
 /* the ordering of these includes is important - stdio can have inline
    functions - so can mem68k.h - and registers.h must appear before them */
 
@@ -61,3 +64,5 @@ static inline sint32 idxval_src(t_ipc *ipc)
   }
   return 0;
 }
+
+#endif /* GENERATOR_CPU68K_INLINE_H */

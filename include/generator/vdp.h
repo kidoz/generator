@@ -1,3 +1,6 @@
+#ifndef GENERATOR_VDP_H
+#define GENERATOR_VDP_H
+
 typedef enum {
   cd_vram_fetch,
   cd_vram_store,
@@ -89,3 +92,5 @@ static_assert(LEN_VRAM == 65536, "Genesis VRAM must be 64KB");
 #define TOTAL_CELLWIDTH 64
 
 extern uint8 vdp_reg[];
+
+#endif /* GENERATOR_VDP_H */
