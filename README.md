@@ -1,6 +1,9 @@
 # Generator - Sega Genesis/Mega Drive Emulator
 
 Generator is a Sega Genesis (Mega Drive) emulator featuring modern UI options, high-quality upscaling, and accurate emulation.
+
+![Generator GTK4](docs/screenshots/generator-gtk4.png)
+
 ## Quick Start
 
 ### Build with Meson
