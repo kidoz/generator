@@ -147,6 +147,7 @@ typedef struct {
   gboolean emu_thread_running; /* Thread alive flag */
   gboolean frame_requested;  /* Main thread requested a frame */
   _Atomic int render_complete; /* Emu thread completed a frame */
+  gboolean window_focused;   /* Window has focus (for background throttling) */
 
   /* Recording */
   int musicfile_fd;

@@ -67,6 +67,8 @@ static gboolean ui_key_released(GtkEventControllerKey *controller, guint keyval,
                                 guint keycode, GdkModifierType state,
                                 gpointer user_data);
 static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data);
+static void ui_window_focus_changed(GtkWindow *window, GParamSpec *pspec,
+                                    gpointer user_data);
 static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
                                  gpointer user_data);
 static void ui_newframe(int pending_samples);
@@ -675,6 +677,12 @@ static void ui_create_main_window(GtkApplication *app)
   g_signal_connect(gen_ui->window, "close-request",
                    G_CALLBACK(ui_window_close_request), nullptr);
 
+  /* Connect window focus change signal to handle timing reset on focus change.
+   * This ensures smooth transition when window regains focus after being
+   * throttled by the compositor (e.g., GNOME Shell on Wayland). */
+  g_signal_connect(gen_ui->window, "notify::is-active",
+                   G_CALLBACK(ui_window_focus_changed), nullptr);
+
   /* Drive the emulation loop from the GTK frame clock so we receive a steady
      pulse that matches the window's refresh rate (typically vblank). */
   gtk_widget_add_tick_callback(gen_ui->picture, ui_tick_callback, nullptr,
@@ -1120,6 +1128,22 @@ static gboolean ui_window_close_request(GtkWindow *window, gpointer user_data)
 
   /* Return FALSE to allow the window to close */
   return FALSE;
+}
+
+/*** Focus change handling ***/
+
+static void ui_window_focus_changed(GtkWindow *window, GParamSpec *pspec,
+                                    gpointer user_data)
+{
+  (void)pspec;
+  (void)user_data;
+
+  gboolean is_active = gtk_window_is_active(window);
+  gen_ui->window_focused = is_active;
+
+  if (gen_ui->debug_telemetry) {
+    fprintf(stderr, "Window focus %s\n", is_active ? "regained" : "lost");
+  }
 }
 
 /*** Input handling ***/
@@ -2797,21 +2821,30 @@ static gpointer ui_emu_thread_func(gpointer data)
     ui->frame_requested = FALSE;
     g_mutex_unlock(&ui->emu_mutex);
 
-    /* Run frame based on timing, regardless of main thread requests.
-     * This ensures emulation continues at correct speed even when GTK's
-     * frame clock is throttled (e.g., window loses focus on Wayland). */
+    /* Run frame when requested by main thread or when timing dictates.
+     * Priority: main thread requests > timing-based autonomous running */
     if (ui->running && ui->ctx != nullptr) {
       now = g_get_monotonic_time();
       elapsed = now - last_frame_time;
 
-      /* Check if it's time for a new frame (or if audio buffer needs filling) */
       int pending = soundp_samplesbuffered();
       int threshold = (int)gen_ctx_sound_threshold();
-      gboolean need_frame = (elapsed >= frame_duration_us) ||
-                            (pending < threshold) ||
-                            frame_was_requested;
+      gboolean need_frame;
 
-      /* Prevent buffer overflow - skip if way too full */
+      if (frame_was_requested) {
+        /* Main thread (tick callback) requested a frame - always honor it */
+        need_frame = TRUE;
+      } else if (elapsed >= frame_duration_us * 2) {
+        /* Tick callback hasn't run in a while (window likely unfocused).
+         * Run autonomously based on timing to keep audio flowing. */
+        need_frame = (pending < threshold * 2);
+      } else {
+        /* Tick callback is running normally - let it drive frame timing.
+         * Only run if audio buffer is critically low. */
+        need_frame = (pending < threshold / 2);
+      }
+
+      /* Prevent buffer overflow */
       if (pending > threshold * 3) {
         need_frame = FALSE;
       }
@@ -2851,6 +2884,7 @@ static void ui_start_emu_thread(void)
 
   gen_ui->emu_thread_running = TRUE;
   gen_ui->frame_requested = FALSE;
+  gen_ui->window_focused = TRUE;  /* Assume focused at start */
   atomic_store(&gen_ui->render_complete, 0);
 
   gen_ui->emu_thread = g_thread_new("generator-emu", ui_emu_thread_func, gen_ui);
