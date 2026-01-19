@@ -3,7 +3,7 @@
 # See AUTHORS.md for copyright attribution
 
 project('generator', 'c', 'cpp',
-  version: '0.35',
+  version: '0.50',
   license: 'GPL-2.0-or-later',
   default_options: [
     'c_std=c23',  # Use C23 standard (ISO/IEC 9899:2024) - latest C standard

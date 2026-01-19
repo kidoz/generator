@@ -1,14 +1,36 @@
 # Changelog
 
-## 2025 - GTK4/Meson Fork
+## 0.50 (2025-01-19)
 
+### New Features
 - Complete GTK4/libadwaita UI rewrite
-- Migration to Meson build system
-- C17 standard compliance
+- Meson build system (replacing autotools)
+- SDL3 audio/input backend
 - xBRZ upscaler integration (2x-4x)
 - Scale2x/3x/4x algorithms
-- SDL2 audio/input backend
-- Removed legacy backends (SVGALib, Allegro, Tcl/Tk)
+- Netplay/Kaillera support
+- 6-button controller support
+
+### Sound Improvements
+- Two-pole Butterworth low-pass filter (~14 kHz cutoff)
+- DC blocking high-pass filter (~15 Hz cutoff)
+- Improved FM/PSG mixing ratio (7:3)
+- DAC ladder effect for authentic YM2612 sound
+- Internal oversampling support
+
+### Improvements
+- C23 standard compliance
+- SPDX license identifiers in all source files
+- Fixed audio slowdown on Wayland focus loss
+- Fixed 64K RAM boundary corruption bug
+- Fixed buffer overflow in Z80 disassembler
+- Fixed unsafe string handling in config parser
+- Migrated to AdwPreferencesDialog (libadwaita 1.4+)
+- Implemented ROM save functionality
+- Improved memory allocation error handling
+
+### Removed
+- Legacy backends (SVGALib, Allegro, Tcl/Tk, SDL1)
 
 ---
 

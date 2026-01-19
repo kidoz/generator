@@ -14,7 +14,7 @@
 
 /* Version info */
 #ifndef VERSION
-#define VERSION "0.35"
+#define VERSION "0.50"
 #endif
 
 /* Default number of frames to run */
