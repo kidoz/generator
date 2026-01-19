@@ -1215,12 +1215,14 @@ static gboolean ui_tick_callback(GtkWidget *widget, GdkFrameClock *frame_clock,
 
   (void)widget;
   (void)user_data;
+  (void)frame_clock;
 
-  if (frame_clock) {
-    current_time = gdk_frame_clock_get_frame_time(frame_clock);
-  } else {
-    current_time = g_get_monotonic_time();
-  }
+  /* Always use monotonic time for emulation timing, not the frame clock time.
+   * The frame clock time only advances when GTK ticks, which can be throttled
+   * by the compositor (e.g., GNOME Shell on Wayland) when the window loses
+   * focus. Using monotonic time ensures consistent emulation speed regardless
+   * of window focus state. */
+  current_time = g_get_monotonic_time();
 
   if (gen_quit)
     return G_SOURCE_REMOVE;
@@ -2761,21 +2763,28 @@ static gpointer ui_emu_thread_func(gpointer data)
 {
   GenUI *ui = (GenUI *)data;
 
-  /* Frame timing for autonomous operation during UI blocking (e.g., resize)
-   * NTSC: ~16.7ms, PAL: ~20ms. Use 18ms as safe middle ground. */
-  const gint64 FRAME_TIMEOUT_US = 18000;
+  /* Frame timing for autonomous operation.
+   * The emulation thread runs independently of GTK's frame clock to ensure
+   * consistent emulation speed even when the window loses focus (which causes
+   * Wayland/GNOME Shell to throttle the GTK frame clock).
+   * NTSC: ~16.7ms, PAL: ~20ms. Use frame-accurate timing. */
+  gint64 last_frame_time = g_get_monotonic_time();
+  gint64 frame_duration_us = 16667; /* Default NTSC, updated below */
 
   while (ui->emu_thread_running) {
     g_mutex_lock(&ui->emu_mutex);
 
-    /* Use timed wait instead of indefinite wait to prevent audio starvation
-     * when the main thread is blocked (e.g., during fullscreen resize).
-     * If timeout expires, we run a frame anyway to keep audio flowing. */
+    /* Check if main thread requested a frame (for synchronization) */
     gboolean frame_was_requested = ui->frame_requested;
 
-    if (!frame_was_requested && ui->emu_thread_running) {
-      gint64 end_time = g_get_monotonic_time() + FRAME_TIMEOUT_US;
-      /* Wait for signal OR timeout */
+    /* Calculate time until next frame should run */
+    gint64 now = g_get_monotonic_time();
+    gint64 elapsed = now - last_frame_time;
+    gint64 wait_time = frame_duration_us - elapsed;
+
+    /* Wait for signal OR until next frame time, whichever comes first */
+    if (!frame_was_requested && ui->emu_thread_running && wait_time > 1000) {
+      gint64 end_time = now + wait_time;
       g_cond_wait_until(&ui->emu_cond, &ui->emu_mutex, end_time);
       frame_was_requested = ui->frame_requested;
     }
@@ -2788,18 +2797,29 @@ static gpointer ui_emu_thread_func(gpointer data)
     ui->frame_requested = FALSE;
     g_mutex_unlock(&ui->emu_mutex);
 
-    /* Run frame if:
-     * 1. Main thread requested it (normal operation)
-     * 2. Timeout expired AND we're running (autonomous mode for audio)
-     * In autonomous mode, audio keeps flowing even if UI is blocked */
+    /* Run frame based on timing, regardless of main thread requests.
+     * This ensures emulation continues at correct speed even when GTK's
+     * frame clock is throttled (e.g., window loses focus on Wayland). */
     if (ui->running && ui->ctx != nullptr) {
-      /* Check audio buffer - only run if buffer needs filling
-       * This prevents runaway frame generation if UI is blocked long-term */
+      now = g_get_monotonic_time();
+      elapsed = now - last_frame_time;
+
+      /* Check if it's time for a new frame (or if audio buffer needs filling) */
       int pending = soundp_samplesbuffered();
       int threshold = (int)gen_ctx_sound_threshold();
+      gboolean need_frame = (elapsed >= frame_duration_us) ||
+                            (pending < threshold) ||
+                            frame_was_requested;
 
-      /* Run frame if requested, or if audio buffer is getting low */
-      if (frame_was_requested || pending < threshold * 2) {
+      /* Prevent buffer overflow - skip if way too full */
+      if (pending > threshold * 3) {
+        need_frame = FALSE;
+      }
+
+      if (need_frame) {
+        /* Update frame timing - use actual Genesis timing */
+        frame_duration_us = gen_ctx_vdp_pal() ? 20000 : 16667;
+
 #ifdef NETPLAY
         /* Synchronize with remote player if in netplay game */
         if (netplay_get_state() == NETPLAY_IN_GAME) {
@@ -2810,11 +2830,15 @@ static gpointer ui_emu_thread_func(gpointer data)
         }
 #endif
         gen_core_run_frame(ui->ctx);
-      }
-    }
+        last_frame_time = now;
 
-    /* Signal frame completion (main thread uses this to trigger redraw) */
-    atomic_store(&ui->render_complete, 1);
+        /* Signal frame completion (main thread uses this to trigger redraw) */
+        atomic_store(&ui->render_complete, 1);
+      }
+    } else {
+      /* Not running - reset timing to avoid catch-up burst when resuming */
+      last_frame_time = g_get_monotonic_time();
+    }
   }
 
   return nullptr;
