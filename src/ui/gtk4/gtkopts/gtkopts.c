@@ -149,19 +149,19 @@ int gtkopts_load(const char *file)
       *t-- = '\0';
     while (*q == ' ')
       q++;
-    if ((conf->key = malloc(strlen(p) + 1)) == nullptr) {
+    conf->key = strdup(p);
+    if (conf->key == nullptr) {
       fprintf(stderr, "%s: Out of memory building conf\n", PACKAGE);
       free(conf);
       goto error;
     }
-    if ((conf->value = malloc(strlen(q) + 1)) == nullptr) {
+    conf->value = strdup(q);
+    if (conf->value == nullptr) {
       fprintf(stderr, "%s: Out of memory building conf\n", PACKAGE);
       free(conf->key);
       free(conf);
       goto error;
     }
-    strcpy(conf->key, p);
-    strcpy(conf->value, q);
     conf->next = nullptr;
     for (confi = gtkopts_conf; confi && confi->next; confi = confi->next)
       ;
@@ -207,9 +207,9 @@ int gtkopts_setvalue(const char *key, const char *value)
 
   for (c = gtkopts_conf; c; c = c->next) {
     if (!strcasecmp(key, c->key)) {
-      if ((n = malloc(strlen(value) + 1)) == nullptr)
+      n = strdup(value);
+      if (n == nullptr)
         return -1;
-      strcpy(n, value);
       free(c->value);
       c->value = n;
       return 0;
@@ -217,17 +217,17 @@ int gtkopts_setvalue(const char *key, const char *value)
   }
   if ((c = malloc(sizeof(t_conf))) == nullptr)
     return -1;
-  if ((c->key = malloc(strlen(key) + 1)) == nullptr) {
+  c->key = strdup(key);
+  if (c->key == nullptr) {
     free(c);
     return -1;
   }
-  if ((c->value = malloc(strlen(value) + 1)) == nullptr) {
+  c->value = strdup(value);
+  if (c->value == nullptr) {
     free(c->key);
     free(c);
     return -1;
   }
-  strcpy(c->key, key);
-  strcpy(c->value, value);
   c->next = gtkopts_conf;
   gtkopts_conf = c;
   return 0;

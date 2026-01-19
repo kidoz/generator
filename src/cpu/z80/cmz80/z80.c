@@ -8756,13 +8756,17 @@ static int Abs(unsigned char a)
 /****************************************************************************/
 /* Disassemble first opcode in buffer and return number of bytes it takes   */
 /****************************************************************************/
+#define Z80_DASM_BUFSIZE 128  /* Maximum disassembly output size */
+
 int Z80_Dasm(unsigned char *buffer, char *dest, unsigned PC)
 {
   char *S;
   char *r;
   int i, j, k;
-  unsigned char buf[10];
+  char buf[32];  /* Temporary buffer for formatting */
   char Offset;
+  size_t dest_len;
+  const size_t dest_max = Z80_DASM_BUFSIZE - 1;
   i = Offset = 0;
   r = "INTERNAL PROGRAM ERROR";
   dest[0] = '\0';
@@ -8808,41 +8812,44 @@ int Z80_Dasm(unsigned char *buffer, char *dest, unsigned PC)
     break;
   }
   for (j = 0; S[j]; ++j) {
+    dest_len = strlen(dest);
+    if (dest_len >= dest_max) break;  /* Safety: stop if buffer full */
+
     switch (S[j]) {
     case 'B':
-      sprintf(buf, "$%02x", buffer[i++]);
-      strcat(dest, buf);
+      snprintf(buf, sizeof(buf), "$%02x", buffer[i++]);
+      strncat(dest, buf, dest_max - dest_len);
       break;
     case 'R':
-      sprintf(buf, "$%04x", (PC + 2 + (signed char)buffer[i]) & 0xFFFF);
+      snprintf(buf, sizeof(buf), "$%04x", (PC + 2 + (signed char)buffer[i]) & 0xFFFF);
       i++;
-      strcat(dest, buf);
+      strncat(dest, buf, dest_max - dest_len);
       break;
     case 'W':
-      sprintf(buf, "$%04x", buffer[i] + buffer[i + 1] * 256);
+      snprintf(buf, sizeof(buf), "$%04x", buffer[i] + buffer[i + 1] * 256);
       i += 2;
-      strcat(dest, buf);
+      strncat(dest, buf, dest_max - dest_len);
       break;
     case 'X':
-      sprintf(buf, "(%s%c$%02x)", r, Sign(buffer[i]), Abs(buffer[i]));
+      snprintf(buf, sizeof(buf), "(%s%c$%02x)", r, Sign(buffer[i]), Abs(buffer[i]));
       i++;
-      strcat(dest, buf);
+      strncat(dest, buf, dest_max - dest_len);
       break;
     case 'Y':
-      sprintf(buf, "(%s%c$%02x)", r, Sign(Offset), Abs(Offset));
-      strcat(dest, buf);
+      snprintf(buf, sizeof(buf), "(%s%c$%02x)", r, Sign(Offset), Abs(Offset));
+      strncat(dest, buf, dest_max - dest_len);
       break;
     case 'I':
-      strcat(dest, r);
+      strncat(dest, r, dest_max - dest_len);
       break;
     case '!':
-      sprintf(dest, "db     $ed,$%02x", buffer[1]);
+      snprintf(dest, Z80_DASM_BUFSIZE, "db     $ed,$%02x", buffer[1]);
       return 2;
     case '@':
-      sprintf(dest, "db     $%02x", buffer[0]);
+      snprintf(dest, Z80_DASM_BUFSIZE, "db     $%02x", buffer[0]);
       return 1;
     case '#':
-      sprintf(dest, "db     $%02x,$cb,$%02x", buffer[0], buffer[2]);
+      snprintf(dest, Z80_DASM_BUFSIZE, "db     $%02x,$cb,$%02x", buffer[0], buffer[2]);
       return 2;
     case ' ':
       k = strlen(dest);
@@ -8850,14 +8857,15 @@ int Z80_Dasm(unsigned char *buffer, char *dest, unsigned PC)
         k = 7 - k;
       else
         k = 1;
+      if ((size_t)k > dest_max - dest_len) k = (int)(dest_max - dest_len);
       memset(buf, ' ', k);
       buf[k] = '\0';
-      strcat(dest, buf);
+      strncat(dest, buf, dest_max - dest_len);
       break;
     default:
       buf[0] = S[j];
       buf[1] = '\0';
-      strcat(dest, buf);
+      strncat(dest, buf, dest_max - dest_len);
       break;
     }
   }

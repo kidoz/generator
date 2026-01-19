@@ -3787,12 +3787,16 @@ int YM2612Init(int num, int clock, int rate, FM_TIMERHANDLER TimerHandler,
   YM2612NumChips = num;
 
   /* allocate extend state space */
-  if ((FM2612 = (YM2612 *)malloc(sizeof(YM2612) * YM2612NumChips)) == nullptr)
+  if ((FM2612 = (YM2612 *)malloc(sizeof(YM2612) * YM2612NumChips)) == nullptr) {
+    LOG(LOG_ERR, ("YM2612Init: Failed to allocate %lu bytes for %d chips\n",
+                  (unsigned long)(sizeof(YM2612) * YM2612NumChips), YM2612NumChips));
     return (-1);
+  }
   /* clear */
   memset(FM2612, 0, sizeof(YM2612) * YM2612NumChips);
   /* allocate total level table (128kb space) */
   if (!OPNInitTable()) {
+    LOG(LOG_ERR, ("YM2612Init: Failed to allocate OPN tables\n"));
     free(FM2612);
     return (-1);
   }

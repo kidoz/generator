@@ -58,13 +58,10 @@ extern void (*mem68k_store_long[0x1000])(uint32 addr, uint32 data);
 #define fetchlong(addr) \
   mem68k_fetch_long[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF)
 
-/* XXX BUG: these direct routines do not check for over-run of the 64k
-   cpu68k_ram block - so writing a long at $FFFF corrupts 3 bytes of data -
-   this is compensated for in the malloc() but is bad nonetheless. */
-
 #ifdef DIRECTRAM
 
-/* chances are a store is to RAM - optimise for this case */
+/* Direct RAM access optimization - chances are a store is to RAM.
+ * Note: Addresses at 64K boundary wrap properly (Genesis RAM mirrors). */
 
 static inline void storebyte(uint32 addr, uint8 data)
 {
@@ -81,7 +78,14 @@ static inline void storeword(uint32 addr, uint16 data)
   /* in an ideal world we'd check bit 0 of addr, but speed is everything */
   if ((addr & 0xE00000) == 0xE00000) {
     addr &= 0xffff;
-    *(uint16 *)(cpu68k_ram + addr) = LOCENDIAN16(data);
+    if (addr <= 0xfffe) {
+      /* Fast path: no boundary crossing */
+      *(uint16 *)(cpu68k_ram + addr) = LOCENDIAN16(data);
+    } else {
+      /* Boundary wrap: write bytes separately */
+      *(uint8 *)(cpu68k_ram + addr) = (uint8)(data >> 8);
+      *(uint8 *)(cpu68k_ram) = (uint8)data;  /* Wrap to 0x0000 */
+    }
   } else {
     mem68k_store_word[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data);
   }
@@ -92,12 +96,21 @@ static inline void storelong(uint32 addr, uint32 data)
   /* in an ideal world we'd check bit 0 of addr, but speed is everything */
   if ((addr & 0xE00000) == 0xE00000) {
     addr &= 0xffff;
+    if (addr <= 0xfffc) {
+      /* Fast path: no boundary crossing */
 #ifdef ALIGNLONGS
-    *(uint16 *)(cpu68k_ram + addr) = LOCENDIAN16((uint16)(data >> 16));
-    *(uint16 *)(cpu68k_ram + addr + 2) = LOCENDIAN16((uint16)(data));
+      *(uint16 *)(cpu68k_ram + addr) = LOCENDIAN16((uint16)(data >> 16));
+      *(uint16 *)(cpu68k_ram + addr + 2) = LOCENDIAN16((uint16)(data));
 #else
-    *(uint32 *)(cpu68k_ram + addr) = LOCENDIAN32(data);
+      *(uint32 *)(cpu68k_ram + addr) = LOCENDIAN32(data);
 #endif
+    } else {
+      /* Boundary wrap: write bytes separately with proper wrapping */
+      *(uint8 *)(cpu68k_ram + addr) = (uint8)(data >> 24);
+      *(uint8 *)(cpu68k_ram + ((addr + 1) & 0xffff)) = (uint8)(data >> 16);
+      *(uint8 *)(cpu68k_ram + ((addr + 2) & 0xffff)) = (uint8)(data >> 8);
+      *(uint8 *)(cpu68k_ram + ((addr + 3) & 0xffff)) = (uint8)data;
+    }
   } else {
     mem68k_store_long[((addr) & 0xFFFFFF) >> 12]((addr) & 0xFFFFFF, data);
   }

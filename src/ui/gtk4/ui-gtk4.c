@@ -367,7 +367,7 @@ void ui_final(void)
 {
   if (gen_ui) {
     if (gen_ui->prefs_window) {
-      gtk_window_destroy(GTK_WINDOW(gen_ui->prefs_window));
+      adw_dialog_force_close(ADW_DIALOG(gen_ui->prefs_window));
       gen_ui->prefs_window = nullptr;
       gen_ui->audio_driver_row = nullptr;
     }
@@ -748,9 +748,27 @@ static void on_save_rom_response(GObject *source, GAsyncResult *result,
 {
   GtkFileDialog *dialog = GTK_FILE_DIALOG(source);
   GFile *file = gtk_file_dialog_save_finish(dialog, result, nullptr);
+  (void)data;
+
   if (file) {
     char *filename = g_file_get_path(file);
-    /* TODO: Implement ROM save functionality */
+
+    if (cpu68k_rom && cpu68k_romlen > 0) {
+      FILE *fp = fopen(filename, "wb");
+      if (fp) {
+        size_t written = fwrite(cpu68k_rom, 1, cpu68k_romlen, fp);
+        fclose(fp);
+
+        if (written != cpu68k_romlen) {
+          ui_gtk4_messageerror("Failed to write complete ROM file");
+        }
+      } else {
+        ui_gtk4_messageerror("Failed to open file for writing");
+      }
+    } else {
+      ui_gtk4_messageerror("No ROM loaded to save");
+    }
+
     g_free(filename);
     g_object_unref(file);
   }
@@ -904,7 +922,7 @@ void ui_action_preferences(GSimpleAction *action, GVariant *parameter,
     return;
 
   ui_gtk4_update_audio_backend_subtitle();
-  gtk_window_present(GTK_WINDOW(gen_ui->prefs_window));
+  adw_dialog_present(ADW_DIALOG(gen_ui->prefs_window), GTK_WIDGET(gen_ui->window));
 }
 
 void ui_action_about(GSimpleAction *action, GVariant *parameter,
@@ -2349,12 +2367,9 @@ static void ui_gtk4_ensure_preferences_window(void)
   if (gen_ui->prefs_window)
     return;
 
-  AdwPreferencesWindow *prefs =
-      ADW_PREFERENCES_WINDOW(adw_preferences_window_new());
-  gtk_window_set_title(GTK_WINDOW(prefs), "Preferences");
-  gtk_window_set_transient_for(GTK_WINDOW(prefs), GTK_WINDOW(gen_ui->window));
-  gtk_window_set_modal(GTK_WINDOW(prefs), TRUE);
-  gtk_window_set_hide_on_close(GTK_WINDOW(prefs), TRUE);
+  AdwPreferencesDialog *prefs =
+      ADW_PREFERENCES_DIALOG(adw_preferences_dialog_new());
+  adw_dialog_set_title(ADW_DIALOG(prefs), "Preferences");
 
   GtkWidget *audio_page = adw_preferences_page_new();
   adw_preferences_page_set_title(ADW_PREFERENCES_PAGE(audio_page), "Audio");
@@ -2500,7 +2515,7 @@ static void ui_gtk4_ensure_preferences_window(void)
 
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(audio_page),
                            ADW_PREFERENCES_GROUP(quality_group));
-  adw_preferences_window_add(prefs, ADW_PREFERENCES_PAGE(audio_page));
+  adw_preferences_dialog_add(prefs, ADW_PREFERENCES_PAGE(audio_page));
 
   /* Video preferences page */
   GtkWidget *video_page = adw_preferences_page_new();
@@ -2543,7 +2558,7 @@ static void ui_gtk4_ensure_preferences_window(void)
                             GTK_WIDGET(scaler_row));
   adw_preferences_page_add(ADW_PREFERENCES_PAGE(video_page),
                            ADW_PREFERENCES_GROUP(video_group));
-  adw_preferences_window_add(prefs, ADW_PREFERENCES_PAGE(video_page));
+  adw_preferences_dialog_add(prefs, ADW_PREFERENCES_PAGE(video_page));
 
   gen_ui->prefs_window = GTK_WIDGET(prefs);
   ui_gtk4_update_audio_backend_subtitle();
@@ -2579,10 +2594,46 @@ void ui_gtk4_messageerror(const char *msg)
   }
 }
 
+/* Question dialog state for synchronous response */
+typedef struct {
+  gboolean answered;
+  gboolean result;
+} QuestionDialogState;
+
+static void on_question_response(AdwAlertDialog *dialog, const char *response,
+                                 gpointer user_data)
+{
+  QuestionDialogState *state = (QuestionDialogState *)user_data;
+  (void)dialog;
+
+  state->result = (g_strcmp0(response, "yes") == 0);
+  state->answered = TRUE;
+}
+
 gboolean ui_gtk4_question(const char *msg)
 {
-  /* TODO: Implement question dialog */
-  return FALSE;
+  if (!gen_ui || !gen_ui->window) {
+    fprintf(stderr, "QUESTION: %s (defaulting to No)\n", msg);
+    return FALSE;
+  }
+
+  QuestionDialogState state = {FALSE, FALSE};
+
+  AdwAlertDialog *dialog = ADW_ALERT_DIALOG(adw_alert_dialog_new("Question", msg));
+  adw_alert_dialog_add_response(dialog, "no", "No");
+  adw_alert_dialog_add_response(dialog, "yes", "Yes");
+  adw_alert_dialog_set_default_response(dialog, "no");
+  adw_alert_dialog_set_close_response(dialog, "no");
+
+  g_signal_connect(dialog, "response", G_CALLBACK(on_question_response), &state);
+  adw_dialog_present(ADW_DIALOG(dialog), GTK_WIDGET(gen_ui->window));
+
+  /* Block until user responds (pump GTK events) */
+  while (!state.answered) {
+    g_main_context_iteration(nullptr, TRUE);
+  }
+
+  return state.result;
 }
 
 /*** Logging functions (required by ui.h interface) ***/
