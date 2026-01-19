@@ -1,10 +1,5 @@
-/*****************************************************************************/
-/*     Generator - Sega Genesis emulation - (c) James Ponder 1997-1998       */
-/*****************************************************************************/
-/*                                                                           */
-/* machine.h                                                                 */
-/*                                                                           */
-/*****************************************************************************/
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+/* machine.h */
 
 /* #include "config.h" */ /* Meson passes all config via compiler flags */
 

@@ -1,23 +1,66 @@
-# Authors
+# Authors & Copyright Attribution
 
-## Original Author
+This document provides comprehensive attribution for Generator and its components.
 
-**Generator** was written by James Ponder <james@squish.net> (1997-2003)
+## Generator Emulator
 
-## Sound Emulation
+**Generator** is a Sega Genesis/Mega Drive emulator.
 
-- **YM2612** chip emulation by Tatsuyuki Satoh
-- **SN76496** by Nicola Salmoria et al
+- **Original Author**: James Ponder <james@squish.net>
+- **Copyright**: © 1997-2003 James Ponder
+- **Website**: http://www.squish.net/generator/
+- **License**: GPL-2.0-or-later
 
-## Z80 Emulation
+## Third-Party Components
 
-- **RAZE** Z80 core by Richard Mitton (richard.mitton@bigfoot.com)
-- **Multi-Z80** CPU emulator by Neil Bradley (neil@synthcom.com)
-- **cmz80** portable C version by Edward Massey
+### YM2612 FM Synthesis (`src/audio/ym2612/`)
 
-## GTK4/Meson Fork (2025)
+- **Author**: Tatsuyuki Satoh
+- **Copyright**: © 1998 Tatsuyuki Satoh
+- **Origin**: MAME 0.37e (Multi Arcade Machine Emulator)
+- **License**: MAME license (non-commercial)
 
-- GTK4/libadwaita UI implementation
-- Meson build system migration
-- xBRZ upscaler integration
-- C17 standard migration
+### SN76496 PSG (`src/audio/sn76496/`)
+
+- **Authors**: Nicola Salmoria and the MAME Team
+- **Origin**: MAME project
+- **License**: MAME license
+
+### cmz80 Z80 Emulator (`src/cpu/z80/cmz80/`)
+
+- **Original Author**: Edward Massey (1997)
+- **C Port**: Jeff Mitchell
+- **Z80 Tables**: Marcel de Kogel (1996-1997)
+- **cmz80.h**: Neil Bradley (1999)
+- **License**: See source files for individual terms
+
+### RAZE Z80 Emulator (`src/cpu/z80/raze/`)
+
+- **Author**: Richard Mitton <richard.mitton@bigfoot.com>
+- **Copyright**: © 1999 Richard Mitton
+- **License**: Custom (see raze.html)
+- **Note**: x86 assembly, requires NASM
+
+### Spectrum Emulator Code (`src/cpu/z80/raze/spec.c`)
+
+- **Author**: Allard van der Bas <avdbas@wi.leidenuniv.nl>
+- **Copyright**: © 1997 Allard van der Bas
+
+### xBRZ Upscaler (`src/xbrz/`)
+
+- **Author**: Zenju <zenju@gmx.de>
+- **Copyright**: © Zenju - All Rights Reserved
+- **License**: GPL-3.0 (for GPL projects)
+- **Website**: https://sourceforge.net/projects/xbrz/
+
+---
+
+## Acknowledgments
+
+- The MAME development team for FM and PSG emulation cores
+- The Genesis/Mega Drive emulation community
+- All contributors to the original Generator project
+
+---
+
+*For license details, see the [LICENSE](LICENSE) file.*

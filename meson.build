@@ -1,7 +1,6 @@
 # Generator Emulator - Meson Build System
 # Sega Genesis/Mega Drive Emulator
-# Original: (c) James Ponder 1997-2003
-# Meson build: 2025
+# See AUTHORS.md for copyright attribution
 
 project('generator', 'c', 'cpp',
   version: '0.35',

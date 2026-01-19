@@ -1,4 +1,4 @@
-/* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /* UI Callback Interface - Decouples emulator core from UI implementation */
 
 #ifndef GENERATOR_GEN_UI_CALLBACKS_H

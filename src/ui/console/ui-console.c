@@ -297,8 +297,8 @@ int ui_init(int argc, char *argv[])
 
 void ui_usage(void)
 {
-  fprintf(stderr, "Generator is (c) James Ponder 1997-2001, all rights "
-                  "reserved. " VERSION "\n\n");
+  fprintf(stderr, "Generator v" VERSION " - Sega Genesis/Mega Drive Emulator\n");
+  fprintf(stderr, "See AUTHORS.md for copyright attribution.\n\n");
   fprintf(stderr, "generator [options] <rom>\n\n");
   fprintf(stderr, "  -v <verbose level> can be: 0 = none, 1 = critical, "
                   "2 = normal, 3 = verbose\n");
@@ -565,11 +565,7 @@ void ui_setupscreen(void)
   ui_drawbox(red, 0, 65, 640, 1);
   ui_drawbox(grey, 0, 66, 640, 1);
 
-  ui_plotstring("Generator is (c) James Ponder 1997-2001, "
-                "all rights reserved.",
-                0, 0);
-  ui_plotstring(VERSION, 640 - (strlen(VERSION) * 6), 0);
-  ;
+  ui_plotstring("Generator v" VERSION " - See AUTHORS.md", 0, 0);
   if (ui_bindings[0].joystick != -1) {
     ui_plotstring("Joystick", 0, 420);
   } else {
@@ -1010,10 +1006,7 @@ void ui_basicbits(void)
                 24 << ui_uipinfo.blueshift;
   uint16 red = 24 << ui_uipinfo.redshift;
 
-  ui_plotstring("Generator is (c) James Ponder 1997-2001, "
-                "all rights reserved.",
-                0, 0);
-  ui_plotstring(VERSION, 640 - (strlen(VERSION) * 6), 0);
+  ui_plotstring("Generator v" VERSION " - See AUTHORS.md", 0, 0);
   ui_drawbox(red, 140, 100, 360, 280);
   ui_drawbox(grey, 141, 101, 358, 278);
   ui_plotsprite_acorn((uint16 *)logo, 282, 40, 179, 80);

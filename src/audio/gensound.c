@@ -1,4 +1,4 @@
-/* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Audiophile-quality sound system with oversampling, float processing, and dithering */
 
 #include <stdlib.h>

@@ -1,8 +1,6 @@
 # Generator - Sega Genesis/Mega Drive Emulator
 
-Generator is a Sega Genesis (Mega Drive) emulator originally written by James Ponder (1997-2003).
-This is a modernized fork with GTK4/libadwaita support, Meson build system, and xBRZ upscaling.
-
+Generator is a Sega Genesis (Mega Drive) emulator featuring modern UI options, high-quality upscaling, and accurate emulation.
 ## Quick Start
 
 ### Build with Meson
@@ -162,16 +160,12 @@ just run-console /path/to/rom.bin
 just --list
 ```
 
+## Authors
+
+Aleksandr Pavlov <ckidoz@gmail.com>
+
+See [AUTHORS.md](AUTHORS.md) for full attribution.
+
 ## License
 
 Generator is licensed under the GPL-2.0-or-later license. See [LICENSE](LICENSE).
-
-Original: (c) James Ponder 1997-2003
-GTK4/Meson fork: (c) 2025
-
-## Links
-
-- Original Generator: http://www.squish.net/generator/
-- Meson Build System: https://mesonbuild.com
-- GTK4: https://gtk.org
-- libadwaita: https://gnome.pages.gitlab.gnome.org/libadwaita/

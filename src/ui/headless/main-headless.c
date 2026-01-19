@@ -1,4 +1,4 @@
-/* Generator is (c) James Ponder, 1997-2001 http://www.squish.net/generator/ */
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Headless Backend - Run emulator without UI for testing/benchmarking */
 
 #include <stdio.h>
@@ -59,7 +59,7 @@ static void print_version(void)
 {
   printf("Generator Headless Backend v%s\n", VERSION);
   printf("Sega Genesis/Mega Drive Emulator\n");
-  printf("(c) James Ponder 1997-2003\n");
+  printf("See AUTHORS.md for copyright attribution.\n");
 }
 
 /* Verbose logging callback */

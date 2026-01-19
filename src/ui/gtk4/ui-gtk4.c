@@ -167,9 +167,8 @@ int ui_init(int argc, char *argv[])
   struct stat statbuf;
   int i;
 
-  fprintf(stderr, "Generator is (c) James Ponder 1997-2003, all rights "
-                  "reserved. v" VERSION "\n\n");
-  fprintf(stderr, "GTK4/libadwaita UI version\n\n");
+  fprintf(stderr, "Generator v" VERSION " - Sega Genesis/Mega Drive Emulator\n");
+  fprintf(stderr, "See AUTHORS.md for copyright attribution.\n\n");
 
   /* Allocate UI structure */
   gen_ui = g_new0(GenUI, 1);
@@ -934,7 +933,9 @@ void ui_action_about(GSimpleAction *action, GVariant *parameter,
                         "website", "http://www.squish.net/generator/",
                         "copyright", "© 1997-2003 James Ponder", "license-type",
                         GTK_LICENSE_GPL_2_0, "comments",
-                        "Sega Genesis / Mega Drive Emulator", nullptr);
+                        "Sega Genesis / Mega Drive Emulator\n"
+                        "See AUTHORS.md for full attribution.",
+                        nullptr);
 }
 
 void ui_action_quit(GSimpleAction *action, GVariant *parameter,
