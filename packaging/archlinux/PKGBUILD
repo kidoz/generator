@@ -1,0 +1,46 @@
+# Maintainer: Aleksandr Pavlov <ckidoz@gmail.com>
+
+pkgname=generator
+pkgver=0.50
+pkgrel=1
+pkgdesc="Sega Genesis/Mega Drive emulator with GTK4 UI"
+arch=('x86_64')
+url="https://github.com/kidoz/generator"
+license=('GPL-2.0-or-later')
+depends=(
+  'gtk4>=4.10.0'
+  'libadwaita>=1.4.0'
+  'sdl3>=3.0.0'
+  'libjpeg-turbo'
+)
+makedepends=(
+  'meson>=0.60.0'
+  'ninja'
+  'gcc>=13'
+)
+optdepends=(
+  'nasm: Required for RAZE Z80 emulator (faster, x86 only)'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-v$pkgver"
+  meson setup build \
+    --prefix=/usr \
+    --buildtype=release \
+    -Dui-backend=gtk4 \
+    -Dz80-backend=cmz80
+  meson compile -C build
+}
+
+package() {
+  cd "$pkgname-v$pkgver"
+  meson install -C build --destdir "$pkgdir"
+
+  # Install documentation
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 CHANGELOG.md "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
+  install -Dm644 AUTHORS.md "$pkgdir/usr/share/doc/$pkgname/AUTHORS.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
