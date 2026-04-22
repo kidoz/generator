@@ -110,6 +110,11 @@ if jpeg_dep.found()
   common_deps += jpeg_dep
 endif
 
+# Catch2 v3+ test framework (from subprojects/catch2.wrap)
+# Pulled in on demand by test targets — not linked into production binaries.
+catch2_dep = dependency('catch2-with-main', version: '>=3.0.0',
+  default_options: ['tests=false'])
+
 # Z80 backend configuration
 if z80_backend == 'cmz80'
   add_project_arguments('-DCMZ80=1', language: 'c')
@@ -193,6 +198,9 @@ subdir('src/app')
 
 # Headless backend (always built alongside main executable)
 subdir('src/ui/headless')
+
+# Catch2-based tests
+subdir('tests')
 
 # Summary
 summary({
