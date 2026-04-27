@@ -415,7 +415,7 @@ int state_savefile(const char *filename)
 {
   if ((state_outputfile = fopen(filename, "wb")) == nullptr) {
     LOG_CRITICAL(
-        ("Failed to open '%s' for writing: %s", filename, strerror(errno)));
+        "Failed to open '%s' for writing: %s", filename, strerror(errno));
     return -1;
   }
   fprintf(state_outputfile, "Generator " VERSION " saved state\n");

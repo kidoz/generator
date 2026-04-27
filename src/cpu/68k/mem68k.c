@@ -554,7 +554,7 @@ void mem68k_store_bank_byte(uint32 addr, uint8 data)
     cpuz80_bankwrite(data);
   } else {
     LOG_CRITICAL(
-        ("%08X [BANK] Invalid memory store (byte) 0x%X", regs.pc, addr));
+        "%08X [BANK] Invalid memory store (byte) 0x%X", regs.pc, addr);
   }
 }
 
@@ -568,7 +568,7 @@ void mem68k_store_bank_word(uint32 addr, uint16 data)
     cpuz80_bankwrite(data >> 8);
   } else {
     LOG_CRITICAL(
-        ("%08X [BANK] Invalid memory store (word) 0x%X", regs.pc, addr));
+        "%08X [BANK] Invalid memory store (word) 0x%X", regs.pc, addr);
   }
 }
 
@@ -842,7 +842,7 @@ void mem68k_store_ctrl_byte(uint32 addr, uint8 data)
     return; /* ignore low byte */
   } else {
     LOG_CRITICAL(
-        ("%08X [CTRL] Invalid memory store (byte) 0x%X", regs.pc, addr));
+        "%08X [CTRL] Invalid memory store (byte) 0x%X", regs.pc, addr);
   }
 }
 
@@ -874,7 +874,7 @@ void mem68k_store_ctrl_word(uint32 addr, uint16 data)
     }
   } else {
     LOG_CRITICAL(
-        ("%08X [CTRL] Invalid memory store (word) 0x%X", regs.pc, addr));
+        "%08X [CTRL] Invalid memory store (word) 0x%X", regs.pc, addr);
   }
 }
 
@@ -932,7 +932,7 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
 
 #ifdef DEBUG_VDP
       LOG_VERBOSE(
-          ("%08X [VDP] Word fetch from hv counter 0x%X", regs.pc, addr));
+          "%08X [VDP] Word fetch from hv counter 0x%X", regs.pc, addr);
 #endif
       if ((vdp_reg[12] >> 1) & 3) {
         /* interlace mode - replace lowest bit with highest bit */
@@ -951,7 +951,7 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
     return 0;
   default:
     LOG_CRITICAL(
-        ("%08X [VDP] Invalid memory fetch (word) 0x%X", regs.pc, addr));
+        "%08X [VDP] Invalid memory fetch (word) 0x%X", regs.pc, addr);
     return 0;
   }
 }
@@ -976,19 +976,19 @@ uint32 mem68k_fetch_vdp_long(uint32 addr)
     /* control port */
 #ifdef DEBUG_VDP
     LOG_VERBOSE(
-        ("%08X [VDP] Long fetch from control port 0x%X", regs.pc, addr));
+        "%08X [VDP] Long fetch from control port 0x%X", regs.pc, addr);
     LOG_CRITICAL(
-        ("%08X [VDP] Long fetch from control port 0x%X", regs.pc, addr));
+        "%08X [VDP] Long fetch from control port 0x%X", regs.pc, addr);
 #endif
     return 0;
   case 4:
     /* hv counter ish */
     LOG_CRITICAL(
-        ("%08X [VDP] Long fetch from hv/prohibited 0x%X", regs.pc, addr));
+        "%08X [VDP] Long fetch from hv/prohibited 0x%X", regs.pc, addr);
     return 0;
   default:
     LOG_CRITICAL(
-        ("%08X [VDP] Invalid memory fetch (word) 0x%X", regs.pc, addr));
+        "%08X [VDP] Invalid memory fetch (word) 0x%X", regs.pc, addr);
     return 0;
   }
 }
@@ -1030,7 +1030,7 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
     return;
   default:
     LOG_CRITICAL(
-        ("%08X [VDP] Invalid memory store (byte) 0x%X", regs.pc, addr));
+        "%08X [VDP] Invalid memory store (byte) 0x%X", regs.pc, addr);
     return;
   }
 }
@@ -1072,7 +1072,7 @@ void mem68k_store_vdp_word(uint32 addr, uint16 data)
     return;
   default:
     LOG_CRITICAL(
-        ("%08X [VDP] Invalid memory store (word) 0x%X", regs.pc, addr));
+        "%08X [VDP] Invalid memory store (word) 0x%X", regs.pc, addr);
     return;
   }
 }
@@ -1108,11 +1108,11 @@ void mem68k_store_vdp_long(uint32 addr, uint32 data)
   case 4:
     /* hv counter */
     LOG_CRITICAL(
-        ("%08X [VDP] Long store to hv/prohibited 0x%X", regs.pc, addr));
+        "%08X [VDP] Long store to hv/prohibited 0x%X", regs.pc, addr);
     return;
   default:
     LOG_CRITICAL(
-        ("%08X [VDP] Invalid memory store (long) 0x%X", regs.pc, addr));
+        "%08X [VDP] Invalid memory store (long) 0x%X", regs.pc, addr);
     return;
   }
 }

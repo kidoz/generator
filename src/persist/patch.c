@@ -65,7 +65,7 @@ int patch_savefile(const char *filename)
 
   if ((f = fopen(filename, "wb")) == nullptr) {
     LOG_CRITICAL(
-        ("Failed to open '%s' for writing: %s", filename, strerror(errno)));
+        "Failed to open '%s' for writing: %s", filename, strerror(errno));
     return -1;
   }
   for (ent = patch_patchlist; ent; ent = ent->next)

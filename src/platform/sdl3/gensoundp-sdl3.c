@@ -82,8 +82,8 @@ int soundp_start(void)
   }
 
   LOG_VERBOSE(
-      ("SDL3 audio subsystem initialized, driver: %s",
-       SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
+      "SDL3 audio subsystem initialized, driver: %s",
+       SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown");
 
   /* Get list of audio playback devices */
   devices = SDL_GetAudioPlaybackDevices(&num_devices);
@@ -154,8 +154,8 @@ int soundp_start(void)
   LOG_VERBOSE("SDL3 Audio started: %d Hz, %d channels", src_spec.freq,
                src_spec.channels);
   LOG_VERBOSE(
-      ("Audio backend: %s (SDL driver: %s)", backend,
-       SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
+      "Audio backend: %s (SDL driver: %s)", backend,
+       SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown");
   LOG_VERBOSE("Threshold = %d bytes (%d fields of sound === %dms latency)",
                sound_threshold * 4, sound_minfields,
                (int)(1000 * (float)sound_minfields / (float)vdp_framerate));
@@ -165,7 +165,7 @@ int soundp_start(void)
       strstr(backend, "PipeWire") == nullptr) {
     LOG_VERBOSE("Tip: For lower latency, consider switching to PipeWire");
     LOG_VERBOSE(
-        ("     PipeWire provides 3-10ms latency vs PulseAudio's 50-100ms"));
+        "     PipeWire provides 3-10ms latency vs PulseAudio's 50-100ms");
   }
 
   /* Pre-fill audio buffer with silence to bootstrap the buffer level.

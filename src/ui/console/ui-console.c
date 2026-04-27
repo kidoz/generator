@@ -1291,7 +1291,7 @@ int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
     }
   } else {
     LOG_CRITICAL(
-        ("Invalid image type '%s' passed to image save routine", type));
+        "Invalid image type '%s' passed to image save routine", type);
     close(fd);
     return -1;
   }

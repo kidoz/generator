@@ -158,7 +158,7 @@ int cpu68k_init(void)
   }
   if (j != cpu68k_totalinstr) {
     LOG_CRITICAL(
-        ("Instruction count not verified (%d/%d)\n", cpu68k_totalinstr, i));
+        "Instruction count not verified (%d/%d)\n", cpu68k_totalinstr, i);
     return 1;
   }
 

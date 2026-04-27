@@ -183,8 +183,8 @@ int uip_vgamode(void)
 
   if (actual_format != pixel_format) {
     LOG_NORMAL(
-        ("SDL created texture with format 0x%08X instead of requested 0x%08X",
-         actual_format, pixel_format));
+        "SDL created texture with format 0x%08X instead of requested 0x%08X",
+         actual_format, pixel_format);
     pixel_format = actual_format;
   }
 

@@ -216,7 +216,7 @@ void vdp_reset(void)
   }
   vdp_eventinit();
   LOG_VERBOSE(
-      ("VDP: totlines = %d (%s)", vdp_totlines, vdp_pal ? "PAL" : "NTSC"));
+      "VDP: totlines = %d (%s)", vdp_totlines, vdp_pal ? "PAL" : "NTSC");
 }
 
 uint16 vdp_status(void)
@@ -271,14 +271,14 @@ void vdp_storectrl(uint16 data)
       regdata = data & 255;
       if (reg > 24) {
         LOG_NORMAL(
-            ("%08X [VDP] Invalid register (%d)", regs.pc, ((data >> 8) & 31)));
+            "%08X [VDP] Invalid register (%d)", regs.pc, ((data >> 8) & 31));
         return;
       }
       vdp_reg[reg] = regdata;
       vdp_code = 0;
 #ifdef DEBUG_VDP
       LOG_VERBOSE(
-          ("%08X [VDP] Register %d set to %04X", regs.pc, reg, regdata));
+          "%08X [VDP] Register %d set to %04X", regs.pc, reg, regdata);
 #endif
       return;
     } else {
@@ -1623,7 +1623,7 @@ void vdp_spritelist(void)
     vmax = vpos + vsize * 8;
 
     LOG_REQUEST(
-        ("Sprite %d @ %X", link, (link << 3) | (vdp_reg[5] & 0x7f) << 9));
+        "Sprite %d @ %X", link, (link << 3) | (vdp_reg[5] & 0x7f) << 9);
     LOG_REQUEST("  Pos:  %d,%d", hpos, vpos);
     LOG_REQUEST("  Size: %d,%d", hsize, vsize);
     LOG_REQUEST("  Pri: %d, Pal: %d, Vflip: %d, Hflip: %d",
@@ -1654,7 +1654,7 @@ void vdp_describe(void)
   LOG_REQUEST("  hsize = %d (ie. width=%d)", hsize, hwidth);
   LOG_REQUEST("  vsize = %d (ie. width=%d)", vsize, vwidth);
   LOG_REQUEST("  hmode = %d (0=full, 2=cell, 3=line)", hmode);
-  LOG_REQUEST(("  vmode = %d (0=full, 1=2cell", vmode));
+  LOG_REQUEST("  vmode = %d (0=full, 1=2cell", vmode);
 
   for (layer = 0; layer < 2; layer++) {
     LOG_REQUEST("  Layer %s:", layer == 0 ? "A" : "B");
@@ -1688,10 +1688,10 @@ void vdp_describe(void)
       voffset = (line + LOCENDIAN16(((uint16 *)vdp_vsram)[layer])) & 0x3FF;
       voffset &= (vwidth << 8) - 1; /* put offset in range */
       LOG_REQUEST(
-          ("     line %d: hoffset=%d=%d, voffset=%d, "
+          "     line %d: hoffset=%d=%d, voffset=%d, "
            "firstcell=vram+%08X",
            line, raw_hoffset, hoffset, voffset,
-           o_patterndata + 2 * ((hoffset >> 3) + hwidth * (voffset >> 3))));
+           o_patterndata + 2 * ((hoffset >> 3) + hwidth * (voffset >> 3)));
     }
   }
 }
