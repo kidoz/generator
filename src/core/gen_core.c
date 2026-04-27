@@ -173,10 +173,13 @@ const char *gen_core_load_rom(gen_context_t *ctx, const char *filename)
 /*** gen_core_load_rom_mem - Load a ROM from memory ***/
 
 const char *gen_core_load_rom_mem(gen_context_t *ctx, const uint8 *rom,
-                                   unsigned int romlen, int copy)
+                                  unsigned int romlen, int copy)
 {
-  if (ctx == nullptr || rom == nullptr || romlen == 0) {
+  if (ctx == nullptr || rom == nullptr) {
     return "Invalid parameters";
+  }
+  if (romlen < 0x200) {
+    return "ROM image is too small";
   }
 
   /* Use existing memory loader */
@@ -187,12 +190,14 @@ const char *gen_core_load_rom_mem(gen_context_t *ctx, const uint8 *rom,
       return "Out of memory";
     }
     memcpy(romcopy, rom, romlen);
-    gen_loadmemrom((const char *)romcopy, romlen);
+    gen_loadmemrom_owned(romcopy, romlen);
     ctx->freerom = 1;
   } else {
     gen_loadmemrom((const char *)rom, romlen);
     ctx->freerom = 0;
   }
+  ctx->cpu68k.rom = cpu68k_rom;
+  ctx->cpu68k.romlen = cpu68k_romlen;
 
   return nullptr;
 }
@@ -212,6 +217,8 @@ void gen_core_unload_rom(gen_context_t *ctx)
 
   cpu68k_rom = nullptr;
   cpu68k_romlen = 0;
+  ctx->cpu68k.rom = nullptr;
+  ctx->cpu68k.romlen = 0;
   ctx->freerom = 0;
 
   /* Clear cartridge info */
@@ -345,11 +352,10 @@ time_t gen_core_state_slot_date(gen_context_t *ctx, int slot)
 
 /*** gen_core_set_input - Set controller input state ***/
 
-void gen_core_set_input(gen_context_t *ctx, int player,
-                        unsigned int up, unsigned int down,
-                        unsigned int left, unsigned int right,
-                        unsigned int a, unsigned int b, unsigned int c,
-                        unsigned int start)
+void gen_core_set_input(gen_context_t *ctx, int player, unsigned int up,
+                        unsigned int down, unsigned int left,
+                        unsigned int right, unsigned int a, unsigned int b,
+                        unsigned int c, unsigned int start)
 {
   if (ctx == nullptr || player < 0 || player > 1) {
     return;

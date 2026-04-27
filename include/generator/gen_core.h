@@ -45,11 +45,12 @@ void gen_core_shutdown(gen_context_t *ctx);
 const char *gen_core_load_rom(gen_context_t *ctx, const char *filename);
 
 /* Load a ROM image from memory.
- * If copy is true, the core will allocate and copy the data.
- * If copy is false, the core takes ownership of the memory.
+ * If copy is true, the core will allocate and own a private copy.
+ * If copy is false, the caller retains ownership and the data must outlive
+ * the loaded ROM.
  * Returns nullptr on success, error message on failure. */
 const char *gen_core_load_rom_mem(gen_context_t *ctx, const uint8 *rom,
-                                   unsigned int romlen, int copy);
+                                  unsigned int romlen, int copy);
 
 /* Unload the current ROM and reset state. */
 void gen_core_unload_rom(gen_context_t *ctx);
@@ -109,11 +110,10 @@ time_t gen_core_state_slot_date(gen_context_t *ctx, int slot);
 
 /* Set controller input state for a player (0 or 1).
  * The input struct contains button states. */
-void gen_core_set_input(gen_context_t *ctx, int player,
-                        unsigned int up, unsigned int down,
-                        unsigned int left, unsigned int right,
-                        unsigned int a, unsigned int b, unsigned int c,
-                        unsigned int start);
+void gen_core_set_input(gen_context_t *ctx, int player, unsigned int up,
+                        unsigned int down, unsigned int left,
+                        unsigned int right, unsigned int a, unsigned int b,
+                        unsigned int c, unsigned int start);
 
 /*
  * Audio

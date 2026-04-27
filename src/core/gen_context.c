@@ -75,6 +75,10 @@ void gen_context_destroy(gen_context_t *ctx)
   /* Free ROM if we own it */
   if (ctx->freerom && ctx->cpu68k.rom != nullptr) {
     free(ctx->cpu68k.rom);
+    if (ctx->cpu68k.rom == cpu68k_rom) {
+      cpu68k_rom = nullptr;
+      cpu68k_romlen = 0;
+    }
     ctx->cpu68k.rom = nullptr;
   }
 
@@ -144,8 +148,8 @@ int gen_context_init(gen_context_t *ctx)
   ctx->vdp.hblank = 0;
   ctx->vdp.vsync = 0;
   ctx->vdp.dmabusy = 0;
-  ctx->vdp.pal = 0;        /* NTSC by default */
-  ctx->vdp.overseas = 1;   /* USA by default */
+  ctx->vdp.pal = 0;      /* NTSC by default */
+  ctx->vdp.overseas = 1; /* USA by default */
   ctx->vdp.address = 0;
   ctx->vdp.code = 0;
   ctx->vdp.ctrlflag = 0;
@@ -169,12 +173,12 @@ int gen_context_init(gen_context_t *ctx)
   ctx->vdp.vislines = 224;
   ctx->vdp.visstartline = 0;
   ctx->vdp.visendline = 224;
-  ctx->vdp.totlines = 262;     /* NTSC */
-  ctx->vdp.framerate = 60;     /* NTSC */
-  ctx->vdp.clock = 53693175;   /* NTSC master clock */
+  ctx->vdp.totlines = 262;   /* NTSC */
+  ctx->vdp.framerate = 60;   /* NTSC */
+  ctx->vdp.clock = 53693175; /* NTSC master clock */
   ctx->vdp.clk68k = ctx->vdp.clock / 7;
-  ctx->vdp.clksperline_68k = ctx->vdp.clk68k / ctx->vdp.framerate /
-                              ctx->vdp.totlines;
+  ctx->vdp.clksperline_68k =
+      ctx->vdp.clk68k / ctx->vdp.framerate / ctx->vdp.totlines;
 
   /* Layer visibility - all enabled */
   ctx->vdp.layerB = 1;
@@ -191,8 +195,8 @@ int gen_context_init(gen_context_t *ctx)
   ctx->sound.on = 1;
   ctx->sound.psg = 1;
   ctx->sound.fm = 1;
-  ctx->sound.filter = 50;     /* 50% low-pass filter */
-  ctx->sound.speed = 44100;   /* 44.1kHz */
+  ctx->sound.filter = 50;   /* 50% low-pass filter */
+  ctx->sound.speed = 44100; /* 44.1kHz */
   ctx->sound.sampsperfield = ctx->sound.speed / ctx->vdp.framerate;
   ctx->sound.threshold = ctx->sound.sampsperfield * 5; /* 5 fields buffer */
   ctx->sound.minfields = 5;
@@ -232,13 +236,13 @@ int gen_context_init(gen_context_t *ctx)
   /* Configuration defaults */
   ctx->config.debugmode = 0;
   ctx->config.loglevel = GEN_LOG_NORMAL;
-  ctx->config.autodetect = 1;  /* Auto-detect PAL/NTSC */
+  ctx->config.autodetect = 1; /* Auto-detect PAL/NTSC */
 
   /* Sound config defaults */
   ctx->config.sound_on = 1;
   ctx->config.sound_psg = 1;
   ctx->config.sound_fm = 1;
-  ctx->config.sound_filter = 50;  /* 50% low-pass filter */
+  ctx->config.sound_filter = 50; /* 50% low-pass filter */
   ctx->config.musiclog = GEN_MUSICLOG_OFF;
 
   /* VDP layer visibility (all enabled by default) */

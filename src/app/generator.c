@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 
-#define _GNU_SOURCE 1  /* For strcasestr() */
+#define _GNU_SOURCE 1 /* For strcasestr() */
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -36,7 +36,8 @@
 
 volatile sig_atomic_t gen_quit = 0; /* Signal-safe flag for clean shutdown */
 unsigned int gen_debugmode = 0;
-unsigned int gen_loglevel = GEN_LOG_NORMAL;  /* Default: show normal + critical */
+unsigned int gen_loglevel =
+    GEN_LOG_NORMAL;               /* Default: show normal + critical */
 unsigned int gen_autodetect = 1;  /* 0 = no, 1 = yes */
 unsigned int gen_musiclog = 0;    /* 0 = no, 1 = GYM, 2 = GNM */
 unsigned int gen_modifiedrom = 0; /* 0 = no, 1 = yes */
@@ -124,8 +125,8 @@ int main(int argc, char *argv[])
     ui_err("Failed to initialise sound module (%d)", retval);
 
   /* Install signal handlers for graceful shutdown */
-  signal(SIGINT, gen_sighandler);   /* Ctrl+C */
-  signal(SIGTERM, gen_sighandler);  /* kill command / systemd stop */
+  signal(SIGINT, gen_sighandler);  /* Ctrl+C */
+  signal(SIGTERM, gen_sighandler); /* kill command / systemd stop */
 
   /* enter user interface loop */
   return ui_loop();
@@ -173,6 +174,8 @@ char *gen_loadimage(const char *filename)
     if (gen_freerom)
       free(cpu68k_rom);
     cpu68k_rom = nullptr;
+    cpu68k_romlen = 0;
+    gen_freerom = 0;
   }
 
   /* Load file */
@@ -196,8 +199,10 @@ char *gen_loadimage(const char *filename)
   if ((file = open(filename, O_RDONLY, 0)) == -1) {
 #endif
     perror("open");
+    free(cpu68k_rom);
     cpu68k_rom = nullptr;
     cpu68k_romlen = 0;
+    gen_freerom = 0;
     return ("Unable to open file.");
   }
   buffer = cpu68k_rom;
@@ -209,12 +214,25 @@ char *gen_loadimage(const char *filename)
     bytesleft -= bytes;
   } while (bytesleft >= 0);
   close(file);
-  if (bytes == -1)
+  if (bytes == -1) {
+    free(cpu68k_rom);
+    cpu68k_rom = nullptr;
+    cpu68k_romlen = 0;
+    gen_freerom = 0;
     return (strerror(errno));
-  else if (bytes != 0)
+  } else if (bytes != 0) {
+    free(cpu68k_rom);
+    cpu68k_rom = nullptr;
+    cpu68k_romlen = 0;
+    gen_freerom = 0;
     return ("invalid return code from read()");
+  }
   if (bytesleft) {
     LOG_CRITICAL(("%d bytes left to read?!", bytesleft));
+    free(cpu68k_rom);
+    cpu68k_rom = nullptr;
+    cpu68k_romlen = 0;
+    gen_freerom = 0;
     return ("Error whilst loading file");
   }
 
@@ -226,8 +244,9 @@ char *gen_loadimage(const char *filename)
     imagetype = 2; /* SMD file */
   }
   /* check for interleaved 'SEGA' */
-  if (cpu68k_rom[0x280] == 'E' && cpu68k_rom[0x281] == 'A' &&
-      cpu68k_rom[0x2280] == 'S' && cpu68k_rom[0x2281] == 'G') {
+  if (cpu68k_romlen > 0x2281 && cpu68k_rom[0x280] == 'E' &&
+      cpu68k_rom[0x281] == 'A' && cpu68k_rom[0x2280] == 'S' &&
+      cpu68k_rom[0x2281] == 'G') {
     imagetype = 2; /* SMD file */
   }
   /* Check extension is not wrong */
@@ -249,15 +268,17 @@ char *gen_loadimage(const char *filename)
     if (cpu68k_romlen > 0x300) {
       const uint8 *hdr_sega = (const uint8 *)(cpu68k_rom + 0x300);
       const uint8 *rom_sega = (const uint8 *)(cpu68k_rom + 0x100);
-      int hdr_has_sega = (!memcmp(hdr_sega, "SEGA", 4) ||
-                          !memcmp(hdr_sega, "ESAG", 4));
-      int rom_has_sega = (!memcmp(rom_sega, "SEGA", 4) ||
-                          !memcmp(rom_sega, "ESAG", 4));
+      int hdr_has_sega =
+          (!memcmp(hdr_sega, "SEGA", 4) || !memcmp(hdr_sega, "ESAG", 4));
+      int rom_has_sega =
+          (!memcmp(rom_sega, "SEGA", 4) || !memcmp(rom_sega, "ESAG", 4));
       if (hdr_has_sega && !rom_has_sega) {
         uint8 *trim = malloc(cpu68k_romlen - 512 + 16);
         if (trim == nullptr) {
+          free(cpu68k_rom);
           cpu68k_rom = nullptr;
           cpu68k_romlen = 0;
+          gen_freerom = 0;
           return ("Out of memory!");
         }
         memcpy(trim, cpu68k_rom + 512, cpu68k_romlen - 512);
@@ -269,8 +290,7 @@ char *gen_loadimage(const char *filename)
     }
 
     /* Fix word-swapped ROMs (e.g., 'ESAG' header) */
-    if (cpu68k_romlen > 0x104 &&
-        !memcmp(cpu68k_rom + 0x100, "ESAG", 4)) {
+    if (cpu68k_romlen > 0x104 && !memcmp(cpu68k_rom + 0x100, "ESAG", 4)) {
       for (i = 0; i + 1 < cpu68k_romlen; i += 2) {
         uint8 tmp = cpu68k_rom[i];
         cpu68k_rom[i] = cpu68k_rom[i + 1];
@@ -280,12 +300,19 @@ char *gen_loadimage(const char *filename)
     break;
   case 2: /* SMD */
     blocks = (cpu68k_romlen - 512) / 16384;
-    if (blocks * 16384 + 512 != cpu68k_romlen)
-      return ("Image is corrupt.");
-
-    if ((new = malloc(cpu68k_romlen - 512)) == nullptr) {
+    if (blocks * 16384 + 512 != cpu68k_romlen) {
+      free(cpu68k_rom);
       cpu68k_rom = nullptr;
       cpu68k_romlen = 0;
+      gen_freerom = 0;
+      return ("Image is corrupt.");
+    }
+
+    if ((new = malloc(cpu68k_romlen - 512)) == nullptr) {
+      free(cpu68k_rom);
+      cpu68k_rom = nullptr;
+      cpu68k_romlen = 0;
+      gen_freerom = 0;
       return ("Out of memory!");
     }
 
@@ -330,12 +357,11 @@ char *gen_loadimage(const char *filename)
 
     /* Check filename for region hints (case-insensitive) */
     if (strcasestr(gen_leafname, "(Europe)") ||
-        strcasestr(gen_leafname, "(PAL)") ||
-        strcasestr(gen_leafname, "(E)") ||
-        strcasestr(gen_leafname, "(F)") ||      /* France */
-        strcasestr(gen_leafname, "(G)") ||      /* Germany */
-        strcasestr(gen_leafname, "(I)") ||      /* Italy */
-        strcasestr(gen_leafname, "(S)") ||      /* Spain */
+        strcasestr(gen_leafname, "(PAL)") || strcasestr(gen_leafname, "(E)") ||
+        strcasestr(gen_leafname, "(F)") || /* France */
+        strcasestr(gen_leafname, "(G)") || /* Germany */
+        strcasestr(gen_leafname, "(I)") || /* Italy */
+        strcasestr(gen_leafname, "(S)") || /* Spain */
         strcasestr(gen_leafname, "(EU)")) {
       pal_from_filename = 1;
     } else if (strcasestr(gen_leafname, "(USA)") ||
@@ -380,9 +406,18 @@ char *gen_loadimage(const char *filename)
 
 void gen_loadmemrom(const char *rom, int romlen)
 {
-  cpu68k_rom = (char *)rom; /* I won't alter it, promise */
+  cpu68k_rom = (uint8 *)rom; /* I won't alter it, promise */
   cpu68k_romlen = romlen;
   gen_freerom = 0;
+  gen_setupcartinfo();
+  gen_reset();
+}
+
+void gen_loadmemrom_owned(uint8 *rom, int romlen)
+{
+  cpu68k_rom = rom;
+  cpu68k_romlen = romlen;
+  gen_freerom = 1;
   gen_setupcartinfo();
   gen_reset();
 }

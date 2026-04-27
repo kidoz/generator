@@ -23,8 +23,9 @@ char *gen_loadimage(const char *filename);
 void gen_reset(void);
 void gen_softreset(void);
 void gen_loadmemrom(const char *rom, int romlen);
+void gen_loadmemrom_owned(uint8 *rom, int romlen);
 
-#if defined(linux)
+#if defined(__linux__) || defined(linux)
 #include <byteswap.h>
 #define SWAP16(x) bswap_16((x))
 #define SWAP32(x) bswap_32((x))
@@ -202,7 +203,8 @@ typedef enum {
   i_LINE15
 } t_mnemonic;
 
-/* Instruction Information Block - named struct for forward declaration support */
+/* Instruction Information Block - named struct for forward declaration support
+ */
 typedef struct t_iib {
   uint16 mask;         /* mask of bits that are static */
   uint16 bits;         /* bit values corresponding to bits in mask */
@@ -298,14 +300,14 @@ typedef struct {
 #define BROKEN_TAS
 
 /* Runtime log levels (higher = more verbose) */
-#define GEN_LOG_NONE     0  /* No logging */
-#define GEN_LOG_CRITICAL 1  /* Critical errors only */
-#define GEN_LOG_NORMAL   2  /* Normal messages */
-#define GEN_LOG_VERBOSE  3  /* Verbose output */
-#define GEN_LOG_USER     4  /* User-level debug */
-#define GEN_LOG_DEBUG1   5  /* Debug level 1 */
-#define GEN_LOG_DEBUG2   6  /* Debug level 2 */
-#define GEN_LOG_DEBUG3   7  /* Debug level 3 (most verbose) */
+#define GEN_LOG_NONE 0     /* No logging */
+#define GEN_LOG_CRITICAL 1 /* Critical errors only */
+#define GEN_LOG_NORMAL 2   /* Normal messages */
+#define GEN_LOG_VERBOSE 3  /* Verbose output */
+#define GEN_LOG_USER 4     /* User-level debug */
+#define GEN_LOG_DEBUG1 5   /* Debug level 1 */
+#define GEN_LOG_DEBUG2 6   /* Debug level 2 */
+#define GEN_LOG_DEBUG3 7   /* Debug level 3 (most verbose) */
 
 /* Runtime log level checking macros.
    These check gen_loglevel at runtime, allowing log verbosity to be
@@ -321,14 +323,46 @@ typedef struct {
 #define LOG_CRITICAL(x) /* */
 #define LOG_REQUEST(x)  /* */
 #else
-#define LOG_DEBUG3(x)   do { if (gen_loglevel >= GEN_LOG_DEBUG3) ui_log_debug3 x; } while(0)
-#define LOG_DEBUG2(x)   do { if (gen_loglevel >= GEN_LOG_DEBUG2) ui_log_debug2 x; } while(0)
-#define LOG_DEBUG1(x)   do { if (gen_loglevel >= GEN_LOG_DEBUG1) ui_log_debug1 x; } while(0)
-#define LOG_USER(x)     do { if (gen_loglevel >= GEN_LOG_USER) ui_log_user x; } while(0)
-#define LOG_VERBOSE(x)  do { if (gen_loglevel >= GEN_LOG_VERBOSE) ui_log_verbose x; } while(0)
-#define LOG_NORMAL(x)   do { if (gen_loglevel >= GEN_LOG_NORMAL) ui_log_normal x; } while(0)
-#define LOG_CRITICAL(x) do { if (gen_loglevel >= GEN_LOG_CRITICAL) ui_log_critical x; } while(0)
-#define LOG_REQUEST(x)  do { if (gen_loglevel >= GEN_LOG_NORMAL) ui_log_request x; } while(0)
+#define LOG_DEBUG3(x)                   \
+  do {                                  \
+    if (gen_loglevel >= GEN_LOG_DEBUG3) \
+      ui_log_debug3 x;                  \
+  } while (0)
+#define LOG_DEBUG2(x)                   \
+  do {                                  \
+    if (gen_loglevel >= GEN_LOG_DEBUG2) \
+      ui_log_debug2 x;                  \
+  } while (0)
+#define LOG_DEBUG1(x)                   \
+  do {                                  \
+    if (gen_loglevel >= GEN_LOG_DEBUG1) \
+      ui_log_debug1 x;                  \
+  } while (0)
+#define LOG_USER(x)                   \
+  do {                                \
+    if (gen_loglevel >= GEN_LOG_USER) \
+      ui_log_user x;                  \
+  } while (0)
+#define LOG_VERBOSE(x)                   \
+  do {                                   \
+    if (gen_loglevel >= GEN_LOG_VERBOSE) \
+      ui_log_verbose x;                  \
+  } while (0)
+#define LOG_NORMAL(x)                   \
+  do {                                  \
+    if (gen_loglevel >= GEN_LOG_NORMAL) \
+      ui_log_normal x;                  \
+  } while (0)
+#define LOG_CRITICAL(x)                   \
+  do {                                    \
+    if (gen_loglevel >= GEN_LOG_CRITICAL) \
+      ui_log_critical x;                  \
+  } while (0)
+#define LOG_REQUEST(x)                  \
+  do {                                  \
+    if (gen_loglevel >= GEN_LOG_NORMAL) \
+      ui_log_request x;                 \
+  } while (0)
 #endif
 
 typedef struct {
