@@ -410,7 +410,7 @@ void vdp_dma_vramcopy()
   unsigned int i;
 
   if (length == 0) {
-    LOG_NORMAL(("%08X [VDP] Warning - length of 0 used in vram copy"));
+    LOG_NORMAL(("%08X [VDP] Warning - length of 0 used in vram copy", regs.pc));
     length = 0x10000; /* could be 0xffff */
   }
 #ifdef DEBUG_VDPDMA

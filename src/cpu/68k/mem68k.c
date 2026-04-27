@@ -766,7 +766,7 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
 void mem68k_store_io_word(uint32 addr, uint16 data)
 {
   if (data >> 8)
-    LOG_CRITICAL(("%08X [IO] Word store to %X of %X", addr, data));
+    LOG_CRITICAL(("%08X [IO] Word store to %X of %X", regs.pc, addr, data));
   mem68k_store_io_byte(addr + 1, data & 0xff);
 }
 
