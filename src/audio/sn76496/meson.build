@@ -9,3 +9,5 @@ sn76496_dep = declare_dependency(
   link_with: sn76496_lib,
   include_directories: include_directories('.')
 )
+
+subdir('test')

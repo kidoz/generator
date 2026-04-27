@@ -14,3 +14,14 @@ test('xbrz_tools', test_xbrz_tools,
   timeout: 30,
   suite: 'catch2'
 )
+
+test_catch2_smoke = executable('test_catch2_smoke',
+  'catch2_smoke.cpp',
+  dependencies: [catch2_dep],
+  build_by_default: false
+)
+
+test('catch2_smoke', test_catch2_smoke,
+  timeout: 30,
+  suite: 'catch2'
+)
