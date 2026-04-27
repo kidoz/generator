@@ -31,9 +31,7 @@ static inline void write_le32(uint8_t *buf, uint32_t val)
 /* Helper: read 32-bit little-endian */
 static inline uint32_t read_le32(const uint8_t *buf)
 {
-  return (uint32_t)buf[0] |
-         ((uint32_t)buf[1] << 8) |
-         ((uint32_t)buf[2] << 16) |
+  return (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) |
          ((uint32_t)buf[3] << 24);
 }
 
@@ -46,10 +44,12 @@ void kaillera_packet_init(kaillera_packet_t *pkt)
 }
 
 int kaillera_packet_add_message(kaillera_packet_t *pkt, uint16_t seq,
-                                kaillera_msg_type_t type,
-                                const void *payload, uint16_t payload_len)
+                                kaillera_msg_type_t type, const void *payload,
+                                uint16_t payload_len)
 {
   if (pkt == nullptr)
+    return -1;
+  if (pkt->message_count == UINT8_MAX)
     return -1;
 
   /* Calculate message size: 2 (seq) + 2 (len) + 1 (type) + payload */
@@ -83,8 +83,8 @@ int kaillera_packet_add_message(kaillera_packet_t *pkt, uint16_t seq,
   return 0;
 }
 
-int kaillera_packet_serialize(const kaillera_packet_t *pkt,
-                              uint8_t *buf, size_t buflen)
+int kaillera_packet_serialize(const kaillera_packet_t *pkt, uint8_t *buf,
+                              size_t buflen)
 {
   if (pkt == nullptr || buf == nullptr)
     return -1;
@@ -103,13 +103,13 @@ int kaillera_packet_serialize(const kaillera_packet_t *pkt,
   return (int)total_size;
 }
 
-int kaillera_packet_parse(kaillera_packet_t *pkt,
-                          const uint8_t *data, size_t len)
+int kaillera_packet_parse(kaillera_packet_t *pkt, const uint8_t *data,
+                          size_t len)
 {
   if (pkt == nullptr || data == nullptr || len < 1)
     return -1;
 
-  pkt->message_count = data[0];
+  uint8_t message_count = data[0];
 
   if (len > 1) {
     size_t data_len = len - 1;
@@ -121,6 +121,29 @@ int kaillera_packet_parse(kaillera_packet_t *pkt,
     pkt->data_len = 0;
   }
 
+  const uint8_t *p = pkt->data;
+  const uint8_t *end = pkt->data + pkt->data_len;
+  uint8_t parsed_count = 0;
+  while (parsed_count < message_count) {
+    if ((size_t)(end - p) < 5)
+      return -1;
+
+    uint16_t msg_len = read_le16(p + 2);
+    if (msg_len == 0)
+      return -1;
+
+    size_t payload_len = (size_t)msg_len - 1;
+    if ((size_t)(end - p) < 5 + payload_len)
+      return -1;
+
+    p += 5 + payload_len;
+    parsed_count++;
+  }
+
+  if (p != end)
+    return -1;
+
+  pkt->message_count = message_count;
   return 0;
 }
 
@@ -134,7 +157,8 @@ int kaillera_packet_message_count(const kaillera_packet_t *pkt)
 int kaillera_packet_get_message(const kaillera_packet_t *pkt, int index,
                                 kaillera_message_t *msg)
 {
-  if (pkt == nullptr || msg == nullptr || index < 0 || index >= pkt->message_count)
+  if (pkt == nullptr || msg == nullptr || index < 0 ||
+      index >= pkt->message_count)
     return -1;
 
   const uint8_t *p = pkt->data;
@@ -145,24 +169,30 @@ int kaillera_packet_get_message(const kaillera_packet_t *pkt, int index,
     uint16_t seq = read_le16(p);
     uint16_t len = read_le16(p + 2);
     uint8_t type = p[4];
+    if (len == 0)
+      return -1;
+
+    size_t payload_len = (size_t)len - 1;
+    if ((size_t)(end - p) < 5 + payload_len)
+      return -1;
 
     if (i == index) {
       msg->sequence = seq;
-      msg->length = len > 0 ? len - 1 : 0;  /* Length includes type byte */
+      msg->length = (uint16_t)payload_len; /* Length includes type byte */
       msg->type = (kaillera_msg_type_t)type;
-      msg->payload = len > 1 ? p + 5 : nullptr;
+      msg->payload = payload_len > 0 ? p + 5 : nullptr;
       return 0;
     }
 
     /* Move to next message */
-    p += 5 + (len > 1 ? len - 1 : 0);
+    p += 5 + payload_len;
   }
 
   return -1;
 }
 
-int kaillera_serialize_login(const kaillera_login_t *login,
-                             uint8_t *buf, size_t buflen)
+int kaillera_serialize_login(const kaillera_login_t *login, uint8_t *buf,
+                             size_t buflen)
 {
   if (login == nullptr || buf == nullptr)
     return -1;
@@ -197,7 +227,7 @@ int kaillera_write_string(uint8_t *buf, size_t buflen, const char *str)
   if (buf == nullptr || str == nullptr)
     return -1;
 
-  size_t len = strlen(str) + 1;  /* Include null terminator */
+  size_t len = strlen(str) + 1; /* Include null terminator */
   if (len > buflen)
     return -1;
 
@@ -214,15 +244,17 @@ const uint8_t *kaillera_read_string(const uint8_t *data, const uint8_t *end,
   const uint8_t *p = data;
   size_t i = 0;
 
-  while (p < end && *p != '\0' && i < maxlen - 1) {
+  while (p < end && *p != '\0') {
+    if (i + 1 >= maxlen)
+      return nullptr;
     str[i++] = (char)*p++;
   }
+
+  if (p >= end)
+    return nullptr;
+
   str[i] = '\0';
-
-  /* Skip past null terminator */
-  if (p < end && *p == '\0')
-    p++;
-
+  p++;
   return p;
 }
 
@@ -304,7 +336,7 @@ int kaillera_parse_server_status_games(const uint8_t *data, size_t len,
     while (p < end && *p != '\0')
       p++; /* name */
     if (p < end)
-      p++; /* null */
+      p++;  /* null */
     p += 4; /* ping + conn + status */
   }
 
@@ -345,8 +377,8 @@ int kaillera_parse_server_status_games(const uint8_t *data, size_t len,
   return count;
 }
 
-int kaillera_serialize_game_data(const kaillera_game_data_t *gd,
-                                 uint8_t *buf, size_t buflen)
+int kaillera_serialize_game_data(const kaillera_game_data_t *gd, uint8_t *buf,
+                                 size_t buflen)
 {
   if (gd == nullptr || buf == nullptr)
     return -1;
@@ -356,6 +388,10 @@ int kaillera_serialize_game_data(const kaillera_game_data_t *gd,
    */
   size_t total_data = (size_t)gd->player_count * gd->data_size;
   size_t total_size = 4 + total_data;
+
+  if (gd->player_count > KAILLERA_MAX_PLAYERS || gd->data_size > 16 ||
+      total_data > sizeof(gd->player_data))
+    return -1;
 
   if (buflen < total_size)
     return -1;
@@ -381,13 +417,16 @@ int kaillera_parse_game_data(const uint8_t *data, size_t len,
   gd->player_count = data[2];
   gd->data_size = data[3];
 
+  if (gd->player_count > KAILLERA_MAX_PLAYERS || gd->data_size > 16)
+    return -1;
+
   size_t total_data = (size_t)gd->player_count * gd->data_size;
 
   if (len < 4 + total_data)
     return -1;
 
   if (total_data > sizeof(gd->player_data))
-    total_data = sizeof(gd->player_data);
+    return -1;
 
   if (total_data > 0) {
     memcpy(gd->player_data, data + 4, total_data);

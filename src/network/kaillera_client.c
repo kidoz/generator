@@ -36,24 +36,24 @@ struct kaillera_client {
   /* Connection info */
   char server_host[256];
   uint16_t server_port;
-  uint16_t game_port;       /* Port for game data after handshake */
+  uint16_t game_port; /* Port for game data after handshake */
 
   /* User info */
   char username[32];
   char emulator[128];
   uint8_t connection_type;
   uint32_t user_id;
-  int player_number;        /* 0-based player number in game */
-  int num_players;          /* Total players in game */
+  int player_number; /* 0-based player number in game */
+  int num_players;   /* Total players in game */
 
   /* Game state */
   uint32_t current_game_id;
   bool is_host;
 
   /* Protocol state */
-  uint16_t send_seq;        /* Outgoing sequence number */
-  uint16_t recv_seq;        /* Expected incoming sequence number */
-  uint16_t frame_count;     /* Frame counter for game data */
+  uint16_t send_seq;    /* Outgoing sequence number */
+  uint16_t recv_seq;    /* Expected incoming sequence number */
+  uint16_t frame_count; /* Frame counter for game data */
 
   /* Ping calculation */
   int ping_samples[MAX_ACK_SAMPLES];
@@ -77,7 +77,8 @@ static uint64_t get_time_ms(void)
 }
 
 /* Send a packet to the server */
-static int client_send_packet(kaillera_client_t *client, const kaillera_packet_t *pkt)
+static int client_send_packet(kaillera_client_t *client,
+                              const kaillera_packet_t *pkt)
 {
   uint8_t buf[KAILLERA_MAX_PACKET_SIZE];
   int len = kaillera_packet_serialize(pkt, buf, sizeof(buf));
@@ -88,14 +89,15 @@ static int client_send_packet(kaillera_client_t *client, const kaillera_packet_t
 }
 
 /* Send a single message */
-static int client_send_message(kaillera_client_t *client, kaillera_msg_type_t type,
-                               const void *payload, uint16_t payload_len)
+static int client_send_message(kaillera_client_t *client,
+                               kaillera_msg_type_t type, const void *payload,
+                               uint16_t payload_len)
 {
   kaillera_packet_t pkt;
   kaillera_packet_init(&pkt);
 
-  if (kaillera_packet_add_message(&pkt, client->send_seq++, type,
-                                  payload, payload_len) < 0)
+  if (kaillera_packet_add_message(&pkt, client->send_seq++, type, payload,
+                                  payload_len) < 0)
     return -1;
 
   return client_send_packet(client, &pkt);
@@ -153,8 +155,8 @@ static void client_process_message(kaillera_client_t *client,
   case KAILLERA_MSG_USER_QUIT:
     if (msg->payload != nullptr && client->callbacks.on_user_quit) {
       char name[32];
-      kaillera_read_string(msg->payload, msg->payload + msg->length,
-                          name, sizeof(name));
+      kaillera_read_string(msg->payload, msg->payload + msg->length, name,
+                           sizeof(name));
       client->callbacks.on_user_quit(name, client->callbacks.user_data);
     }
     break;
@@ -184,7 +186,7 @@ static void client_process_message(kaillera_client_t *client,
 
       if (p + 4 <= end) {
         uint32_t game_id = p[0] | ((uint32_t)p[1] << 8) |
-                          ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+                           ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
         p += 4;
 
         char name[128], owner[32];
@@ -192,9 +194,11 @@ static void client_process_message(kaillera_client_t *client,
         if (p != nullptr) {
           p = kaillera_read_string(p, end, (char[64]){0}, 64); /* emulator */
           if (p != nullptr) {
-            kaillera_read_string(p, end, owner, sizeof(owner));
-            client->callbacks.on_game_created(game_id, name, owner,
-                                              client->callbacks.user_data);
+            p = kaillera_read_string(p, end, owner, sizeof(owner));
+            if (p != nullptr) {
+              client->callbacks.on_game_created(game_id, name, owner,
+                                                client->callbacks.user_data);
+            }
           }
         }
       }
@@ -214,6 +218,8 @@ static void client_process_message(kaillera_client_t *client,
 
         char name[32];
         p = kaillera_read_string(p, end, name, sizeof(name));
+        if (p == nullptr)
+          break;
 
         if (client->callbacks.on_player_join) {
           client->callbacks.on_player_join(player_num, name,
@@ -239,7 +245,9 @@ static void client_process_message(kaillera_client_t *client,
         int player_num = *p++;
 
         char name[32];
-        kaillera_read_string(p, end, name, sizeof(name));
+        p = kaillera_read_string(p, end, name, sizeof(name));
+        if (p == nullptr)
+          break;
 
         if (client->callbacks.on_player_leave) {
           client->callbacks.on_player_leave(player_num, name,
@@ -341,10 +349,9 @@ void kaillera_client_set_callbacks(kaillera_client_t *client,
   }
 }
 
-int kaillera_client_connect(kaillera_client_t *client,
-                            const char *host, uint16_t port,
-                            const char *username, const char *emulator,
-                            uint8_t connection_type)
+int kaillera_client_connect(kaillera_client_t *client, const char *host,
+                            uint16_t port, const char *username,
+                            const char *emulator, uint8_t connection_type)
 {
   if (client == nullptr || host == nullptr || username == nullptr)
     return -1;
@@ -417,8 +424,7 @@ int kaillera_client_connect(kaillera_client_t *client,
 
   /* Check response */
   if (len >= 3 && memcmp(buf, "TOO", 3) == 0) {
-    snprintf(client->error_msg, sizeof(client->error_msg),
-             "Server is full");
+    snprintf(client->error_msg, sizeof(client->error_msg), "Server is full");
     socket_destroy(client->sock);
     client->sock = nullptr;
     client->state = KAILLERA_STATE_ERROR;
@@ -463,7 +469,8 @@ int kaillera_client_connect(kaillera_client_t *client,
   login.connection_type = client->connection_type;
 
   uint8_t login_buf[256];
-  int login_len = kaillera_serialize_login(&login, login_buf, sizeof(login_buf));
+  int login_len =
+      kaillera_serialize_login(&login, login_buf, sizeof(login_buf));
   if (login_len < 0 ||
       client_send_message(client, KAILLERA_MSG_LOGIN, login_buf,
                           (uint16_t)login_len) < 0) {
@@ -479,8 +486,7 @@ int kaillera_client_connect(kaillera_client_t *client,
   uint64_t start = get_time_ms();
   while (client->state == KAILLERA_STATE_CONNECTING) {
     if (get_time_ms() - start > CONNECT_TIMEOUT_MS) {
-      snprintf(client->error_msg, sizeof(client->error_msg),
-               "Login timeout");
+      snprintf(client->error_msg, sizeof(client->error_msg), "Login timeout");
       socket_destroy(client->sock);
       client->sock = nullptr;
       client->state = KAILLERA_STATE_ERROR;
@@ -520,7 +526,8 @@ void kaillera_client_disconnect(kaillera_client_t *client)
   client->current_game_id = 0;
 
   if (client->callbacks.on_disconnect) {
-    client->callbacks.on_disconnect("Disconnected", client->callbacks.user_data);
+    client->callbacks.on_disconnect("Disconnected",
+                                    client->callbacks.user_data);
   }
 }
 
@@ -573,17 +580,20 @@ int kaillera_client_chat(kaillera_client_t *client, const char *message)
   int pos = kaillera_write_string(buf, sizeof(buf), client->username);
   if (pos < 0)
     return -1;
-  int msg_len = kaillera_write_string(buf + pos, sizeof(buf) - (size_t)pos, message);
+  int msg_len =
+      kaillera_write_string(buf + pos, sizeof(buf) - (size_t)pos, message);
   if (msg_len < 0)
     return -1;
 
-  kaillera_msg_type_t type = (client->current_game_id != 0) ?
-    KAILLERA_MSG_GAME_CHAT : KAILLERA_MSG_GLOBAL_CHAT;
+  kaillera_msg_type_t type = (client->current_game_id != 0)
+                                 ? KAILLERA_MSG_GAME_CHAT
+                                 : KAILLERA_MSG_GLOBAL_CHAT;
 
   return client_send_message(client, type, buf, (uint16_t)(pos + msg_len));
 }
 
-int kaillera_client_create_game(kaillera_client_t *client, const char *game_name)
+int kaillera_client_create_game(kaillera_client_t *client,
+                                const char *game_name)
 {
   if (client == nullptr || game_name == nullptr)
     return -1;
@@ -666,8 +676,8 @@ int kaillera_client_start_game(kaillera_client_t *client)
 
   /* Format: [2B frame_delay][1B player_num] */
   uint8_t buf[3];
-  buf[0] = 0;  /* Frame delay low byte */
-  buf[1] = 0;  /* Frame delay high byte */
+  buf[0] = 0; /* Frame delay low byte */
+  buf[1] = 0; /* Frame delay high byte */
   buf[2] = (uint8_t)client->num_players;
 
   return client_send_message(client, KAILLERA_MSG_START_GAME, buf, 3);
@@ -684,8 +694,8 @@ int kaillera_client_ready(kaillera_client_t *client)
   return client_send_message(client, KAILLERA_MSG_READY, nullptr, 0);
 }
 
-int kaillera_client_modify_play_values(kaillera_client_t *client,
-                                       void *input, int size)
+int kaillera_client_modify_play_values(kaillera_client_t *client, void *input,
+                                       int size)
 {
   if (client == nullptr || input == nullptr || size <= 0)
     return -1;
@@ -693,15 +703,17 @@ int kaillera_client_modify_play_values(kaillera_client_t *client,
   if (client->state != KAILLERA_STATE_PLAYING)
     return -1;
 
-  /* Build game data packet */
+  if (client->num_players <= 0 || client->num_players > KAILLERA_MAX_PLAYERS ||
+      size > 16)
+    return -1;
+
+  /* Build game data packet with only this client's input. */
   kaillera_game_data_t gd;
+  memset(&gd, 0, sizeof(gd));
   gd.frame_count = client->frame_count++;
-  gd.player_count = (uint8_t)client->num_players;
+  gd.player_count = 1;
   gd.data_size = (uint8_t)size;
 
-  /* Copy our input data */
-  if ((size_t)size > sizeof(gd.player_data))
-    return -1;
   memcpy(gd.player_data, input, (size_t)size);
 
   /* Serialize and send */
@@ -710,7 +722,8 @@ int kaillera_client_modify_play_values(kaillera_client_t *client,
   if (len < 0)
     return -1;
 
-  if (client_send_message(client, KAILLERA_MSG_GAME_DATA, buf, (uint16_t)len) < 0)
+  if (client_send_message(client, KAILLERA_MSG_GAME_DATA, buf, (uint16_t)len) <
+      0)
     return -1;
 
   /* Wait for response with all players' data */
@@ -726,8 +739,8 @@ int kaillera_client_modify_play_values(kaillera_client_t *client,
     }
 
     uint8_t recv_buf[KAILLERA_MAX_PACKET_SIZE];
-    int recv_len = socket_recv(client->sock, recv_buf, sizeof(recv_buf),
-                               RECV_TIMEOUT_MS);
+    int recv_len =
+        socket_recv(client->sock, recv_buf, sizeof(recv_buf), RECV_TIMEOUT_MS);
     if (recv_len <= 0)
       continue;
 
@@ -740,9 +753,14 @@ int kaillera_client_modify_play_values(kaillera_client_t *client,
       kaillera_message_t msg;
       if (kaillera_packet_get_message(&pkt, i, &msg) == 0) {
         if (msg.type == KAILLERA_MSG_GAME_DATA && msg.payload != nullptr) {
-          if (kaillera_parse_game_data(msg.payload, msg.length, &response) == 0) {
-            received = true;
-            break;
+          if (kaillera_parse_game_data(msg.payload, msg.length, &response) ==
+              0) {
+            int total_size = response.player_count * response.data_size;
+            if (response.player_count <= KAILLERA_MAX_PLAYERS &&
+                response.data_size <= 16 && total_size <= size) {
+              received = true;
+              break;
+            }
           }
         } else if (msg.type == KAILLERA_MSG_DROP_GAME) {
           /* Game ended */
