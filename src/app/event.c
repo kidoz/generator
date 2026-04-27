@@ -50,9 +50,9 @@ void event_nextevent(void)
   switch (vdp_event++) {
   case 0: /* LINE_START: Start of new scanline */
   EVENT_NEWLINE:
-    LOG_DEBUG1(("%08X due %08X, %d A: %d (cd=%d)", cpu68k_clocks,
+    LOG_DEBUG1("%08X due %08X, %d A: %d (cd=%d)", cpu68k_clocks,
                 vdp_event_start, vdp_line - vdp_visstartline, vdp_reg[10],
-                vdp_hskip_countdown));
+                vdp_hskip_countdown);
     /* If first scanline of frame (line 0), initialize sound generation for this
      * field */
     if (vdp_line == 0)
@@ -75,9 +75,9 @@ void event_nextevent(void)
     vdp_event++;
 
   case 1: /* VINT_CHECK: Vertical interrupt timing */
-    LOG_DEBUG1(("%08X due %08X, %d B: %d (cd=%d)", cpu68k_clocks,
+    LOG_DEBUG1("%08X due %08X, %d B: %d (cd=%d)", cpu68k_clocks,
                 vdp_event_vint, vdp_line - vdp_visstartline, vdp_reg[10],
-                vdp_hskip_countdown));
+                vdp_hskip_countdown);
 
     /* If we've reached the end of visible display (line 224 NTSC, line 240
      * PAL), enter vertical blank period and trigger V-BLANK interrupt if
@@ -98,9 +98,9 @@ void event_nextevent(void)
     vdp_event++;
 
   case 2: /* HINT_PROCESS: Horizontal interrupt and DMA processing */
-    LOG_DEBUG1(("%08X due %08X, %d C: %d (cd=%d)", cpu68k_clocks,
+    LOG_DEBUG1("%08X due %08X, %d C: %d (cd=%d)", cpu68k_clocks,
                 vdp_event_hint, vdp_line - vdp_visstartline, vdp_reg[10],
-                vdp_hskip_countdown));
+                vdp_hskip_countdown);
 
     /* Set horizontal blank flag during active display scanlines */
     if (vdp_line >= vdp_visstartline && vdp_line < vdp_visendline)
@@ -109,19 +109,19 @@ void event_nextevent(void)
     /* Reset H-interrupt counter at boundaries (before visible area or after) */
     if (vdp_line == (vdp_visstartline - 1) || (vdp_line > vdp_visendline)) {
       vdp_hskip_countdown = vdp_reg[10]; /* VDP register 10 = H-INT interval */
-      LOG_DEBUG1(("H counter reset to %d", vdp_hskip_countdown));
+      LOG_DEBUG1("H counter reset to %d", vdp_hskip_countdown);
     }
 
     /* Horizontal interrupt (H-INT) logic: VDP register 0 bit 4 = H-INT enable
      */
     if (vdp_reg[0] & 1 << 4) {
-      LOG_DEBUG1(("pre = %d", vdp_hskip_countdown));
+      LOG_DEBUG1("pre = %d", vdp_hskip_countdown);
       /* Decrement H-INT counter. When it reaches 0, trigger interrupt */
       if (vdp_hskip_countdown-- == 0) {
-        LOG_DEBUG1(("in = %d", vdp_hskip_countdown));
+        LOG_DEBUG1("in = %d", vdp_hskip_countdown);
         /* Re-initialize counter for next H-INT */
         vdp_hskip_countdown = vdp_reg[10];
-        LOG_DEBUG1(("H counter looped to %d", vdp_hskip_countdown));
+        LOG_DEBUG1("H counter looped to %d", vdp_hskip_countdown);
 
         /* Trigger 68k interrupt level 4 (H-INT) if we're in the right scanline
          * range */
@@ -134,7 +134,7 @@ void event_nextevent(void)
          * that runs immediately after H-INT fires */
         cpu68k_clocks = vdp_event_hint;
       }
-      LOG_DEBUG1(("post = %d", vdp_hskip_countdown));
+      LOG_DEBUG1("post = %d", vdp_hskip_countdown);
     }
 
     /* DMA (Direct Memory Access) processing: Transfer bytes from 68k RAM/ROM to
@@ -169,9 +169,9 @@ void event_nextevent(void)
     vdp_event++;
 
   case 3: /* HDISPLAY: Horizontal display active - trigger UI line rendering */
-    LOG_DEBUG1(("%08X due %08X, %d D: %d (cd=%d)", cpu68k_clocks,
+    LOG_DEBUG1("%08X due %08X, %d D: %d (cd=%d)", cpu68k_clocks,
                 vdp_event_hdisplay, vdp_line - vdp_visstartline, vdp_reg[10],
-                vdp_hskip_countdown));
+                vdp_hskip_countdown);
 
     /* Notify UI that this scanline is ready to be rendered to the screen.
      * The UI will read vdp_regs[] and vdp_vram[] to render graphics/sprites */
@@ -185,8 +185,8 @@ void event_nextevent(void)
      * back */
 
   case 4: /* LINE_END: End of scanline - sync sound, advance to next line */
-    LOG_DEBUG1(("%08X due %08X, %d E: %d (cd=%d)", cpu68k_clocks, vdp_event_end,
-                vdp_line - vdp_visstartline, vdp_reg[10], vdp_hskip_countdown));
+    LOG_DEBUG1("%08X due %08X, %d E: %d (cd=%d)", cpu68k_clocks, vdp_event_end,
+                vdp_line - vdp_visstartline, vdp_reg[10], vdp_hskip_countdown);
 
     /* Clear horizontal blank flag at end of scanline */
     if (vdp_line >= vdp_visstartline && vdp_line < vdp_visendline)

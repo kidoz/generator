@@ -64,13 +64,13 @@ int memz80_init(void)
 
 uint8 memz80_fetch_bad_byte(uint16 addr)
 {
-  LOG_CRITICAL(("[Z80] Invalid memory fetch (byte) 0x%X", addr));
+  LOG_CRITICAL("[Z80] Invalid memory fetch (byte) 0x%X", addr);
   return 0;
 }
 
 void memz80_store_bad_byte(uint16 addr, uint8 data)
 {
-  LOG_CRITICAL(("[Z80] Invalid memory store (byte) 0x%X = %X", addr, data));
+  LOG_CRITICAL("[Z80] Invalid memory store (byte) 0x%X = %X", addr, data);
 }
 
 /*** SRAM fetch/store ***/
@@ -94,7 +94,7 @@ uint8 memz80_fetch_yam_byte(uint16 addr)
   if (addr < 4) {
     return sound_ym2612fetch(addr);
   } else {
-    LOG_CRITICAL(("[Z80] invalid YAM fetch (byte) 0x%X", addr));
+    LOG_CRITICAL("[Z80] invalid YAM fetch (byte) 0x%X", addr);
     return 0;
   }
 }
@@ -102,11 +102,11 @@ uint8 memz80_fetch_yam_byte(uint16 addr)
 void memz80_store_yam_byte(uint16 addr, uint8 data)
 {
   addr -= 0x4000;
-  /* LOG_USER(("[YAM] (z80) store (byte) 0x%X (%d)", addr, data)); */
+  /* LOG_USER("[YAM] (z80) store (byte) 0x%X (%d)", addr, data); */
   if (addr < 4)
     sound_ym2612store(addr, data);
   else
-    LOG_CRITICAL(("[Z80] invalid YAM store (byte) 0x%X", addr));
+    LOG_CRITICAL("[Z80] invalid YAM store (byte) 0x%X", addr);
 }
 
 /*** BANK fetch/store ***/
@@ -114,7 +114,7 @@ void memz80_store_yam_byte(uint16 addr, uint8 data)
 uint8 memz80_fetch_bank_byte(uint16 addr)
 {
   /* write only */
-  LOG_CRITICAL(("[Z80] Bank fetch (Byte) 0x%X", addr));
+  LOG_CRITICAL("[Z80] Bank fetch (Byte) 0x%X", addr);
   return 0;
 }
 
@@ -134,8 +134,8 @@ uint8 memz80_fetch_mem_byte(uint16 addr)
 
 void memz80_store_mem_byte(uint16 addr, uint8 data)
 {
-  /* LOG_USER(("WRITE whilst bank = %08X (%08X)", cpuz80_bank,
-     addr-0x8000)); */
+  /* LOG_USER("WRITE whilst bank = %08X (%08X)", cpuz80_bank,
+     addr-0x8000); */
   storebyte(cpuz80_bank | (addr - 0x8000), data);
 }
 
@@ -144,7 +144,7 @@ void memz80_store_mem_byte(uint16 addr, uint8 data)
 uint8 memz80_fetch_psg_byte(uint16 addr)
 {
   /* write only */
-  LOG_CRITICAL(("[Z80] Invalid memory read (byte) 0x%X", addr));
+  LOG_CRITICAL("[Z80] Invalid memory read (byte) 0x%X", addr);
   return 0;
 }
 
@@ -153,5 +153,5 @@ void memz80_store_psg_byte(uint16 addr, uint8 data)
   if (addr == 0x7f11)
     sound_sn76496store(data);
   else
-    LOG_CRITICAL(("[Z80] Invalid memory store (byte) 0x%X", addr));
+    LOG_CRITICAL("[Z80] Invalid memory store (byte) 0x%X", addr);
 }

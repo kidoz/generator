@@ -125,7 +125,7 @@ unsigned int reg68k_external_execute(unsigned int clocks)
         list->compiled((t_ipc *)(list + 1));
 #else
         if (!list) {
-          /* LOG_USER(("Making IPC list @ %08x", pc24)); */
+          /* LOG_USER("Making IPC list @ %08x", pc24); */
           list = cpu68k_makeipclist(pc24);
           list->next = ipclist[index];
           ipclist[index] = list;
@@ -190,7 +190,7 @@ void reg68k_internal_autovector(int avno)
 
   if ((curlevel < avno || avno == 7) && !cpu68k_frozen) {
     if (regs.stop) {
-      LOG_DEBUG1(("stop finished"));
+      LOG_DEBUG1("stop finished");
       /* autovector whilst in a STOP instruction */
       reg68k_pc += 4;
       regs.stop = 0;
@@ -213,11 +213,11 @@ void reg68k_internal_autovector(int avno)
     /* Note: Don't log here - autovectors happen 60+ times per second (VBlank)
        or up to 262 times per second (HBlank). Logging in hot path causes
        severe performance issues and audio freezing. */
-    // LOG_USER(("AUTOVECTOR %d: %X -> %X", avno, tmpaddr, reg68k_pc));
+    // LOG_USER("AUTOVECTOR %d: %X -> %X", avno, tmpaddr, reg68k_pc);
     regs.pending = 0;
   } else {
     /* Note: Don't log here - this is in the interrupt hot path. */
-    // LOG_USER(("%08X autovector %d pending", reg68k_pc, avno));
+    // LOG_USER("%08X autovector %d pending", reg68k_pc, avno);
     // if (!regs.pending || regs.pending < avno) - not sure about this
     regs.pending = avno;
   }
@@ -239,5 +239,5 @@ void reg68k_internal_vector(int vno, uint32 oldpc)
   reg68k_regs[15] -= 2;
   storeword(reg68k_regs[15], reg68k_sr.sr_int);
   reg68k_pc = fetchlong(vno * 4);
-  /* LOG_USER(("VECTOR %d: %X -> %X\n", vno, oldpc, reg68k_pc)); */
+  /* LOG_USER("VECTOR %d: %X -> %X\n", vno, oldpc, reg68k_pc); */
 }

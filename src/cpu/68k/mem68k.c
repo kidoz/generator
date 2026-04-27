@@ -199,7 +199,7 @@ int mem68k_init(void)
 
 uint8 *mem68k_memptr_bad(uint32 addr)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory access 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [MEM] Invalid memory access 0x%X", regs.pc, addr);
   return cpu68k_rom;
 }
 
@@ -208,13 +208,13 @@ uint8 *mem68k_memptr_rom(uint32 addr)
   if (addr < cpu68k_romlen) {
     return (cpu68k_rom + addr);
   }
-  LOG_CRITICAL(("%08X [MEM] Invalid memory access to ROM 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [MEM] Invalid memory access to ROM 0x%X", regs.pc, addr);
   return cpu68k_rom;
 }
 
 uint8 *mem68k_memptr_ram(uint32 addr)
 {
-  /* LOG_USER(("%08X [MEM] Executing code from RAM 0x%X", regs.pc, addr)); */
+  /* LOG_USER("%08X [MEM] Executing code from RAM 0x%X", regs.pc, addr); */
   addr &= 0xffff;
   return (cpu68k_ram + addr);
 }
@@ -224,19 +224,19 @@ uint8 *mem68k_memptr_ram(uint32 addr)
 
 uint8 mem68k_fetch_bad_byte(uint32 addr)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [MEM] Invalid memory fetch (byte) 0x%X", regs.pc, addr);
   return 0;
 }
 
 uint16 mem68k_fetch_bad_word(uint32 addr)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (word) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [MEM] Invalid memory fetch (word) 0x%X", regs.pc, addr);
   return 0;
 }
 
 uint32 mem68k_fetch_bad_long(uint32 addr)
 {
-  LOG_CRITICAL(("%08X [MEM] Invalid memory fetch (long) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [MEM] Invalid memory fetch (long) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -246,8 +246,8 @@ void mem68k_store_bad_byte(uint32 addr, uint8 data)
      some ROMs. Logging in memory access path causes severe performance issues
      and audio freezing. If debugging is needed, use a conditional compile flag
      or rate-limited logging. */
-  // LOG_CRITICAL(("%08X [MEM] Invalid memory store (byte) 0x%X = %X", regs.pc,
-  //               addr, data));
+  // LOG_CRITICAL("%08X [MEM] Invalid memory store (byte) 0x%X = %X", regs.pc,
+  //               addr, data);
 }
 
 void mem68k_store_bad_word(uint32 addr, uint16 data)
@@ -255,8 +255,8 @@ void mem68k_store_bad_word(uint32 addr, uint16 data)
   /* Note: Don't log here - invalid memory accesses can happen frequently in
      some ROMs. Logging in memory access path causes severe performance issues
      and audio freezing. */
-  // LOG_CRITICAL(("%08X [MEM] Invalid memory store (word) 0x%X = %X", regs.pc,
-  //               addr, data));
+  // LOG_CRITICAL("%08X [MEM] Invalid memory store (word) 0x%X = %X", regs.pc,
+  //               addr, data);
 }
 
 void mem68k_store_bad_long(uint32 addr, uint32 data)
@@ -264,8 +264,8 @@ void mem68k_store_bad_long(uint32 addr, uint32 data)
   /* Note: Don't log here - invalid memory accesses can happen frequently in
      some ROMs. Logging in memory access path causes severe performance issues
      and audio freezing. */
-  // LOG_CRITICAL(("%08X [MEM] Invalid memory store (long) 0x%X = %X", regs.pc,
-  //               addr, data));
+  // LOG_CRITICAL("%08X [MEM] Invalid memory store (long) 0x%X = %X", regs.pc,
+  //               addr, data);
 }
 
 
@@ -276,7 +276,7 @@ uint8 mem68k_fetch_rom_byte(uint32 addr)
   if (addr < cpu68k_romlen) {
     return (*(uint8 *)(cpu68k_rom + addr));
   }
-  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [ROM] Invalid memory fetch (byte) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -284,14 +284,14 @@ uint16 mem68k_fetch_rom_word(uint32 addr)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [ROM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [ROM] Bus error 0x%X", regs.pc, addr);
     return 0;
   }
 #endif
   if (addr < cpu68k_romlen) {
     return LOCENDIAN16(*(uint16 *)(cpu68k_rom + addr));
   }
-  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (word) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [ROM] Invalid memory fetch (word) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -299,7 +299,7 @@ uint32 mem68k_fetch_rom_long(uint32 addr)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [ROM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [ROM] Bus error 0x%X", regs.pc, addr);
     return 0;
   }
 #endif
@@ -311,7 +311,7 @@ uint32 mem68k_fetch_rom_long(uint32 addr)
     return LOCENDIAN32(*(uint32 *)(cpu68k_rom + addr));
 #endif
   }
-  LOG_CRITICAL(("%08X [ROM] Invalid memory fetch (long) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [ROM] Invalid memory fetch (long) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -320,8 +320,8 @@ void mem68k_store_rom_byte(uint32 addr, uint8 data)
   /* Note: Don't log here - ROM writes can happen frequently (some ROMs try to
      write to ROM area). Logging in memory access path causes severe performance
      issues and audio freezing. */
-  // LOG_CRITICAL(("%08X [ROM] Invalid memory store (byte) 0x%X = %X", regs.pc,
-  //               addr, data));
+  // LOG_CRITICAL("%08X [ROM] Invalid memory store (byte) 0x%X = %X", regs.pc,
+  //               addr, data);
 }
 
 void mem68k_store_rom_word(uint32 addr, uint16 data)
@@ -329,8 +329,8 @@ void mem68k_store_rom_word(uint32 addr, uint16 data)
   /* Note: Don't log here - ROM writes can happen frequently.
      Logging in memory access path causes severe performance issues and audio
      freezing. */
-  // LOG_CRITICAL(("%08X [ROM] Invalid memory store (word) 0x%X = %X", regs.pc,
-  //               addr, data));
+  // LOG_CRITICAL("%08X [ROM] Invalid memory store (word) 0x%X = %X", regs.pc,
+  //               addr, data);
 }
 
 void mem68k_store_rom_long(uint32 addr, uint32 data)
@@ -338,8 +338,8 @@ void mem68k_store_rom_long(uint32 addr, uint32 data)
   /* Note: Don't log here - ROM writes can happen frequently.
      Logging in memory access path causes severe performance issues and audio
      freezing. */
-  // LOG_CRITICAL(("%08X [ROM] Invalid memory store (long) 0x%X = %X", regs.pc,
-  //               addr, data));
+  // LOG_CRITICAL("%08X [ROM] Invalid memory store (long) 0x%X = %X", regs.pc,
+  //               addr, data);
 }
 
 
@@ -348,7 +348,7 @@ void mem68k_store_rom_long(uint32 addr, uint32 data)
 uint8 mem68k_fetch_sram_byte(uint32 addr)
 {
 #ifdef DEBUG_SRAM
-  LOG_VERBOSE(("%08X [SRAM] Fetch byte from %X", regs.pc, addr));
+  LOG_VERBOSE("%08X [SRAM] Fetch byte from %X", regs.pc, addr);
 #endif
   addr &= 0x1fff;
   return (*(uint8 *)(cpuz80_ram + addr));
@@ -359,12 +359,12 @@ uint16 mem68k_fetch_sram_word(uint32 addr)
   uint8 data;
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [SRAM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [SRAM] Bus error 0x%X", regs.pc, addr);
     return 0;
   }
 #endif
 #ifdef DEBUG_SRAM
-  LOG_VERBOSE(("%08X [SRAM] Fetch word from %X", regs.pc, addr));
+  LOG_VERBOSE("%08X [SRAM] Fetch word from %X", regs.pc, addr);
 #endif
   addr &= 0x1fff;
   /* sram word fetches are fetched with duplicated low byte data */
@@ -376,12 +376,12 @@ uint32 mem68k_fetch_sram_long(uint32 addr)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [SRAM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [SRAM] Bus error 0x%X", regs.pc, addr);
     return 0;
   }
 #endif
 #ifdef DEBUG_SRAM
-  LOG_VERBOSE(("%08X [SRAM] Fetch long from %X", regs.pc, addr));
+  LOG_VERBOSE("%08X [SRAM] Fetch long from %X", regs.pc, addr);
 #endif
   addr &= 0x1fff;
 #ifdef ALIGNLONGS
@@ -395,7 +395,7 @@ uint32 mem68k_fetch_sram_long(uint32 addr)
 void mem68k_store_sram_byte(uint32 addr, uint8 data)
 {
 #ifdef DEBUG_SRAM
-  LOG_VERBOSE(("%08X [SRAM] Store byte to %X", regs.pc, addr));
+  LOG_VERBOSE("%08X [SRAM] Store byte to %X", regs.pc, addr);
 #endif
   addr &= 0x1fff;
   *(uint8 *)(cpuz80_ram + addr) = data;
@@ -406,12 +406,12 @@ void mem68k_store_sram_word(uint32 addr, uint16 data)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [SRAM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [SRAM] Bus error 0x%X", regs.pc, addr);
     return;
   }
 #endif
 #ifdef DEBUG_SRAM
-  LOG_VERBOSE(("%08X [SRAM] Store word to %X", regs.pc, addr));
+  LOG_VERBOSE("%08X [SRAM] Store word to %X", regs.pc, addr);
 #endif
   addr &= 0x1fff;
   /* word writes are stored with low byte cleared */
@@ -423,12 +423,12 @@ void mem68k_store_sram_long(uint32 addr, uint32 data)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [SRAM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [SRAM] Bus error 0x%X", regs.pc, addr);
     return;
   }
 #endif
 #ifdef DEBUG_SRAM
-  LOG_VERBOSE(("%08X [SRAM] Store byte to %X", regs.pc, addr));
+  LOG_VERBOSE("%08X [SRAM] Store byte to %X", regs.pc, addr);
 #endif
   addr &= 0x1fff;
 #ifdef ALIGNLONGS
@@ -446,11 +446,11 @@ void mem68k_store_sram_long(uint32 addr, uint32 data)
 uint8 mem68k_fetch_yam_byte(uint32 addr)
 {
   addr -= 0xA04000;
-  /* LOG_USER(("%08X [YAM] fetch (byte) 0x%X", regs.pc, addr)); */
+  /* LOG_USER("%08X [YAM] fetch (byte) 0x%X", regs.pc, addr); */
   if (addr < 4) {
     return sound_ym2612fetch(addr);
   } else {
-    LOG_CRITICAL(("%08X [YAM] Invalid YAM fetch (byte) 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [YAM] Invalid YAM fetch (byte) 0x%X", regs.pc, addr);
     return 0;
   }
 }
@@ -459,12 +459,12 @@ uint16 mem68k_fetch_yam_word(uint32 addr)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [YAM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [YAM] Bus error 0x%X", regs.pc, addr);
     return 0;
   }
 #endif
   addr -= 0xA04000;
-  LOG_CRITICAL(("%08X [YAM] Invalid memory fetch (word) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [YAM] Invalid memory fetch (word) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -472,52 +472,52 @@ uint32 mem68k_fetch_yam_long(uint32 addr)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [YAM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [YAM] Bus error 0x%X", regs.pc, addr);
     return 0;
   }
 #endif
   addr -= 0xA04000;
   /* no longs please */
-  LOG_CRITICAL(("%08X [YAM] Invalid memory fetch (long) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [YAM] Invalid memory fetch (long) 0x%X", regs.pc, addr);
   return 0;
 }
 
 void mem68k_store_yam_byte(uint32 addr, uint8 data)
 {
   addr -= 0xA04000;
-  /* LOG_USER(("%08X [YAM] (68k) store (byte) 0x%X (%d)", regs.pc, addr,
-     data)); */
+  /* LOG_USER("%08X [YAM] (68k) store (byte) 0x%X (%d)", regs.pc, addr,
+     data); */
   if (addr < 4)
     sound_ym2612store(addr, data);
   else
-    LOG_CRITICAL(("%08X [YAM] Invalid YAM store (byte) 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [YAM] Invalid YAM store (byte) 0x%X", regs.pc, addr);
 }
 
 void mem68k_store_yam_word(uint32 addr, uint16 data)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [YAM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [YAM] Bus error 0x%X", regs.pc, addr);
     return;
   }
 #endif
   addr -= 0xA04000;
-  LOG_CRITICAL(("%08X [YAM] Invalid memory store (word) 0x%X = %X", regs.pc,
-                addr, data));
+  LOG_CRITICAL("%08X [YAM] Invalid memory store (word) 0x%X = %X", regs.pc,
+                addr, data);
 }
 
 void mem68k_store_yam_long(uint32 addr, uint32 data)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [YAM] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [YAM] Bus error 0x%X", regs.pc, addr);
     return;
   }
 #endif
   addr -= 0xA04000;
   /* no longs please */
-  LOG_CRITICAL(("%08X [YAM] Invalid memory store (long) 0x%X = %X", regs.pc,
-                addr, data));
+  LOG_CRITICAL("%08X [YAM] Invalid memory store (long) 0x%X = %X", regs.pc,
+                addr, data);
 }
 
 
@@ -526,21 +526,21 @@ void mem68k_store_yam_long(uint32 addr, uint32 data)
 uint8 mem68k_fetch_bank_byte(uint32 addr)
 {
   /* write only */
-  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [BANK] Invalid memory fetch (byte) 0x%X", regs.pc, addr);
   return 0;
 }
 
 uint16 mem68k_fetch_bank_word(uint32 addr)
 {
   /* write only */
-  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (word) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [BANK] Invalid memory fetch (word) 0x%X", regs.pc, addr);
   return 0;
 }
 
 uint32 mem68k_fetch_bank_long(uint32 addr)
 {
   /* write only */
-  LOG_CRITICAL(("%08X [BANK] Invalid memory fetch (long) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [BANK] Invalid memory fetch (long) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -549,7 +549,7 @@ void mem68k_store_bank_byte(uint32 addr, uint8 data)
   addr -= 0xA06000;
   if (addr == 0x000) {
 #ifdef DEBUG_SRAM
-    LOG_VERBOSE(("%08X [BANK] Store byte to %X", regs.pc, addr));
+    LOG_VERBOSE("%08X [BANK] Store byte to %X", regs.pc, addr);
 #endif
     cpuz80_bankwrite(data);
   } else {
@@ -563,7 +563,7 @@ void mem68k_store_bank_word(uint32 addr, uint16 data)
   addr -= 0xA06000;
   if (addr == 0x000) {
 #ifdef DEBUG_SRAM
-    LOG_VERBOSE(("%08X [BANK] Store word to %X", regs.pc, addr));
+    LOG_VERBOSE("%08X [BANK] Store word to %X", regs.pc, addr);
 #endif
     cpuz80_bankwrite(data >> 8);
   } else {
@@ -576,8 +576,8 @@ void mem68k_store_bank_long(uint32 addr, uint32 data)
 {
   addr -= 0xA06000;
   /* no longs please */
-  LOG_CRITICAL(("%08X [BANK] Invalid memory store (long) 0x%X = %X", regs.pc,
-                addr, data));
+  LOG_CRITICAL("%08X [BANK] Invalid memory store (long) 0x%X = %X", regs.pc,
+                addr, data);
 }
 
 
@@ -674,7 +674,7 @@ uint8 mem68k_fetch_io_byte(uint32 addr)
 
   addr -= 0xA10000;
   if ((addr & 1) == 0) {
-    LOG_CRITICAL(("%08X [IO] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [IO] Invalid memory fetch (byte) 0x%X", regs.pc, addr);
     return 0;
   }
   switch (addr >> 1) {
@@ -690,7 +690,7 @@ uint8 mem68k_fetch_io_byte(uint32 addr)
     in = mem68k_read_controller(1, (mem68k_cont2output >> 6) & 1);
     return (in & ~mem68k_cont2ctrl) | (mem68k_cont2output & mem68k_cont2ctrl);
   case 3: /* 0x7 - External port */
-    LOG_NORMAL(("%08X [IO] EXT port read", regs.pc));
+    LOG_NORMAL("%08X [IO] EXT port read", regs.pc);
     /* get input state */
     in = 0; /* External port unsupported (used for mouse/multitap) */
     return (in & ~mem68k_contEctrl) | (mem68k_contEoutput & mem68k_contEctrl);
@@ -701,7 +701,7 @@ uint8 mem68k_fetch_io_byte(uint32 addr)
   case 6: /* 0xD */
     return mem68k_contEctrl;
   default:
-    LOG_CRITICAL(("%08X [IO] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [IO] Invalid memory fetch (byte) 0x%X", regs.pc, addr);
     return 0;
   }
 }
@@ -732,7 +732,7 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
     return;
   case 0x7:
     mem68k_contEoutput = data;
-    LOG_NORMAL(("%08X [IO] EXT port output set to %X", regs.pc, data));
+    LOG_NORMAL("%08X [IO] EXT port output set to %X", regs.pc, data);
     return;
   case 0x9:
     mem68k_cont1ctrl = data;
@@ -744,7 +744,7 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
     return;
   case 0xD:
     mem68k_contEctrl = data;
-    LOG_NORMAL(("%08X [IO] EXT port ctrl set to %X", regs.pc, data));
+    LOG_NORMAL("%08X [IO] EXT port ctrl set to %X", regs.pc, data);
     return;
   case 0xF:
   case 0x11:
@@ -758,7 +758,7 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
     /* Serial port registers - silently ignore */
     return;
   default:
-    LOG_CRITICAL(("%08X [IO] Invalid memory store (byte) 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [IO] Invalid memory store (byte) 0x%X", regs.pc, addr);
     return;
   }
 }
@@ -766,7 +766,7 @@ void mem68k_store_io_byte(uint32 addr, uint8 data)
 void mem68k_store_io_word(uint32 addr, uint16 data)
 {
   if (data >> 8)
-    LOG_CRITICAL(("%08X [IO] Word store to %X of %X", regs.pc, addr, data));
+    LOG_CRITICAL("%08X [IO] Word store to %X of %X", regs.pc, addr, data);
   mem68k_store_io_byte(addr + 1, data & 0xff);
 }
 
@@ -787,7 +787,7 @@ uint8 mem68k_fetch_ctrl_byte(uint32 addr)
   if (addr == 0x100) {
     return cpuz80_active ? 1 : 0;
   }
-  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (byte) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [CTRL] Invalid memory fetch (byte) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -798,7 +798,7 @@ uint16 mem68k_fetch_ctrl_word(uint32 addr)
   if (addr == 0x100) {
     return cpuz80_active ? 0x100 : 0;
   }
-  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (word) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [CTRL] Invalid memory fetch (word) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -806,7 +806,7 @@ uint32 mem68k_fetch_ctrl_long(uint32 addr)
 {
   addr -= 0xA11000;
   /* no long access allowed */
-  LOG_CRITICAL(("%08X [CTRL] Invalid memory fetch (long) 0x%X", regs.pc, addr));
+  LOG_CRITICAL("%08X [CTRL] Invalid memory fetch (long) 0x%X", regs.pc, addr);
   return 0;
 }
 
@@ -820,10 +820,10 @@ void mem68k_store_ctrl_byte(uint32 addr, uint8 data)
     /* bus request */
     if (data & 1) {
       cpuz80_stop();
-      LOG_DEBUG1(("%08X Z80 stopped", regs.pc));
+      LOG_DEBUG1("%08X Z80 stopped", regs.pc);
     } else {
       cpuz80_start();
-      LOG_DEBUG1(("%08X Z80 started", regs.pc));
+      LOG_DEBUG1("%08X Z80 started", regs.pc);
     }
   } else if (addr == 0x101) {
     return; /* ignore low byte */
@@ -833,10 +833,10 @@ void mem68k_store_ctrl_byte(uint32 addr, uint8 data)
       /* cpuz80_stop(); */
       cpuz80_resetcpu();
       sound_genreset();
-      LOG_DEBUG1(("%08X Z80 reset", regs.pc));
+      LOG_DEBUG1("%08X Z80 reset", regs.pc);
     } else {
       cpuz80_unresetcpu();
-      LOG_DEBUG1(("%08X Z80 un-reset", regs.pc));
+      LOG_DEBUG1("%08X Z80 un-reset", regs.pc);
     }
   } else if (addr == 0x201) {
     return; /* ignore low byte */
@@ -856,10 +856,10 @@ void mem68k_store_ctrl_word(uint32 addr, uint16 data)
     /* bus request */
     if (data == 0x100) {
       cpuz80_stop();
-      LOG_DEBUG1(("%08X Z80 stopped", regs.pc));
+      LOG_DEBUG1("%08X Z80 stopped", regs.pc);
     } else {
       cpuz80_start();
-      LOG_DEBUG1(("%08X Z80 started", regs.pc));
+      LOG_DEBUG1("%08X Z80 started", regs.pc);
     }
   } else if (addr == 0x200) {
     /* z80 reset request */
@@ -867,10 +867,10 @@ void mem68k_store_ctrl_word(uint32 addr, uint16 data)
       /* cpuz80_stop(); */
       cpuz80_resetcpu();
       sound_genreset();
-      LOG_DEBUG1(("%08X Z80 reset", regs.pc));
+      LOG_DEBUG1("%08X Z80 reset", regs.pc);
     } else {
       cpuz80_unresetcpu();
-      LOG_DEBUG1(("%08X Z80 un-reset", regs.pc));
+      LOG_DEBUG1("%08X Z80 un-reset", regs.pc);
     }
   } else {
     LOG_CRITICAL(
@@ -882,8 +882,8 @@ void mem68k_store_ctrl_long(uint32 addr, uint32 data)
 {
   addr -= 0xA11000;
   /* no long access allowed */
-  LOG_CRITICAL(("%08X [CTRL] Invalid memory store (long) 0x%X = %X", regs.pc,
-                addr, data));
+  LOG_CRITICAL("%08X [CTRL] Invalid memory store (long) 0x%X = %X", regs.pc,
+                addr, data);
 }
 
 
@@ -899,7 +899,7 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [VDP] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [VDP] Bus error 0x%X", regs.pc, addr);
     return 0;
   }
 #endif
@@ -909,16 +909,16 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
   case 1:
     /* data port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Word fetch from data port 0x%X", regs.pc, addr));
+    LOG_VERBOSE("%08X [VDP] Word fetch from data port 0x%X", regs.pc, addr);
 #endif
     return vdp_fetchdata();
   case 2:
   case 3:
     /* control port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Word fetch from control port "
+    LOG_VERBOSE("%08X [VDP] Word fetch from control port "
                  "(status) 0x%X",
-                 regs.pc, addr));
+                 regs.pc, addr);
 #endif
     return vdp_status();
   case 4:
@@ -937,17 +937,17 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
       if ((vdp_reg[12] >> 1) & 3) {
         /* interlace mode - replace lowest bit with highest bit */
         hvcount = ((line8 & ~1) << 8) | (line8 & 0x100) | vdp_gethpos();
-        LOG_DEBUG1(("Interlace mode HV read - check this: %04X", hvcount));
+        LOG_DEBUG1("Interlace mode HV read - check this: %04X", hvcount);
         return hvcount;
       } else {
         /* non-interlace mode */
         hvcount = (line8 << 8) | vdp_gethpos();
-        LOG_DEBUG1(("%08X H/V counter read = %04X", regs.pc, hvcount));
+        LOG_DEBUG1("%08X H/V counter read = %04X", regs.pc, hvcount);
         return hvcount;
       }
     }
   case 8:
-    LOG_CRITICAL(("%08X [VDP] PSG/prohibited word fetch.", regs.pc));
+    LOG_CRITICAL("%08X [VDP] PSG/prohibited word fetch.", regs.pc);
     return 0;
   default:
     LOG_CRITICAL(
@@ -960,7 +960,7 @@ uint32 mem68k_fetch_vdp_long(uint32 addr)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [VDP] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [VDP] Bus error 0x%X", regs.pc, addr);
     return 0;
   }
 #endif
@@ -969,7 +969,7 @@ uint32 mem68k_fetch_vdp_long(uint32 addr)
   case 0:
     /* data port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Long fetch from data port 0x%X", regs.pc, addr));
+    LOG_VERBOSE("%08X [VDP] Long fetch from data port 0x%X", regs.pc, addr);
 #endif
     return (vdp_fetchdata() << 16) | vdp_fetchdata();
   case 2:
@@ -1003,8 +1003,8 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
   case 3:
     /* data port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Byte store to DATA of %X [%d][%X]", regs.pc, data,
-                 vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE("%08X [VDP] Byte store to DATA of %X [%d][%X]", regs.pc, data,
+                 vdp_reg[23] >> 6, vdp_reg[1]);
 #endif
     vdp_storedata(data | (data << 8));
     return;
@@ -1014,8 +1014,8 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
   case 7:
 
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Byte store to CONTROL of %X [%d][%X]", regs.pc,
-                 data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE("%08X [VDP] Byte store to CONTROL of %X [%d][%X]", regs.pc,
+                 data, vdp_reg[23] >> 6, vdp_reg[1]);
 #endif
     /* control port */
     vdp_storectrl(data | (data << 8));
@@ -1023,7 +1023,7 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
   case 8:
   case 9:
     /* hv counter */
-    LOG_CRITICAL(("%08X [VDP] Byte store to hv counter 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [VDP] Byte store to hv counter 0x%X", regs.pc, addr);
     return;
   case 17:
     sound_sn76496store(data);
@@ -1039,7 +1039,7 @@ void mem68k_store_vdp_word(uint32 addr, uint16 data)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [VDP] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [VDP] Bus error 0x%X", regs.pc, addr);
     return;
   }
 #endif
@@ -1049,26 +1049,26 @@ void mem68k_store_vdp_word(uint32 addr, uint16 data)
   case 1:
     /* data port */
 #ifdef DEBUG_VDP
-    LOG_CRITICAL(("%08X [VDP] Word store to DATA of %X [%d][%X]", regs.pc, data,
-                  vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_CRITICAL("%08X [VDP] Word store to DATA of %X [%d][%X]", regs.pc, data,
+                  vdp_reg[23] >> 6, vdp_reg[1]);
 #endif
     vdp_storedata(data);
     return;
   case 2:
   case 3:
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Word store to CONTROL of %X [%d][%X]", regs.pc,
-                 data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE("%08X [VDP] Word store to CONTROL of %X [%d][%X]", regs.pc,
+                 data, vdp_reg[23] >> 6, vdp_reg[1]);
 #endif
     /* control port */
     vdp_storectrl(data);
     return;
   case 4:
     /* hv counter */
-    LOG_CRITICAL(("%08X [VDP] Word store to hv counter 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [VDP] Word store to hv counter 0x%X", regs.pc, addr);
     return;
   case 8:
-    LOG_CRITICAL(("%08X [VDP] PSG/prohibited word store.", regs.pc));
+    LOG_CRITICAL("%08X [VDP] PSG/prohibited word store.", regs.pc);
     return;
   default:
     LOG_CRITICAL(
@@ -1081,7 +1081,7 @@ void mem68k_store_vdp_long(uint32 addr, uint32 data)
 {
 #ifdef DEBUG_BUS
   if (addr & 1) {
-    LOG_CRITICAL(("%08X [VDP] Bus error 0x%X", regs.pc, addr));
+    LOG_CRITICAL("%08X [VDP] Bus error 0x%X", regs.pc, addr);
     return;
   }
 #endif
@@ -1090,8 +1090,8 @@ void mem68k_store_vdp_long(uint32 addr, uint32 data)
   case 0:
     /* data port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Long store to DATA of %X [%d][%X]", regs.pc, data,
-                 vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE("%08X [VDP] Long store to DATA of %X [%d][%X]", regs.pc, data,
+                 vdp_reg[23] >> 6, vdp_reg[1]);
 #endif
     vdp_storedata((uint16)(data >> 16));
     vdp_storedata((uint16)(data));
@@ -1099,8 +1099,8 @@ void mem68k_store_vdp_long(uint32 addr, uint32 data)
   case 2:
     /* control port */
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Long store to CONTROL of %X [%d][%X]", regs.pc,
-                 data, vdp_reg[23] >> 6, vdp_reg[1]));
+    LOG_VERBOSE("%08X [VDP] Long store to CONTROL of %X [%d][%X]", regs.pc,
+                 data, vdp_reg[23] >> 6, vdp_reg[1]);
 #endif
     vdp_storectrl((uint16)(data >> 16));
     vdp_storectrl((uint16)(data));

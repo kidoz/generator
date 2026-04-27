@@ -76,7 +76,7 @@ int soundp_start(void)
   /* Initialize SDL audio if not already done */
   if (!SDL_WasInit(SDL_INIT_AUDIO)) {
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-      LOG_CRITICAL(("SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError()));
+      LOG_CRITICAL("SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError());
       return 1;
     }
   }
@@ -88,13 +88,13 @@ int soundp_start(void)
   /* Get list of audio playback devices */
   devices = SDL_GetAudioPlaybackDevices(&num_devices);
   if (devices == nullptr || num_devices == 0) {
-    LOG_CRITICAL(("No audio playback devices found: %s", SDL_GetError()));
+    LOG_CRITICAL("No audio playback devices found: %s", SDL_GetError());
     if (devices)
       SDL_free(devices);
     return 1;
   }
 
-  LOG_VERBOSE(("Found %d audio playback device(s)", num_devices));
+  LOG_VERBOSE("Found %d audio playback device(s)", num_devices);
 
   /* Use first available device */
   dev_id = devices[0];
@@ -108,25 +108,25 @@ int soundp_start(void)
   /* Open the audio device */
   soundp_dev = SDL_OpenAudioDevice(dev_id, &src_spec);
   if (soundp_dev == 0) {
-    LOG_CRITICAL(("SDL_OpenAudioDevice failed: %s", SDL_GetError()));
+    LOG_CRITICAL("SDL_OpenAudioDevice failed: %s", SDL_GetError());
     return 1;
   }
 
   /* Get the actual device spec */
   if (!SDL_GetAudioDeviceFormat(soundp_dev, &dst_spec, nullptr)) {
-    LOG_CRITICAL(("SDL_GetAudioDeviceFormat failed: %s", SDL_GetError()));
+    LOG_CRITICAL("SDL_GetAudioDeviceFormat failed: %s", SDL_GetError());
     SDL_CloseAudioDevice(soundp_dev);
     soundp_dev = 0;
     return 1;
   }
 
-  LOG_VERBOSE(("Audio device opened: %d Hz, %d channels, format 0x%x",
-               dst_spec.freq, dst_spec.channels, dst_spec.format));
+  LOG_VERBOSE("Audio device opened: %d Hz, %d channels, format 0x%x",
+               dst_spec.freq, dst_spec.channels, dst_spec.format);
 
   /* Create an audio stream to convert from our format to device format */
   soundp_stream = SDL_CreateAudioStream(&src_spec, &dst_spec);
   if (soundp_stream == nullptr) {
-    LOG_CRITICAL(("SDL_CreateAudioStream failed: %s", SDL_GetError()));
+    LOG_CRITICAL("SDL_CreateAudioStream failed: %s", SDL_GetError());
     SDL_CloseAudioDevice(soundp_dev);
     soundp_dev = 0;
     return 1;
@@ -134,7 +134,7 @@ int soundp_start(void)
 
   /* Bind the stream to the audio device */
   if (!SDL_BindAudioStream(soundp_dev, soundp_stream)) {
-    LOG_CRITICAL(("SDL_BindAudioStream failed: %s", SDL_GetError()));
+    LOG_CRITICAL("SDL_BindAudioStream failed: %s", SDL_GetError());
     SDL_DestroyAudioStream(soundp_stream);
     soundp_stream = nullptr;
     SDL_CloseAudioDevice(soundp_dev);
@@ -151,19 +151,19 @@ int soundp_start(void)
   /* Detect and log audio backend */
   const char *backend = soundp_detect_audio_backend();
 
-  LOG_VERBOSE(("SDL3 Audio started: %d Hz, %d channels", src_spec.freq,
-               src_spec.channels));
+  LOG_VERBOSE("SDL3 Audio started: %d Hz, %d channels", src_spec.freq,
+               src_spec.channels);
   LOG_VERBOSE(
       ("Audio backend: %s (SDL driver: %s)", backend,
        SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
-  LOG_VERBOSE(("Threshold = %d bytes (%d fields of sound === %dms latency)",
+  LOG_VERBOSE("Threshold = %d bytes (%d fields of sound === %dms latency)",
                sound_threshold * 4, sound_minfields,
-               (int)(1000 * (float)sound_minfields / (float)vdp_framerate)));
+               (int)(1000 * (float)sound_minfields / (float)vdp_framerate));
 
   /* Provide helpful information for PulseAudio users */
   if (strstr(backend, "PulseAudio") != nullptr &&
       strstr(backend, "PipeWire") == nullptr) {
-    LOG_VERBOSE(("Tip: For lower latency, consider switching to PipeWire"));
+    LOG_VERBOSE("Tip: For lower latency, consider switching to PipeWire");
     LOG_VERBOSE(
         ("     PipeWire provides 3-10ms latency vs PulseAudio's 50-100ms"));
   }
@@ -178,8 +178,8 @@ int soundp_start(void)
     int16_t *silence = (int16_t *)calloc(prefill_samples * 2, sizeof(int16_t));
     if (silence) {
       if (SDL_PutAudioStreamData(soundp_stream, silence, (int)prefill_bytes)) {
-        LOG_VERBOSE(("Pre-filled audio buffer with %u samples of silence",
-                     prefill_samples));
+        LOG_VERBOSE("Pre-filled audio buffer with %u samples of silence",
+                     prefill_samples);
       }
       free(silence);
     }
@@ -272,7 +272,7 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
   if (samples > SOUND_BUFFER_SAMPLES) {
     static int overflow_count = 0;
     if (overflow_count < 3) {
-      LOG_CRITICAL(("Dropping oversized audio buffer: %u samples", samples));
+      LOG_CRITICAL("Dropping oversized audio buffer: %u samples", samples);
       overflow_count++;
     }
     return;
@@ -288,7 +288,7 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
   if (!SDL_PutAudioStreamData(soundp_stream, interleaved, samples * 4)) {
     static int err_count = 0;
     if (err_count < 3) {
-      LOG_CRITICAL(("SDL_PutAudioStreamData failed: %s", SDL_GetError()));
+      LOG_CRITICAL("SDL_PutAudioStreamData failed: %s", SDL_GetError());
       err_count++;
     }
   }

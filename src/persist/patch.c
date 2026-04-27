@@ -71,7 +71,7 @@ int patch_savefile(const char *filename)
   for (ent = patch_patchlist; ent; ent = ent->next)
     fprintf(f, "%s    %s\r\n", ent->code, ent->action);
   if (fclose(f) == EOF) {
-    LOG_CRITICAL(("Failed to close '%s': %s", filename, strerror(errno)));
+    LOG_CRITICAL("Failed to close '%s': %s", filename, strerror(errno));
     return -1;
   }
   return 0;
@@ -87,7 +87,7 @@ int patch_loadfile(const char *filename)
   t_patchlist *ent, **end;
 
   if ((f = fopen(filename, "rb")) == nullptr) {
-    LOG_CRITICAL(("Failed to open '%s': %s", filename, strerror(errno)));
+    LOG_CRITICAL("Failed to open '%s': %s", filename, strerror(errno));
     return -1;
   }
   patch_clearlist();
@@ -97,7 +97,7 @@ int patch_loadfile(const char *filename)
     if (len == 0)
       continue; /* skip empty lines */
     if (linebuf[len - 1] != '\n') {
-      LOG_CRITICAL(("Line too long in '%s': %s", filename, strerror(errno)));
+      LOG_CRITICAL("Line too long in '%s': %s", filename, strerror(errno));
       fclose(f);
       return -1;
     }
@@ -107,7 +107,7 @@ int patch_loadfile(const char *filename)
     if (len == 0)
       continue; /* skip blank lines */
     if (len < 11 || linebuf[6] != ':') {
-      LOG_CRITICAL(("Invalid patch file '%s'", filename));
+      LOG_CRITICAL("Invalid patch file '%s'", filename);
       fclose(f);
       return -1;
     }
@@ -123,12 +123,12 @@ int patch_loadfile(const char *filename)
     end = &ent->next;
   }
   if (!feof(f)) {
-    LOG_CRITICAL(("Error whilst reading patch file '%s'", filename));
+    LOG_CRITICAL("Error whilst reading patch file '%s'", filename);
     fclose(f);
     return -1;
   }
   if (fclose(f) == EOF) {
-    LOG_CRITICAL(("Failed to close '%s': %s", filename, strerror(errno)));
+    LOG_CRITICAL("Failed to close '%s': %s", filename, strerror(errno));
     return -1;
   }
   return 0;

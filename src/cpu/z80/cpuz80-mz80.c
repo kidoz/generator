@@ -182,7 +182,7 @@ void cpuz80_interrupt(void)
 
 uint8 cpuz80_portread(uint8 port)
 {
-  LOG_VERBOSE(("[Z80] Port read to %X", port));
+  LOG_VERBOSE("[Z80] Port read to %X", port);
   return 0;
 }
 
@@ -190,5 +190,5 @@ uint8 cpuz80_portread(uint8 port)
 
 void cpuz80_portwrite(uint8 port, uint8 value)
 {
-  LOG_VERBOSE(("[Z80] Port write to %X of %X", port, value));
+  LOG_VERBOSE("[Z80] Port write to %X of %X", port, value);
 }

@@ -234,38 +234,38 @@ int ui_init(int argc, char *argv[])
   strcpy(ui_initload, argv[0]);
 
   if (atexit(ui_exithandler) == -1) {
-    LOG_CRITICAL(("Failed to set exit handler"));
+    LOG_CRITICAL("Failed to set exit handler");
     return 1;
   }
   if (uip_init(&ui_uipinfo)) {
-    LOG_CRITICAL(("Failed to initialise platform dependent UI"));
+    LOG_CRITICAL("Failed to initialise platform dependent UI");
     return 1;
   }
   ui_joysticks = uip_initjoysticks();
-  LOG_VERBOSE(("%d joysticks detected", ui_joysticks));
+  LOG_VERBOSE("%d joysticks detected", ui_joysticks);
 
   if (ui_bindings[0].joystick >= ui_joysticks) {
-    LOG_CRITICAL(("Invalid joystick selected for first player"));
+    LOG_CRITICAL("Invalid joystick selected for first player");
     return 1;
   }
   if (ui_bindings[1].joystick >= ui_joysticks) {
-    LOG_CRITICAL(("Invalid joystick selected for second player"));
+    LOG_CRITICAL("Invalid joystick selected for second player");
     return 1;
   }
   if (ui_bindings[0].joystick == ui_bindings[1].joystick &&
       ui_bindings[0].joystick >= 0) {
-    LOG_CRITICAL(("The same joystick was selected for both players!"));
+    LOG_CRITICAL("The same joystick was selected for both players!");
     return 1;
   }
   if (ui_bindings[0].joystick == -1 && ui_bindings[0].joystick == -1) {
     if (ui_bindings[0].keyboard == ui_bindings[1].keyboard) {
-      LOG_CRITICAL(("The same keyboard position was selected for "
-                    "both players!"));
+      LOG_CRITICAL("The same keyboard position was selected for "
+                    "both players!");
       return 1;
     }
     if ((ui_bindings[0].keyboard == 0 && ui_bindings[1].keyboard != -1) ||
         (ui_bindings[1].keyboard == 0 && ui_bindings[0].keyboard != -1)) {
-      LOG_CRITICAL(("Invalid keyboard configuration"));
+      LOG_CRITICAL("Invalid keyboard configuration");
       return 1;
     }
   }
@@ -637,7 +637,7 @@ int ui_loop(void)
   if (ui_initload) {
     p = gen_loadimage(ui_initload);
     if (p) {
-      LOG_CRITICAL(("Failed to load ROM image: %s", p));
+      LOG_CRITICAL("Failed to load ROM image: %s", p);
       return 1;
     }
     if (ui_saverom) {
@@ -654,11 +654,11 @@ int ui_loop(void)
     }
     ui_state = 2;
   } else {
-    LOG_CRITICAL(("You must specify a ROM to load"));
+    LOG_CRITICAL("You must specify a ROM to load");
     return 1;
   }
   if (uip_vgamode()) {
-    LOG_CRITICAL(("Failed to start VGA mode"));
+    LOG_CRITICAL("Failed to start VGA mode");
     return 1;
   }
   uiplot_setshifts(ui_uipinfo.redshift, ui_uipinfo.greenshift,
@@ -1234,7 +1234,7 @@ int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
   }
   if (i < 1 || i > 9) {
     *filename = '\0';
-    LOG_CRITICAL(("Error - there are already 9 saved images"));
+    LOG_CRITICAL("Error - there are already 9 saved images");
     return -1;
   }
   if (!strcasecmp(type, "svga")) {
@@ -1252,12 +1252,12 @@ int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
         out[2] = ((line[i] >> ui_uipinfo.blueshift) & 0x1f) << 3;
         count = write(fd, out, 3);
         if (count == -1) {
-          LOG_CRITICAL(("Error whilst writing to output image file: %s",
-                        strerror(errno)));
+          LOG_CRITICAL("Error whilst writing to output image file: %s",
+                        strerror(errno));
           close(fd);
           return -1;
         } else if (count != 3) {
-          LOG_CRITICAL(("Short write - wrote 3 bytes, got %d", count));
+          LOG_CRITICAL("Short write - wrote 3 bytes, got %d", count);
           close(fd);
           return -1;
         }
@@ -1278,12 +1278,12 @@ int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
         out[2] = ((data >> ui_uipinfo.blueshift) & 0x1f) << 3;
         count = write(fd, out, 3);
         if (count == -1) {
-          LOG_CRITICAL(("Error whilst writing to output image file: %s",
-                        strerror(errno)));
+          LOG_CRITICAL("Error whilst writing to output image file: %s",
+                        strerror(errno));
           close(fd);
           return -1;
         } else if (count != 3) {
-          LOG_CRITICAL(("Short write - wrote 3 bytes, got %d", count));
+          LOG_CRITICAL("Short write - wrote 3 bytes, got %d", count);
           close(fd);
           return -1;
         }
@@ -1296,7 +1296,7 @@ int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
     return -1;
   }
   if (close(fd)) {
-    LOG_CRITICAL(("Close returned error whilst writing image"));
+    LOG_CRITICAL("Close returned error whilst writing image");
     return -1;
   }
   return 0;

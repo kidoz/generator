@@ -228,7 +228,7 @@ char *gen_loadimage(const char *filename)
     return ("invalid return code from read()");
   }
   if (bytesleft) {
-    LOG_CRITICAL(("%d bytes left to read?!", bytesleft));
+    LOG_CRITICAL("%d bytes left to read?!", bytesleft);
     free(cpu68k_rom);
     cpu68k_rom = nullptr;
     cpu68k_romlen = 0;
@@ -253,11 +253,11 @@ char *gen_loadimage(const char *filename)
   extension = filename + strlen(filename) - 3;
   if (extension > filename) {
     if (!strcasecmp(extension, "smd") && (imagetype != 2))
-      LOG_REQUEST(("File extension (smd) does not match detected "
-                   "type (bin)"));
+      LOG_REQUEST("File extension (smd) does not match detected "
+                   "type (bin)");
     if (!strcasecmp(extension, "bin") && (imagetype != 1))
-      LOG_REQUEST(("File extension (bin) does not match detected "
-                   "type (smd)"));
+      LOG_REQUEST("File extension (bin) does not match detected "
+                   "type (smd)");
   }
 
   /* convert to standard BIN file format */
@@ -391,12 +391,12 @@ char *gen_loadimage(const char *filename)
   gen_reset();
 
   if (gen_cartinfo.checksum != (cpu68k_rom[0x18e] << 8 | cpu68k_rom[0x18f]))
-    LOG_REQUEST(("Warning: Checksum does not match in ROM (%04X)",
-                 (cpu68k_rom[0x18e] << 8 | cpu68k_rom[0x18f])));
+    LOG_REQUEST("Warning: Checksum does not match in ROM (%04X)",
+                 (cpu68k_rom[0x18e] << 8 | cpu68k_rom[0x18f]));
 
-  LOG_REQUEST(("Loaded '%s'/'%s' (%s %04X %s)", gen_cartinfo.name_domestic,
+  LOG_REQUEST("Loaded '%s'/'%s' (%s %04X %s)", gen_cartinfo.name_domestic,
                gen_cartinfo.name_overseas, gen_cartinfo.version,
-               gen_cartinfo.checksum, gen_cartinfo.country));
+               gen_cartinfo.checksum, gen_cartinfo.country);
 
   gen_modifiedrom = 0;
   return nullptr;
@@ -514,7 +514,7 @@ uint16 gen_checksum(uint8 *start, unsigned int length)
 
   if (length & 1) {
     length &= ~1;
-    LOG_VERBOSE(("checksum routines given odd length (%d)", length));
+    LOG_VERBOSE("checksum routines given odd length (%d)", length);
   }
 
   for (; length; length -= 2, start += 2) {

@@ -169,8 +169,8 @@ static void init_filters(void)
 
   filters_initialized = 1;
 
-  LOG_VERBOSE(("Audio filters initialized: output=%u Hz, internal=%u Hz, %ux oversampling",
-               sound_speed, sound_internal_rate, sound_oversampling));
+  LOG_VERBOSE("Audio filters initialized: output=%u Hz, internal=%u Hz, %ux oversampling",
+               sound_speed, sound_internal_rate, sound_oversampling);
 }
 
 /* Simple PRNG for dithering (fast, good quality) */
@@ -241,7 +241,7 @@ int sound_init(void)
       sound_oversample_buf[0] = malloc(needed * sizeof(int16_t));
       sound_oversample_buf[1] = malloc(needed * sizeof(int16_t));
       if (!sound_oversample_buf[0] || !sound_oversample_buf[1]) {
-        LOG_CRITICAL(("Failed to allocate oversampling buffers"));
+        LOG_CRITICAL("Failed to allocate oversampling buffers");
         return 1;
       }
       sound_oversample_buf_size = needed;
@@ -259,12 +259,12 @@ int sound_init(void)
 #else
   if (YM2612Init(1, vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
 #endif
-    LOG_VERBOSE(("YM2612 failed init"));
+    LOG_VERBOSE("YM2612 failed init");
     sound_stop();
     return 1;
   }
   if (SN76496Init(0, vdp_clock / 15, 0, sound_internal_rate)) {
-    LOG_VERBOSE(("SN76496 failed init"));
+    LOG_VERBOSE("SN76496 failed init");
     sound_stop();
 #ifdef JFM
     jfm_final(sound_ctx);
@@ -284,9 +284,9 @@ int sound_init(void)
   if (!sound_logdata)
     ui_err("out of memory");
 
-  LOG_VERBOSE(("Sound initialized: output=%u Hz, internal=%u Hz, %ux oversampling, HQ filter=%s",
+  LOG_VERBOSE("Sound initialized: output=%u Hz, internal=%u Hz, %ux oversampling, HQ filter=%s",
                sound_speed, sound_internal_rate, sound_oversampling,
-               sound_hq_filter ? "enabled" : "disabled"));
+               sound_hq_filter ? "enabled" : "disabled");
   return 0;
 }
 
@@ -315,19 +315,19 @@ int sound_start(void)
   int result;
 
   if (sound_active) {
-    LOG_VERBOSE(("Restarting sound (full reset)..."));
+    LOG_VERBOSE("Restarting sound (full reset)...");
     result = soundp_reset();
   } else {
-    LOG_VERBOSE(("Starting sound..."));
+    LOG_VERBOSE("Starting sound...");
     result = soundp_start();
   }
 
   if (result != 0) {
-    LOG_VERBOSE(("Failed to start sound hardware"));
+    LOG_VERBOSE("Failed to start sound hardware");
     return -1;
   }
   sound_active = 1;
-  LOG_VERBOSE(("Started sound."));
+  LOG_VERBOSE("Started sound.");
   return 0;
 }
 
@@ -337,17 +337,17 @@ void sound_stop(void)
 {
   if (!sound_active)
     return;
-  LOG_VERBOSE(("Stopping sound..."));
+  LOG_VERBOSE("Stopping sound...");
   soundp_stop();
   sound_active = 0;
-  LOG_VERBOSE(("Stopped sound."));
+  LOG_VERBOSE("Stopped sound.");
 }
 
 /*** sound_reset - reset sound sub-unit ***/
 
 int sound_reset(void)
 {
-  LOG_VERBOSE(("Resetting sound (full subsystem restart)..."));
+  LOG_VERBOSE("Resetting sound (full subsystem restart)...");
 
   if (sound_active) {
     soundp_stop();
@@ -365,7 +365,7 @@ int sound_reset(void)
   sound_threshold = sound_sampsperfield * sound_minfields;
 
   if (soundp_reset() != 0) {
-    LOG_VERBOSE(("Failed to reset sound hardware"));
+    LOG_VERBOSE("Failed to reset sound hardware");
     return 1;
   }
   sound_active = 1;
@@ -376,13 +376,13 @@ int sound_reset(void)
 #else
   if (YM2612Init(1, vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
 #endif
-    LOG_VERBOSE(("YM2612 failed init during reset"));
+    LOG_VERBOSE("YM2612 failed init during reset");
     soundp_stop();
     sound_active = 0;
     return 1;
   }
   if (SN76496Init(0, vdp_clock / 15, 0, sound_internal_rate)) {
-    LOG_VERBOSE(("SN76496 failed init during reset"));
+    LOG_VERBOSE("SN76496 failed init during reset");
     soundp_stop();
     sound_active = 0;
 #ifdef JFM
@@ -396,7 +396,7 @@ int sound_reset(void)
   /* Re-initialize filters */
   init_filters();
 
-  LOG_VERBOSE(("Sound reset complete."));
+  LOG_VERBOSE("Sound reset complete.");
   return 0;
 }
 
@@ -469,8 +469,8 @@ void sound_endfield(void)
     sound_feedback = 0;
 
   if (sound_debug) {
-    LOG_VERBOSE(("End of field - %d samples buffered, threshold %d, feedback %d",
-                 pending, sound_threshold, sound_feedback));
+    LOG_VERBOSE("End of field - %d samples buffered, threshold %d, feedback %d",
+                 pending, sound_threshold, sound_feedback);
   }
   soundp_output(sound_soundbuf[0], sound_soundbuf[1], sound_sampsperfield);
 }
@@ -720,7 +720,7 @@ int sound_set_quality(sound_quality_t quality)
 int sound_set_sample_rate(unsigned int rate)
 {
   if (rate != 44100 && rate != 48000 && rate != 96000) {
-    LOG_VERBOSE(("Invalid sample rate %u, must be 44100, 48000, or 96000", rate));
+    LOG_VERBOSE("Invalid sample rate %u, must be 44100, 48000, or 96000", rate);
     return -1;
   }
 
@@ -734,7 +734,7 @@ int sound_set_sample_rate(unsigned int rate)
 int sound_set_oversampling(unsigned int factor)
 {
   if (factor != 1 && factor != 2 && factor != 4) {
-    LOG_VERBOSE(("Invalid oversampling factor %u, must be 1, 2, or 4", factor));
+    LOG_VERBOSE("Invalid oversampling factor %u, must be 1, 2, or 4", factor);
     return -1;
   }
 
@@ -756,7 +756,7 @@ static void sound_writetolog(unsigned char c)
 {
   sound_logdata[sound_logdata_p++] = c;
   if (sound_logdata_p >= sound_logdata_size) {
-    LOG_VERBOSE(("sound log buffer limit increased"));
+    LOG_VERBOSE("sound log buffer limit increased");
     sound_logdata_size += 8192;
     sound_logdata = realloc(sound_logdata, sound_logdata_size);
     if (!sound_logdata)

@@ -60,13 +60,13 @@ static int state_check_version(void)
   }
 
   if (!found_major) {
-    LOG_CRITICAL(("Save state file missing version information"));
+    LOG_CRITICAL("Save state file missing version information");
     return -1;
   }
 
   if (major != 2) {
-    LOG_CRITICAL(("Save state file is version %d, but we require version 2",
-                  major));
+    LOG_CRITICAL("Save state file is version %d, but we require version 2",
+                  major);
     return -1;
   }
 
@@ -134,12 +134,12 @@ void state_transfer8(const char *mod, const char *name, uint8 instance,
           l->instance == instance && l->size == size && l->bytes == 1) {
         for (i = 0; i < size; i++)
           data[i] = l->data[i];
-        LOG_VERBOSE(("Loaded %s %s (%d)", mod, name, instance));
+        LOG_VERBOSE("Loaded %s %s (%d)", mod, name, instance);
         break;
       }
     }
     if (l == nullptr) {
-      LOG_CRITICAL(("bad %s/%s\n", mod, name));
+      LOG_CRITICAL("bad %s/%s\n", mod, name);
       memset(data, 0, size);
     }
   }
@@ -177,12 +177,12 @@ void state_transfer16(const char *mod, const char *name, uint8 instance,
         for (i = 0; i < size; i++)
           data[i] = ((((uint8 *)l->data)[(i << 1)] << 8) |
                      (((uint8 *)l->data)[(i << 1) + 1]));
-        LOG_VERBOSE(("Loaded %s %s (%d)", mod, name, instance));
+        LOG_VERBOSE("Loaded %s %s (%d)", mod, name, instance);
         break;
       }
     }
     if (l == nullptr) {
-      LOG_CRITICAL(("bad %s/%s\n", mod, name));
+      LOG_CRITICAL("bad %s/%s\n", mod, name);
       memset(data, 0, size * 2);
     }
   }
@@ -224,12 +224,12 @@ void state_transfer32(const char *mod, const char *name, uint8 instance,
                      (((uint8 *)l->data)[(i << 2) + 1] << 16) |
                      (((uint8 *)l->data)[(i << 2) + 2] << 8) |
                      (((uint8 *)l->data)[(i << 2) + 3]));
-        LOG_VERBOSE(("Loaded %s %s (%d)", mod, name, instance));
+        LOG_VERBOSE("Loaded %s %s (%d)", mod, name, instance);
         break;
       }
     }
     if (l == nullptr) {
-      LOG_CRITICAL(("bad %s/%s\n", mod, name));
+      LOG_CRITICAL("bad %s/%s\n", mod, name);
       memset(data, 0, size * 4);
     }
   }
@@ -442,20 +442,20 @@ int state_loadfile(const char *filename)
   }
 
   if ((blk = malloc(statbuf.st_size)) == nullptr) {
-    LOG_CRITICAL(("Failed to allocate memory whilst loading '%s'", filename));
+    LOG_CRITICAL("Failed to allocate memory whilst loading '%s'", filename);
     return -1;
   }
   if ((f = fopen(filename, "rb")) == nullptr) {
-    LOG_CRITICAL(("Failed to open '%s': %s", filename, strerror(errno)));
+    LOG_CRITICAL("Failed to open '%s': %s", filename, strerror(errno));
     free(blk);
     return -1;
   }
   if (fread(blk, statbuf.st_size, 1, f) != 1) {
     if (feof(f)) {
-      LOG_CRITICAL(("EOF whilst reading save state file '%s'", filename));
+      LOG_CRITICAL("EOF whilst reading save state file '%s'", filename);
     } else {
-      LOG_CRITICAL(("Error whilst reading save state file '%s': %s", filename,
-                    strerror(errno)));
+      LOG_CRITICAL("Error whilst reading save state file '%s': %s", filename,
+                    strerror(errno));
     }
     fclose(f);
     free(blk);
@@ -508,7 +508,7 @@ int state_loadfile(const char *filename)
 
   /* Check version compatibility BEFORE modifying emulator state */
   if (state_check_version() != 0) {
-    LOG_CRITICAL(("Save state file '%s' has incompatible version", filename));
+    LOG_CRITICAL("Save state file '%s' has incompatible version", filename);
     errno = EINVAL;
     free(blk);
     while (state_statelist) {
@@ -538,7 +538,7 @@ int state_loadfile(const char *filename)
   cpuz80_updatecontext();
   return 0;
 OVERRUN:
-  LOG_CRITICAL(("Invalid state file '%s': overrun encountered", filename));
+  LOG_CRITICAL("Invalid state file '%s': overrun encountered", filename);
   errno = EINVAL;
   /* Free current entry if allocated but not yet added to list */
   if (ent != nullptr)

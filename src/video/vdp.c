@@ -242,14 +242,14 @@ uint16 vdp_status(void)
 
 #ifdef DEBUG_VDP
   if (vdp_collision)
-    LOG_VERBOSE(("%08X Collision read %d", regs.pc, vdp_collision));
+    LOG_VERBOSE("%08X Collision read %d", regs.pc, vdp_collision);
 #endif
 
   vdp_vsync = vdp_collision = vdp_overflow = 0;
   vdp_ctrlflag = 0; /* Charles MacDonald - so he claims ;) */
 
-  LOG_DEBUG1(("%08X STATUS READ %02X", regs.pc, ret));
-  LOG_VERBOSE(("%08X STATUS READ %02X", regs.pc, ret));
+  LOG_DEBUG1("%08X STATUS READ %02X", regs.pc, ret);
+  LOG_VERBOSE("%08X STATUS READ %02X", regs.pc, ret);
 
   return (ret);
 }
@@ -260,8 +260,8 @@ void vdp_storectrl(uint16 data)
   uint8 regdata;
 
 #ifdef DEBUG_VDP
-  LOG_VERBOSE(("%08X [VDP] Ctrl write of %04X (vdp_ctrlflag before=%d)",
-               regs.pc, data, vdp_ctrlflag));
+  LOG_VERBOSE("%08X [VDP] Ctrl write of %04X (vdp_ctrlflag before=%d)",
+               regs.pc, data, vdp_ctrlflag);
 #endif
 
   if (!vdp_ctrlflag) {
@@ -293,14 +293,14 @@ void vdp_storectrl(uint16 data)
     vdp_address = (vdp_first & 0x3FFF) | (data << 14 & 0xC000);
 
 #ifdef DEBUG_VDP
-    LOG_VERBOSE(("%08X [VDP] Ctrl: %08X; code=%d address=%X", regs.pc,
-                 (vdp_first << 16) | vdp_second, vdp_code, vdp_address));
+    LOG_VERBOSE("%08X [VDP] Ctrl: %08X; code=%d address=%X", regs.pc,
+                 (vdp_first << 16) | vdp_second, vdp_code, vdp_address);
 #endif
 
     if ((data & 1 << 7) && (vdp_reg[1] & 1 << 4)) { /* CD5 - DMA ? */
       if (vdp_dmabusy) {
         vdp_dmabusy = 1; /* null statement to avoid gcc warnings */
-        LOG_DEBUG1(("DMA initiation during DMA!"));
+        LOG_DEBUG1("DMA initiation during DMA!");
       }
       /* CD4 - not read - need to verify */
       vdp_dmabusy = 1;
@@ -318,8 +318,8 @@ void vdp_storectrl(uint16 data)
           vdp_ramcopy_vram(2);
           break;
         default: /* undefined */
-          LOG_NORMAL(("%08X [VDP] start of type %d to address %X", regs.pc,
-                      vdp_code, vdp_address));
+          LOG_NORMAL("%08X [VDP] start of type %d to address %X", regs.pc,
+                      vdp_code, vdp_address);
           break;
         }
         vdp_dmabusy = 0; /* 68k was frozen */
@@ -352,14 +352,14 @@ void vdp_ramcopy_vram(int type)
   unsigned int i;
 
 #ifdef DEBUG_VDP
-  LOG_VERBOSE(("%08X [VDP] VRAM copy from source %08X "
+  LOG_VERBOSE("%08X [VDP] VRAM copy from source %08X "
                "vdpaddr=%08X length=%d (%s)",
                regs.pc, (srcbank * 0x10000 + srcoffset) * 2, vdp_address,
                length,
                type == 0   ? "vram"
                : type == 1 ? "cram"
                : type == 2 ? "vsram"
-                           : "??"));
+                           : "??");
 #endif
 
   if (srcbank & 1 << 6) {
@@ -381,7 +381,7 @@ void vdp_ramcopy_vram(int type)
       vdp_cram[(vdp_address & 0x7e) | 1] = data & 0xff;
       vdp_cramf[(vdp_address & 0x7e) >> 1] = 1;
 #ifdef DEBUG_VDPCRAM
-      LOG_VERBOSE(("%08X CRAM %X = %04X", regs.pc, vdp_address >> 1, data));
+      LOG_VERBOSE("%08X CRAM %X = %04X", regs.pc, vdp_address >> 1, data);
 #endif
       break;
     case 2: /* VSRAM */
@@ -410,13 +410,13 @@ void vdp_dma_vramcopy()
   unsigned int i;
 
   if (length == 0) {
-    LOG_NORMAL(("%08X [VDP] Warning - length of 0 used in vram copy", regs.pc));
+    LOG_NORMAL("%08X [VDP] Warning - length of 0 used in vram copy", regs.pc);
     length = 0x10000; /* could be 0xffff */
   }
 #ifdef DEBUG_VDPDMA
-  LOG_VERBOSE(("%08X [VDP] COPY length %04X dstaddr %08X inc %02X "
+  LOG_VERBOSE("%08X [VDP] COPY length %04X dstaddr %08X inc %02X "
                "srcaddr %04X",
-               regs.pc, length, vdp_address, increment, srcaddr));
+               regs.pc, length, vdp_address, increment, srcaddr);
 #endif
 
   for (i = 0; i < length; i++) {
@@ -442,7 +442,7 @@ void vdp_dma_fill(uint8 data)
   unsigned int i;
 
   if (increment != 1 && increment != 2 && increment != 4)
-    LOG_NORMAL(("VDP fill used with strange increment %d", increment));
+    LOG_NORMAL("VDP fill used with strange increment %d", increment);
 
   for (i = 0; i < length; i++) {
     vdp_vram[vdp_address ^ 1] = data;
@@ -463,18 +463,18 @@ void vdp_storedata(uint16 data)
        frame during VDP writes. Logging causes severe performance issues and
        audio freezing. This condition indicates an "unterminated control write"
        but is not critical. */
-    // LOG_NORMAL(("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
-    //             vdp_first, vdp_second));
+    // LOG_NORMAL("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
+    //             vdp_first, vdp_second);
     vdp_storectrl(vdp_second);
   }
 #ifdef DEBUG_VDPDATA
-  LOG_NORMAL(("%08X [VDP] code=%d (%s) data=%04X addr=%X inc=%d", regs.pc,
+  LOG_NORMAL("%08X [VDP] code=%d (%s) data=%04X addr=%X inc=%d", regs.pc,
               vdp_code,
               vdp_code == cd_vram_store    ? "vram"
               : vdp_code == cd_cram_store  ? "cram"
               : vdp_code == cd_vsram_store ? "vsram"
                                            : "??",
-              data, vdp_address, vdp_reg[15]));
+              data, vdp_address, vdp_reg[15]);
 #endif
   switch (vdp_code) {
   case cd_vram_store:
@@ -495,8 +495,8 @@ void vdp_storedata(uint16 data)
     vdp_fifo_add(); /* Track FIFO entry */
     break;
   default: /* undefined */
-    LOG_NORMAL(("%08X [VDP] Bad word store to %08X of type %d data = %04X",
-                regs.pc, vdp_address, vdp_code, data));
+    LOG_NORMAL("%08X [VDP] Bad word store to %08X of type %d data = %04X",
+                regs.pc, vdp_address, vdp_code, data);
     break;
   }
   vdp_address += vdp_reg[15]; /* 16 bit wrap */
@@ -521,8 +521,8 @@ uint16 vdp_fetchdata(void)
     /* Note: Don't log here - vdp_fetchdata() is called thousands of times per
        frame during VDP reads. Logging causes severe performance issues and
        audio freezing. */
-    // LOG_NORMAL(("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
-    //             vdp_first, vdp_second));
+    // LOG_NORMAL("%08X [VDP] Unterminated ctrl setting %04X/%04X", regs.pc,
+    //             vdp_first, vdp_second);
     vdp_storectrl(vdp_second);
   }
 
@@ -544,8 +544,8 @@ uint16 vdp_fetchdata(void)
     break;
   default: /* undefined */
     /* reading in write mode suspends 68000 on a real machine */
-    LOG_NORMAL(("%08X [VDP] Bad word fetch of %08X of type %d", regs.pc,
-                vdp_address, vdp_code));
+    LOG_NORMAL("%08X [VDP] Bad word fetch of %08X of type %d", regs.pc,
+                vdp_address, vdp_code);
     data = 0;
     break;
   }
@@ -647,7 +647,7 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
       si[i].hplot = 0;
     }
     if (si[i].hpos == -127) {
-      LOG_VERBOSE(("Warning: Use of hpos = 1 in plotter"));
+      LOG_VERBOSE("Warning: Use of hpos = 1 in plotter");
       plotter = 1;
     }
     if (cells >= si[i].hplot) {
@@ -1610,7 +1610,7 @@ void vdp_spritelist(void)
   sint16 vpos, hpos, vmax;
   uint8 vsize, hsize;
 
-  LOG_REQUEST(("SPRITE DUMP: (base=vram+%X)", (vdp_reg[5] & 0x7f) << 9));
+  LOG_REQUEST("SPRITE DUMP: (base=vram+%X)", (vdp_reg[5] & 0x7f) << 9);
   do {
     sprite = spritelist + (link << 3);
     hpos = (LOCENDIAN16(*(uint16 *)(sprite + 6)) & 0x1FF) - 0x80;
@@ -1624,14 +1624,14 @@ void vdp_spritelist(void)
 
     LOG_REQUEST(
         ("Sprite %d @ %X", link, (link << 3) | (vdp_reg[5] & 0x7f) << 9));
-    LOG_REQUEST(("  Pos:  %d,%d", hpos, vpos));
-    LOG_REQUEST(("  Size: %d,%d", hsize, vsize));
-    LOG_REQUEST(("  Pri: %d, Pal: %d, Vflip: %d, Hflip: %d",
+    LOG_REQUEST("  Pos:  %d,%d", hpos, vpos);
+    LOG_REQUEST("  Size: %d,%d", hsize, vsize);
+    LOG_REQUEST("  Pri: %d, Pal: %d, Vflip: %d, Hflip: %d",
                  (cellinfo >> 15 & 1), (cellinfo >> 13 & 3),
-                 (cellinfo >> 12 & 1), (cellinfo >> 11 & 1)));
-    LOG_REQUEST(("  Pattern: %d (%x) @ vram+%X (%X if interlaced)",
+                 (cellinfo >> 12 & 1), (cellinfo >> 11 & 1));
+    LOG_REQUEST("  Pattern: %d (%x) @ vram+%X (%X if interlaced)",
                  (cellinfo & 0x7FF), (cellinfo & 0x7FF),
-                 (cellinfo & 0x7FF) * 32, (cellinfo & 0x7FF) * 32));
+                 (cellinfo & 0x7FF) * 32, (cellinfo & 0x7FF) * 32);
     link = sprite[3] & 0x7F;
   } while (link);
 }
@@ -1650,19 +1650,19 @@ void vdp_describe(void)
 
   hwidth = 32 + hsize * 32;
   vwidth = 32 + vsize * 32;
-  LOG_REQUEST(("VDP description:"));
-  LOG_REQUEST(("  hsize = %d (ie. width=%d)", hsize, hwidth));
-  LOG_REQUEST(("  vsize = %d (ie. width=%d)", vsize, vwidth));
-  LOG_REQUEST(("  hmode = %d (0=full, 2=cell, 3=line)", hmode));
+  LOG_REQUEST("VDP description:");
+  LOG_REQUEST("  hsize = %d (ie. width=%d)", hsize, hwidth);
+  LOG_REQUEST("  vsize = %d (ie. width=%d)", vsize, vwidth);
+  LOG_REQUEST("  hmode = %d (0=full, 2=cell, 3=line)", hmode);
   LOG_REQUEST(("  vmode = %d (0=full, 1=2cell", vmode));
 
   for (layer = 0; layer < 2; layer++) {
-    LOG_REQUEST(("  Layer %s:", layer == 0 ? "A" : "B"));
+    LOG_REQUEST("  Layer %s:", layer == 0 ? "A" : "B");
     o_patterndata =
         (layer == 0 ? ((vdp_reg[2] & 0x38) << 10) : ((vdp_reg[4] & 7) << 13));
     o_hscrolldata = layer * 2 + ((vdp_reg[13] & 63) << 10);
-    LOG_REQUEST(("    Pattern data @ vram+%08X", o_patterndata));
-    LOG_REQUEST(("    Hscroll data @ vram+%08X", o_hscrolldata));
+    LOG_REQUEST("    Pattern data @ vram+%08X", o_patterndata);
+    LOG_REQUEST("    Hscroll data @ vram+%08X", o_hscrolldata);
     patterndata = (uint16 *)(vdp_vram + o_patterndata);
     hscrolldata = (uint16 *)(vdp_vram + o_hscrolldata);
     for (line = 0; line < vdp_vislines; line++) {
@@ -1989,7 +1989,7 @@ int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
   uint8 *patloc;
 
   if (number > 80) {
-    LOG_VERBOSE(("%08X [VDP] Maximum of 80 sprites exceeded", regs.pc));
+    LOG_VERBOSE("%08X [VDP] Maximum of 80 sprites exceeded", regs.pc);
     return 0;
   }
 
@@ -2117,10 +2117,10 @@ uint8 vdp_gethpos(void)
 
      this is such a bodge - any changes, check '3 Ninjas kick back'
    */
-  LOG_DEBUG1(("gethpos %X: clocks=%X : startofline=%X : hint=%X : "
+  LOG_DEBUG1("gethpos %X: clocks=%X : startofline=%X : hint=%X : "
               "end=%X",
               vdp_event, cpu68k_clocks, vdp_event_start, vdp_event_hint,
-              vdp_event_end));
+              vdp_event_end);
   if (vdp_event < 3) {
     percent = ((float)(cpu68k_clocks - vdp_event_start) /
                (float)(vdp_event_hint - vdp_event_start));

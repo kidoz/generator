@@ -119,12 +119,12 @@ int cpu68k_init(void)
         /* no src/dst parameter */
         break;
       default:
-        LOG_CRITICAL(("CPU definition #%d incorrect", i));
+        LOG_CRITICAL("CPU definition #%d incorrect", i);
         return 1;
       }
     }
     if (bitmap != 0xFFFF) {
-      LOG_CRITICAL(("CPU definition #%d incorrect (0x%x)", i, bitmap));
+      LOG_CRITICAL("CPU definition #%d incorrect (0x%x)", i, bitmap);
       return 1;
     }
     for (sbit = 0; sbit < (1 << sbits); sbit++) {
@@ -137,7 +137,7 @@ int cpu68k_init(void)
           }
         }
         if (cpu68k_iibtable[bitmap] != nullptr) {
-          LOG_CRITICAL(("CPU definition #%d conflicts (0x%x)", i, bitmap));
+          LOG_CRITICAL("CPU definition #%d conflicts (0x%x)", i, bitmap);
           return 1;
         }
         cpu68k_iibtable[bitmap] = iib;
@@ -172,8 +172,8 @@ int cpu68k_init(void)
     movem_bit[i] = j;
   }
 
-  LOG_VERBOSE(("CPU: %d instructions supported by %d routines",
-               cpu68k_totalinstr, cpu68k_totalfuncs));
+  LOG_VERBOSE("CPU: %d instructions supported by %d routines",
+               cpu68k_totalinstr, cpu68k_totalfuncs);
   iib = cpu68k_iibtable[0x2F39];
   return 0;
 }

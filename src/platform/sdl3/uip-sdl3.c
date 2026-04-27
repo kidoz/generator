@@ -77,10 +77,10 @@ static void uip_keyboardhandler(SDL_Scancode scancode, int press)
 int uip_init(t_uipinfo *uipinfo)
 {
   uip_uipinfo = uipinfo;
-  LOG_REQUEST(("Initialising SDL3..."));
+  LOG_REQUEST("Initialising SDL3...");
 
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK)) {
-    LOG_CRITICAL(("Failed to initialise SDL3: %s", SDL_GetError()));
+    LOG_CRITICAL("Failed to initialise SDL3: %s", SDL_GetError());
     return 1;
   }
 
@@ -95,7 +95,7 @@ int uip_initjoysticks(void)
   int num_joysticks;
   SDL_JoystickID *joysticks;
 
-  LOG_REQUEST(("Checking for SDL3 joysticks..."));
+  LOG_REQUEST("Checking for SDL3 joysticks...");
 
   joysticks = SDL_GetJoysticks(&num_joysticks);
   if (joysticks) {
@@ -103,11 +103,11 @@ int uip_initjoysticks(void)
   }
 
   if (num_joysticks < 1) {
-    LOG_VERBOSE(("No joysticks found"));
+    LOG_VERBOSE("No joysticks found");
     return 0;
   }
 
-  LOG_NORMAL(("Found %d joystick(s)", num_joysticks));
+  LOG_NORMAL("Found %d joystick(s)", num_joysticks);
   SDL_SetJoystickEventsEnabled(true);
 
   return (num_joysticks > 2) ? 2 : num_joysticks;
@@ -125,7 +125,7 @@ int uip_vgamode(void)
                                 SCREEN_WIDTH, SCREEN_HEIGHT, 0);
 
   if (!uip_window) {
-    LOG_CRITICAL(("Failed to create SDL window: %s", SDL_GetError()));
+    LOG_CRITICAL("Failed to create SDL window: %s", SDL_GetError());
     uip_textmode();
     return 1;
   }
@@ -133,7 +133,7 @@ int uip_vgamode(void)
   /* Create renderer with vsync enabled for proper frame timing */
   uip_renderer = SDL_CreateRenderer(uip_window, nullptr);
   if (!uip_renderer) {
-    LOG_CRITICAL(("Failed to create SDL renderer: %s", SDL_GetError()));
+    LOG_CRITICAL("Failed to create SDL renderer: %s", SDL_GetError());
     uip_textmode();
     return 1;
   }
@@ -141,7 +141,7 @@ int uip_vgamode(void)
   /* Enable vsync */
   SDL_SetRenderVSync(uip_renderer, 1);
 
-  LOG_VERBOSE(("SDL3 renderer created with vsync enabled"));
+  LOG_VERBOSE("SDL3 renderer created with vsync enabled");
 
   /* Use RGB565 format (16-bit) for compatibility with Genesis color format */
   SDL_PixelFormat pixel_format = SDL_PIXELFORMAT_RGB565;
@@ -153,7 +153,7 @@ int uip_vgamode(void)
                                        SCREEN_WIDTH, SCREEN_HEIGHT);
 
     if (!uip_texture[i]) {
-      LOG_CRITICAL(("Failed to create SDL texture %d: %s", i, SDL_GetError()));
+      LOG_CRITICAL("Failed to create SDL texture %d: %s", i, SDL_GetError());
       uip_textmode();
       return 1;
     }
@@ -161,7 +161,7 @@ int uip_vgamode(void)
     /* Allocate screen memory */
     uip_screenmem[i] = malloc(BANKSIZE);
     if (!uip_screenmem[i]) {
-      LOG_CRITICAL(("Failed to allocate screen memory bank %d", i));
+      LOG_CRITICAL("Failed to allocate screen memory bank %d", i);
       uip_textmode();
       return 1;
     }
@@ -172,7 +172,7 @@ int uip_vgamode(void)
   SDL_PixelFormat actual_format;
   float w, h;
   if (!SDL_GetTextureSize(uip_texture[0], &w, &h)) {
-    LOG_CRITICAL(("Failed to query SDL texture: %s", SDL_GetError()));
+    LOG_CRITICAL("Failed to query SDL texture: %s", SDL_GetError());
     uip_textmode();
     return 1;
   }
@@ -191,7 +191,7 @@ int uip_vgamode(void)
   /* Get pixel format details from the ACTUAL format SDL created */
   format_details = SDL_GetPixelFormatDetails(pixel_format);
   if (!format_details) {
-    LOG_CRITICAL(("Failed to get pixel format details: %s", SDL_GetError()));
+    LOG_CRITICAL("Failed to get pixel format details: %s", SDL_GetError());
     uip_textmode();
     return 1;
   }
@@ -226,15 +226,15 @@ int uip_vgamode(void)
   uip_uipinfo->greenmask = format_details->Gmask;
   uip_uipinfo->bluemask = format_details->Bmask;
 
-  LOG_VERBOSE(("SDL texture format: %s (0x%08X)",
-               SDL_GetPixelFormatName(actual_format), actual_format));
-  LOG_VERBOSE(("Pixel format masks: R=0x%04X G=0x%04X B=0x%04X", format_details->Rmask,
-               format_details->Gmask, format_details->Bmask));
+  LOG_VERBOSE("SDL texture format: %s (0x%08X)",
+               SDL_GetPixelFormatName(actual_format), actual_format);
+  LOG_VERBOSE("Pixel format masks: R=0x%04X G=0x%04X B=0x%04X", format_details->Rmask,
+               format_details->Gmask, format_details->Bmask);
 
-  LOG_VERBOSE(("SDL3 video mode initialized: %dx%d RGB565", SCREEN_WIDTH,
-               SCREEN_HEIGHT));
-  LOG_VERBOSE(("Color shifts: R=%d G=%d B=%d", uip_uipinfo->redshift,
-               uip_uipinfo->greenshift, uip_uipinfo->blueshift));
+  LOG_VERBOSE("SDL3 video mode initialized: %dx%d RGB565", SCREEN_WIDTH,
+               SCREEN_HEIGHT);
+  LOG_VERBOSE("Color shifts: R=%d G=%d B=%d", uip_uipinfo->redshift,
+               uip_uipinfo->greenshift, uip_uipinfo->blueshift);
 
   return 0;
 }
@@ -253,7 +253,7 @@ void uip_displaybank(int bank)
   /* Update texture with current screen memory */
   SDL_Rect rect = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
   if (!SDL_UpdateTexture(uip_texture[bank], &rect, uip_screenmem[bank], pitch)) {
-    LOG_CRITICAL(("Failed to update texture: %s", SDL_GetError()));
+    LOG_CRITICAL("Failed to update texture: %s", SDL_GetError());
     return;
   }
 
@@ -326,12 +326,12 @@ int uip_checkkeyboard(void)
 
     case SDL_EVENT_WINDOW_FOCUS_LOST:
       soundp_pause();
-      LOG_VERBOSE(("Window focus lost - audio paused"));
+      LOG_VERBOSE("Window focus lost - audio paused");
       break;
 
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
       soundp_resume();
-      LOG_VERBOSE(("Window focus gained - audio resumed"));
+      LOG_VERBOSE("Window focus gained - audio resumed");
       break;
     }
   }
