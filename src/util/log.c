@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "generator/log.h"
+#include "log.h"
 
 static gen_log_sink_fn g_sink = nullptr;
 static void *g_sink_user_data = nullptr;
