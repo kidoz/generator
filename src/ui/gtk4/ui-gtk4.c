@@ -33,6 +33,8 @@
 #include <gdk/gdkkeysyms.h>
 #include "event.h"
 #include "state.h"
+
+static void gtk4_log_sink(int level, const char *msg, void *user_data);
 #include "initcart.h"
 #include "patch.h"
 #include "dib.h"
@@ -166,6 +168,8 @@ int ui_init(int argc, char *argv[])
   struct passwd *passwd;
   struct stat statbuf;
   int i;
+
+  gen_log_set_sink(gtk4_log_sink, nullptr);
 
   fprintf(stderr, "Generator v" VERSION " - Sega Genesis/Mega Drive Emulator\n");
   fprintf(stderr, "See AUTHORS.md for copyright attribution.\n\n");
@@ -2637,61 +2641,13 @@ gboolean ui_gtk4_question(const char *msg)
   return state.result;
 }
 
-/*** Logging functions (required by ui.h interface) ***/
+/*** Logging sink — registered with the central logger in ui_init() ***/
 
-void ui_log_debug3(const char *text, ...)
+static void gtk4_log_sink(int level, const char *msg, void *user_data)
 {
-}
-void ui_log_debug2(const char *text, ...)
-{
-}
-void ui_log_debug1(const char *text, ...)
-{
-}
-
-void ui_log_user(const char *text, ...)
-{
-  va_list ap;
-  va_start(ap, text);
-  vfprintf(stderr, text, ap);
-  fputc('\n', stderr);
-  va_end(ap);
-}
-
-void ui_log_verbose(const char *text, ...)
-{
-  va_list ap;
-  va_start(ap, text);
-  vfprintf(stderr, text, ap);
-  fputc('\n', stderr);
-  va_end(ap);
-}
-
-void ui_log_normal(const char *text, ...)
-{
-  va_list ap;
-  va_start(ap, text);
-  vfprintf(stderr, text, ap);
-  fputc('\n', stderr);
-  va_end(ap);
-}
-
-void ui_log_critical(const char *text, ...)
-{
-  va_list ap;
-  va_start(ap, text);
-  vfprintf(stderr, text, ap);
-  fputc('\n', stderr);
-  va_end(ap);
-}
-
-void ui_log_request(const char *text, ...)
-{
-  va_list ap;
-  va_start(ap, text);
-  vfprintf(stderr, text, ap);
-  fputc('\n', stderr);
-  va_end(ap);
+  (void)level;
+  (void)user_data;
+  fprintf(stderr, "%s\n", msg);
 }
 
 void ui_err(const char *text, ...)

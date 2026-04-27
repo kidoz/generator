@@ -1,4 +1,6 @@
 # Utilities
 # Helper functions and compatibility code
 
-util_sources = []
+util_sources = files(
+  'log.c'
+)

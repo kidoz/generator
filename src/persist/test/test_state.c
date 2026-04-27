@@ -106,14 +106,6 @@ void ui_err(const char *msg, ...) {
   exit(1);
 }
 
-void ui_log_critical(const char *msg, ...) {
-  /* Silent in tests */
-}
-
-void ui_log_verbose(const char *msg, ...) {
-  /* Silent in tests */
-}
-
 /* Test counters */
 static int tests_passed = 0;
 static int tests_failed = 0;

@@ -20,6 +20,8 @@
 /* Default number of frames to run */
 #define DEFAULT_FRAMES 600
 
+static void headless_log_sink(int level, const char *msg, void *user_data);
+
 /* Command line options */
 static struct option long_options[] = {
   {"help",       no_argument,       0, 'h'},
@@ -117,6 +119,8 @@ int main(int argc, char *argv[])
   int opt;
   clock_t start_time, end_time;
   double elapsed;
+
+  gen_log_set_sink(headless_log_sink, nullptr);
 
   /* Parse command line options */
   while ((opt = getopt_long(argc, argv, "hvf:Vql:s:", long_options, nullptr)) != -1) {
@@ -319,68 +323,31 @@ void ui_final(void)
 {
 }
 
-void ui_log_debug3(const char *text, ...)
+/* Logging sink — registered with the central logger in main(). */
+static void headless_log_sink(int level, const char *msg, void *user_data)
 {
-  (void)text;
-}
-
-void ui_log_debug2(const char *text, ...)
-{
-  (void)text;
-}
-
-void ui_log_debug1(const char *text, ...)
-{
-  (void)text;
-}
-
-void ui_log_user(const char *text, ...)
-{
-  va_list args;
-  if (quiet_mode) return;
-  va_start(args, text);
-  vprintf(text, args);
-  va_end(args);
-  printf("\n");
-}
-
-void ui_log_verbose(const char *text, ...)
-{
-  va_list args;
-  if (!verbose_mode || quiet_mode) return;
-  va_start(args, text);
-  vprintf(text, args);
-  va_end(args);
-  printf("\n");
-}
-
-void ui_log_normal(const char *text, ...)
-{
-  va_list args;
-  if (quiet_mode) return;
-  va_start(args, text);
-  vprintf(text, args);
-  va_end(args);
-  printf("\n");
-}
-
-void ui_log_critical(const char *text, ...)
-{
-  va_list args;
-  va_start(args, text);
-  vfprintf(stderr, text, args);
-  va_end(args);
-  fprintf(stderr, "\n");
-}
-
-void ui_log_request(const char *text, ...)
-{
-  va_list args;
-  if (quiet_mode) return;
-  va_start(args, text);
-  vprintf(text, args);
-  va_end(args);
-  printf("\n");
+  (void)user_data;
+  switch (level) {
+  case GEN_LOG_DEBUG3:
+  case GEN_LOG_DEBUG2:
+  case GEN_LOG_DEBUG1:
+    return;
+  case GEN_LOG_VERBOSE:
+    if (!verbose_mode || quiet_mode)
+      return;
+    printf("%s\n", msg);
+    return;
+  case GEN_LOG_USER:
+  case GEN_LOG_NORMAL:
+    if (quiet_mode)
+      return;
+    printf("%s\n", msg);
+    return;
+  case GEN_LOG_CRITICAL:
+  default:
+    fprintf(stderr, "%s\n", msg);
+    return;
+  }
 }
 
 [[noreturn]] void ui_err(const char *text, ...)

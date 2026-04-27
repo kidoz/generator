@@ -3,6 +3,7 @@
 test_state = executable('test_state',
   'test_state.c',
   '../state.c',  # Include state.c directly
+  '../../util/log.c',  # Centralized logger
   include_directories: [inc],
   dependencies: common_deps,
   c_args: ['-DCMZ80=1', '-DGENERATOR_BUILD_TOOL=1'],

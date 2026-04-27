@@ -113,6 +113,8 @@ static const gen_ui_callbacks_t console_callbacks = {
 /*** gen_context for console UI ***/
 static gen_context_t *console_ctx = nullptr;
 
+static void console_log_sink(int level, const char *msg, void *user_data);
+
 /* we store up log lines and dump them right at the end for allegro */
 #ifdef ALLEGRO
 void ui_printlog(void);
@@ -147,6 +149,8 @@ int ui_init(int argc, char *argv[])
 {
   int i;
   int ch;
+
+  gen_log_set_sink(console_log_sink, nullptr);
 
   ui_bindings[0].joystick = -1; /* -1 = use keyboard */
   ui_bindings[0].keyboard = 0;  /* 0 = main keyboard */
@@ -1298,52 +1302,40 @@ int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
   return 0;
 }
 
-/*** logging functions ***/
+/*** Logging sink — registered with the central logger in ui_init() ***/
 
-/* logging is done this way because this was the best I could come up with
-   whilst battling with macros that can only take fixed numbers of arguments */
+static const char *console_log_tag(int level)
+{
+  switch (level) {
+  case GEN_LOG_DEBUG3:
+  case GEN_LOG_DEBUG2:
+  case GEN_LOG_DEBUG1:
+    return "DEBG ";
+  case GEN_LOG_USER:
+    return "USER ";
+  case GEN_LOG_CRITICAL:
+    return "CRIT ";
+  default:
+    return "---- ";
+  }
+}
 
+static void console_log_sink(int level, const char *msg, void *user_data)
+{
+  (void)user_data;
 #ifdef ALLEGRO
-#define LOG_FUNC(name, level, txt)            \
-  void ui_log_##name(const char *text, ...)   \
-  {                                           \
-    va_list ap;                               \
-    char *ll = ui_loglines[ui_logline];       \
-    char *p = bigbuffer;                      \
-    if (gen_loglevel >= level) {              \
-      p += sprintf(p, "%d ", ui_logcount++);  \
-      p += sprintf(p, txt);                   \
-      va_start(ap, text);                     \
-      vsprintf(p, text, ap);                  \
-      va_end(ap);                             \
-      strncpy(ll, bigbuffer, UI_LOGLINESIZE); \
-      if (++ui_logline >= UI_LOGLINES)        \
-        ui_logline = 0;                       \
-    }                                         \
-  }
+  char *ll = ui_loglines[ui_logline];
+  char *p = bigbuffer;
+  p += sprintf(p, "%d ", ui_logcount++);
+  p += sprintf(p, "%s", console_log_tag(level));
+  strcpy(p, msg);
+  strncpy(ll, bigbuffer, UI_LOGLINESIZE);
+  if (++ui_logline >= UI_LOGLINES)
+    ui_logline = 0;
 #else
-#define LOG_FUNC(name, level, txt)          \
-  void ui_log_##name(const char *text, ...) \
-  {                                         \
-    va_list ap;                             \
-    if (gen_loglevel >= level) {            \
-      printf("[%s] ", txt);                 \
-      va_start(ap, text);                   \
-      vprintf(text, ap);                    \
-      va_end(ap);                           \
-      putchar(10);                          \
-    }                                       \
-  }
+  printf("[%s] %s\n", console_log_tag(level), msg);
 #endif
-
-LOG_FUNC(debug3, 7, "DEBG ");
-LOG_FUNC(debug2, 6, "DEBG ");
-LOG_FUNC(debug1, 5, "DEBG ");
-LOG_FUNC(user, 4, "USER ");
-LOG_FUNC(verbose, 3, "---- ");
-LOG_FUNC(normal, 2, "---- ");
-LOG_FUNC(critical, 1, "CRIT ");
-LOG_FUNC(request, 0, "---- "); /* this generates a warning, such is life */
+}
 
 /*** ui_err - log error message and quit ***/
 
