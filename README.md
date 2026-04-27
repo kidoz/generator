@@ -10,10 +10,10 @@ Generator is a Sega Genesis (Mega Drive) emulator featuring modern UI options, h
 
 ```bash
 # Install dependencies (Arch Linux)
-sudo pacman -S meson ninja gtk4 libadwaita sdl2
+sudo pacman -S meson ninja gtk4 libadwaita sdl3
 
 # Install dependencies (Debian/Ubuntu)
-sudo apt-get install meson ninja-build libgtk-4-dev libadwaita-1-dev libsdl2-dev
+sudo apt-get install meson ninja-build libgtk-4-dev libadwaita-1-dev libsdl3-dev
 
 # Configure and build
 meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80
@@ -27,8 +27,8 @@ meson compile -C build
 
 ```bash
 # Minimal dependencies
-sudo pacman -S meson ninja sdl2  # Arch
-sudo apt-get install meson ninja-build libsdl2-dev  # Debian/Ubuntu
+sudo pacman -S meson ninja sdl3  # Arch
+sudo apt-get install meson ninja-build libsdl3-dev  # Debian/Ubuntu
 
 # Build console version
 meson setup build -Dui-backend=console -Dz80-backend=cmz80
@@ -43,7 +43,7 @@ meson compile -C build
 ### UI Backends
 
 - `gtk4` - Modern GTK4/libadwaita interface (recommended, default)
-- `console` - SDL2-based lightweight interface
+- `console` - SDL3-based lightweight interface
 
 ### Z80 Emulators
 
@@ -73,7 +73,7 @@ meson setup build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
 - **Meson** >= 0.60.0
 - **Ninja** build system
 - **GCC** >= 13 or Clang >= 16 (C23 support required)
-- **SDL2** >= 2.0.0
+- **SDL3** >= 3.0.0
 
 ### GTK4 Backend (recommended)
 

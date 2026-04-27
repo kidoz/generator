@@ -4,10 +4,10 @@
 
 ```bash
 # Install dependencies (Arch Linux)
-sudo pacman -S meson ninja gtk4 libadwaita sdl2
+sudo pacman -S meson ninja gtk4 libadwaita sdl3
 
 # Install dependencies (Debian/Ubuntu)
-sudo apt-get install meson ninja-build libgtk-4-dev libadwaita-1-dev libsdl2-dev
+sudo apt-get install meson ninja-build libgtk-4-dev libadwaita-1-dev libsdl3-dev
 
 # Configure
 meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80
@@ -25,8 +25,8 @@ sudo meson install -C build
 
 - **Meson** >= 0.60.0
 - **Ninja** build system
-- **GCC** or Clang with C17 support
-- **SDL2** >= 2.0.0
+- **GCC** >= 13 or Clang >= 16 with C23 support
+- **SDL3** >= 3.0.0
 
 ### GTK4 Backend
 
@@ -35,7 +35,7 @@ sudo meson install -C build
 
 ### Console Backend (minimal)
 
-Only requires SDL2.
+Only requires SDL3.
 
 ### Optional
 
@@ -49,7 +49,7 @@ Only requires SDL2.
 | Option | Description |
 |--------|-------------|
 | `gtk4` | Modern GTK4/libadwaita interface (recommended) |
-| `console` | Lightweight SDL2-only interface |
+| `console` | Lightweight SDL3-only interface |
 
 ### Z80 Emulators
 
