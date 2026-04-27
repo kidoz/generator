@@ -73,27 +73,24 @@ int soundp_start(void)
   SDL_AudioDeviceID *devices;
   SDL_AudioDeviceID dev_id;
 
-  fprintf(stderr, "[AUDIO] soundp_start() called\n");
-
   /* Initialize SDL audio if not already done */
   if (!SDL_WasInit(SDL_INIT_AUDIO)) {
-    fprintf(stderr, "[AUDIO] Initializing SDL audio subsystem...\n");
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-      fprintf(stderr, "[AUDIO] SDL_InitSubSystem(AUDIO) FAILED: %s\n", SDL_GetError());
+      LOG_CRITICAL(("SDL_InitSubSystem(AUDIO) failed: %s", SDL_GetError()));
       return 1;
     }
-    fprintf(stderr, "[AUDIO] SDL audio initialized, driver: %s\n",
-            SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown");
   }
 
-  LOG_VERBOSE(("SDL3 audio subsystem initialized, driver: %s",
-               SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
+  LOG_VERBOSE(
+      ("SDL3 audio subsystem initialized, driver: %s",
+       SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
 
   /* Get list of audio playback devices */
   devices = SDL_GetAudioPlaybackDevices(&num_devices);
   if (devices == nullptr || num_devices == 0) {
     LOG_CRITICAL(("No audio playback devices found: %s", SDL_GetError()));
-    if (devices) SDL_free(devices);
+    if (devices)
+      SDL_free(devices);
     return 1;
   }
 
@@ -105,8 +102,8 @@ int soundp_start(void)
 
   /* Configure audio format */
   src_spec.freq = sound_speed;
-  src_spec.format = SDL_AUDIO_S16;  /* 16-bit signed */
-  src_spec.channels = 2;            /* stereo */
+  src_spec.format = SDL_AUDIO_S16; /* 16-bit signed */
+  src_spec.channels = 2;           /* stereo */
 
   /* Open the audio device */
   soundp_dev = SDL_OpenAudioDevice(dev_id, &src_spec);
@@ -151,14 +148,11 @@ int soundp_start(void)
   /* Start audio playback */
   SDL_ResumeAudioDevice(soundp_dev);
 
-  fprintf(stderr, "[AUDIO] Audio device started: dev=%u, stream=%p, %dHz stereo\n",
-          (unsigned)soundp_dev, (void*)soundp_stream, src_spec.freq);
-
   /* Detect and log audio backend */
   const char *backend = soundp_detect_audio_backend();
 
-  LOG_VERBOSE(("SDL3 Audio started: %d Hz, %d channels",
-               src_spec.freq, src_spec.channels));
+  LOG_VERBOSE(("SDL3 Audio started: %d Hz, %d channels", src_spec.freq,
+               src_spec.channels));
   LOG_VERBOSE(
       ("Audio backend: %s (SDL driver: %s)", backend,
        SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown"));
@@ -198,8 +192,6 @@ int soundp_start(void)
 
 void soundp_stop(void)
 {
-  fprintf(stderr, "[AUDIO] soundp_stop() called, stream=%p, dev=%u\n",
-          (void*)soundp_stream, (unsigned)soundp_dev);
   if (soundp_stream) {
     SDL_DestroyAudioStream(soundp_stream);
     soundp_stream = nullptr;
@@ -238,7 +230,8 @@ int soundp_samplesbuffered(void)
   /* SDL3: Get queued bytes in the audio stream */
   int queued_bytes = SDL_GetAudioStreamQueued(soundp_stream);
 
-  /* Convert bytes to samples (4 bytes per stereo sample: 2 channels * 2 bytes) */
+  /* Convert bytes to samples (4 bytes per stereo sample: 2 channels * 2 bytes)
+   */
   return queued_bytes / 4;
 }
 
@@ -253,8 +246,6 @@ int soundp_samplesbuffered(void)
 
 int soundp_reset(void)
 {
-  fprintf(stderr, "[AUDIO] soundp_reset() - full subsystem restart\n");
-
   /* Stop current audio */
   soundp_stop();
 
@@ -271,40 +262,21 @@ int soundp_reset(void)
 
 void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 {
-  int16_t *interleaved;
+  int16_t interleaved[SOUND_BUFFER_SAMPLES * 2];
   unsigned int i;
-  static int debug_count = 0;
 
   if (!soundp_stream || samples == 0) {
-    if (debug_count < 3) {
-      fprintf(stderr, "[AUDIO] soundp_output: NO STREAM! stream=%p samples=%u\n",
-              (void*)soundp_stream, samples);
-      debug_count++;
-    }
     return;
   }
 
-  /* Debug: show first few outputs */
-  if (debug_count < 5) {
-    /* Check for non-zero audio data */
-    int has_audio = 0;
-    for (unsigned int j = 0; j < samples && j < 50; j++) {
-      if (left[j] != 0 || right[j] != 0) {
-        has_audio = 1;
-        break;
-      }
+  if (samples > SOUND_BUFFER_SAMPLES) {
+    static int overflow_count = 0;
+    if (overflow_count < 3) {
+      LOG_CRITICAL(("Dropping oversized audio buffer: %u samples", samples));
+      overflow_count++;
     }
-    /* Check device state */
-    bool paused = SDL_AudioDevicePaused(soundp_dev);
-    fprintf(stderr, "[AUDIO] soundp_output: %u samples, has_audio=%d, queued=%d, dev_paused=%d\n",
-            samples, has_audio, SDL_GetAudioStreamQueued(soundp_stream), (int)paused);
-    debug_count++;
-  }
-
-  /* Allocate interleaved buffer */
-  interleaved = malloc(samples * 2 * sizeof(int16_t));
-  if (!interleaved)
     return;
+  }
 
   /* Interleave left and right channels */
   for (i = 0; i < samples; i++) {
@@ -316,10 +288,8 @@ void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
   if (!SDL_PutAudioStreamData(soundp_stream, interleaved, samples * 4)) {
     static int err_count = 0;
     if (err_count < 3) {
-      fprintf(stderr, "[AUDIO] SDL_PutAudioStreamData FAILED: %s\n", SDL_GetError());
+      LOG_CRITICAL(("SDL_PutAudioStreamData failed: %s", SDL_GetError()));
       err_count++;
     }
   }
-
-  free(interleaved);
 }
