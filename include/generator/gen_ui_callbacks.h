@@ -99,7 +99,7 @@ typedef struct gen_ui_callbacks {
    * Parameters:
    *   ctx - Emulator context
    *   msg - Error message */
-  [[noreturn]] void (*fatal_error)(gen_context_t *ctx, const char *msg);
+  void (*fatal_error)(gen_context_t *ctx, const char *msg);
 
 } gen_ui_callbacks_t;
 
@@ -112,10 +112,10 @@ typedef struct gen_ui_callbacks {
 void gen_ui_noop_line(gen_context_t *ctx, int line);
 void gen_ui_noop_end_field(gen_context_t *ctx);
 void gen_ui_noop_audio_output(gen_context_t *ctx, const uint16 *left,
-                               const uint16 *right, unsigned int samples);
+                              const uint16 *right, unsigned int samples);
 void gen_ui_noop_log(gen_context_t *ctx, const char *msg);
 void gen_ui_noop_musiclog(gen_context_t *ctx, const uint8 *data,
-                           unsigned int length);
+                          unsigned int length);
 [[noreturn]] void gen_ui_noop_fatal_error(gen_context_t *ctx, const char *msg);
 
 /* Pre-defined no-op callback structure for headless mode */
@@ -127,22 +127,24 @@ extern const gen_ui_callbacks_t gen_ui_callbacks_noop;
 
 /* Set UI callbacks for a context.
  * If callbacks is nullptr, sets no-op callbacks. */
-void gen_ui_set_callbacks(gen_context_t *ctx, const gen_ui_callbacks_t *callbacks,
-                          void *ui_data);
+void gen_ui_set_callbacks(gen_context_t *ctx,
+                          const gen_ui_callbacks_t *callbacks, void *ui_data);
 
 /* Call a callback if it exists, otherwise do nothing.
  * These macros safely handle nullptr callbacks. */
-#define GEN_UI_CALL(ctx, callback, ...) \
-  do { \
-    if ((ctx) != nullptr && (ctx)->ui != nullptr && (ctx)->ui->callback != nullptr) { \
-      (ctx)->ui->callback((ctx), ##__VA_ARGS__); \
-    } \
+#define GEN_UI_CALL(ctx, callback, ...)             \
+  do {                                              \
+    if ((ctx) != nullptr && (ctx)->ui != nullptr && \
+        (ctx)->ui->callback != nullptr) {           \
+      (ctx)->ui->callback((ctx), ##__VA_ARGS__);    \
+    }                                               \
   } while (0)
 
 /* Call a callback with a return value, or return default if nullptr */
 #define GEN_UI_CALL_RET(ctx, callback, default_val, ...) \
-  (((ctx) != nullptr && (ctx)->ui != nullptr && (ctx)->ui->callback != nullptr) \
-    ? (ctx)->ui->callback((ctx), ##__VA_ARGS__) \
-    : (default_val))
+  (((ctx) != nullptr && (ctx)->ui != nullptr &&          \
+    (ctx)->ui->callback != nullptr)                      \
+       ? (ctx)->ui->callback((ctx), ##__VA_ARGS__)       \
+       : (default_val))
 
 #endif /* GENERATOR_GEN_UI_CALLBACKS_H */
