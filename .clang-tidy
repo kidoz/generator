@@ -1,0 +1,33 @@
+---
+# Repository-local clang-tidy config.
+# Goal: catch pre-C23/C++23 idioms in editors before they reach the build.
+# Subprojects/ is excluded via ExcludeHeaderFilterRegex.
+HeaderFilterRegex: '^(include|src)/'
+ExcludeHeaderFilterRegex: '(subprojects|build)/'
+WarningsAsErrors: ''
+Checks: >
+  -*,
+  bugprone-implicit-widening-of-multiplication-result,
+  bugprone-integer-division,
+  bugprone-misplaced-widening-cast,
+  bugprone-not-null-terminated-result,
+  bugprone-signed-char-misuse,
+  bugprone-suspicious-string-compare,
+  bugprone-unused-return-value,
+  cert-err33-c,
+  cppcoreguidelines-init-variables,
+  modernize-deprecated-headers,
+  modernize-redundant-void-arg,
+  modernize-use-bool-literals,
+  modernize-use-nullptr,
+  modernize-use-override,
+  modernize-use-using,
+  performance-no-int-to-ptr,
+  readability-duplicate-include,
+  readability-redundant-control-flow,
+  readability-static-definition-in-anonymous-namespace,
+  readability-string-compare,
+
+CheckOptions:
+  modernize-use-nullptr.NullMacros: 'NULL'
+  cppcoreguidelines-init-variables.IncludeStyle: google

@@ -31,6 +31,41 @@ add_project_arguments('-DPACKAGE="generator"', language: 'c')
 # Enable GNU extensions for POSIX functions like strcasecmp
 add_project_arguments('-D_GNU_SOURCE', language: 'c')
 
+# Strictness lock-in for C23/C++23.
+# Treat already-warning conversions and missing prototypes as hard errors
+# so future regressions cannot land silently. We deliberately do NOT bump
+# warning_level to 2 globally — the legacy 68k codegen still emits hundreds
+# of unused-variable warnings under -Wextra.
+cpp = meson.get_compiler('cpp')
+strict_c_flags = [
+  '-Werror=int-conversion',
+  '-Werror=incompatible-pointer-types',
+  '-Werror=implicit-function-declaration',
+  '-Werror=implicit-int',
+  '-Wstrict-prototypes',
+  '-Wold-style-definition',
+  '-Wmissing-prototypes',
+  '-Wformat=2',
+  '-Wno-format-nonliteral',
+]
+foreach flag : strict_c_flags
+  if cc.has_argument(flag)
+    add_project_arguments(flag, language: 'c')
+  endif
+endforeach
+
+strict_cpp_flags = [
+  '-Werror=narrowing',
+  '-Wformat=2',
+  '-Wno-format-nonliteral',
+  '-Wold-style-cast',
+]
+foreach flag : strict_cpp_flags
+  if cpp.has_argument(flag)
+    add_project_arguments(flag, language: 'cpp')
+  endif
+endforeach
+
 # Processor-specific optimizations
 optimum = true
 if host_cpu == 'x86' or host_cpu == 'x86_64'
