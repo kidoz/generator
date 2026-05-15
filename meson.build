@@ -152,9 +152,11 @@ catch2_dep = dependency('catch2-with-main', version: '>=3.0.0',
 
 # Z80 backend configuration
 if z80_backend == 'cmz80'
-  add_project_arguments('-DCMZ80=1', language: 'c')
+  add_project_arguments('-DCMZ80=1', language: ['c', 'cpp'])
 elif z80_backend == 'raze'
-  add_project_arguments('-DRAZE=1', language: 'c')
+  add_project_arguments('-DRAZE=1', language: ['c', 'cpp'])
+elif z80_backend == 'cppz80'
+  add_project_arguments('-DCPPZ80=1', language: ['c', 'cpp'])
 endif
 
 # UI backend dependencies

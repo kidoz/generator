@@ -16,4 +16,8 @@ elif z80_backend == 'raze'
   subdir('raze')
   z80_lib = raze_lib
   z80_dep = raze_dep
+elif z80_backend == 'cppz80'
+  subdir('cppz80')
+  z80_lib = cppz80_lib
+  z80_dep = cppz80_dep
 endif
