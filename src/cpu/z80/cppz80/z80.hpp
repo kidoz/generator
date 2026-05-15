@@ -375,6 +375,160 @@ private:
     void op_out_n_a() { port_write(fetch(), af.h()); }
     void op_in_a_n() { af.set_h(port_read(fetch())); }
 
+    template<Reg8 Dst> void op_in_r_c() {
+        uint8_t val = port_read(bc.w);
+        af.set_l((af.l() & FLAG_C) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (check_parity(val) ? FLAG_PV : 0));
+        update_xy_flags(val);
+        if constexpr (Dst != Reg8::HL_ind) {
+            write_reg8<Dst>(val);
+        }
+    }
+
+    template<Reg8 Src> void op_out_c_r() {
+        uint8_t val = 0;
+        if constexpr (Src != Reg8::HL_ind) {
+            val = read_reg8<Src>();
+        }
+        port_write(bc.w, val);
+    }
+
+    template<Reg16 Src> void op_sbc_hl_rp() {
+        uint32_t val = read_reg16<Src>();
+        uint32_t c = get_flag(FLAG_C) ? 1 : 0;
+        uint32_t res = hl.w - val - c;
+        bool half_carry = (hl.w & 0x0FFF) < ((val & 0x0FFF) + c);
+        bool overflow = ((hl.w ^ val) & (hl.w ^ res) & 0x8000) != 0;
+        
+        af.set_l(FLAG_N);
+        if (res & 0x10000) af.set_l(af.l() | FLAG_C);
+        if ((res & 0xFFFF) == 0) af.set_l(af.l() | FLAG_Z);
+        if (res & 0x8000) af.set_l(af.l() | FLAG_S);
+        if (half_carry) af.set_l(af.l() | FLAG_H);
+        if (overflow) af.set_l(af.l() | FLAG_PV);
+        update_xy_flags(res >> 8);
+        hl.w = res & 0xFFFF;
+        cycle_count += 7;
+    }
+
+    template<Reg16 Src> void op_adc_hl_rp() {
+        uint32_t val = read_reg16<Src>();
+        uint32_t c = get_flag(FLAG_C) ? 1 : 0;
+        uint32_t res = hl.w + val + c;
+        bool half_carry = ((hl.w & 0x0FFF) + (val & 0x0FFF) + c) > 0x0FFF;
+        bool overflow = ((hl.w ^ val ^ 0x8000) & (val ^ res) & 0x8000) != 0;
+        
+        af.set_l(0);
+        if (res & 0x10000) af.set_l(af.l() | FLAG_C);
+        if ((res & 0xFFFF) == 0) af.set_l(af.l() | FLAG_Z);
+        if (res & 0x8000) af.set_l(af.l() | FLAG_S);
+        if (half_carry) af.set_l(af.l() | FLAG_H);
+        if (overflow) af.set_l(af.l() | FLAG_PV);
+        update_xy_flags(res >> 8);
+        hl.w = res & 0xFFFF;
+        cycle_count += 7;
+    }
+
+    template<Reg16 Src> void op_ld_nn_rp() {
+        write_word(fetch_word(), read_reg16<Src>());
+    }
+
+    template<Reg16 Dst> void op_ld_rp_nn_ind() {
+        write_reg16<Dst>(read_word(fetch_word()));
+    }
+
+    void op_neg() {
+        uint8_t val = af.h();
+        uint8_t res = -val;
+        bool half_carry = (0 - (val & 0x0F)) < 0;
+        bool overflow = val == 0x80;
+        
+        af.set_l(FLAG_N);
+        if (val != 0) af.set_l(af.l() | FLAG_C);
+        if (res == 0) af.set_l(af.l() | FLAG_Z);
+        if (res & 0x80) af.set_l(af.l() | FLAG_S);
+        if (half_carry) af.set_l(af.l() | FLAG_H);
+        if (overflow) af.set_l(af.l() | FLAG_PV);
+        update_xy_flags(res);
+        af.set_h(res);
+    }
+
+    template<uint8_t Mode> void op_im() {
+        im = Mode;
+    }
+
+    void op_ld_i_a() {
+        i = af.h();
+        cycle_count += 1;
+    }
+
+    void op_ld_r_a() {
+        r = af.h();
+        cycle_count += 1;
+    }
+
+    void op_ld_a_i() {
+        af.set_h(i);
+        af.set_l((af.l() & FLAG_C) | (i == 0 ? FLAG_Z : 0) | (i & FLAG_S) | (iff2 ? FLAG_PV : 0));
+        update_xy_flags(i);
+        cycle_count += 1;
+    }
+
+    void op_ld_a_r() {
+        uint8_t val = (r & 0x7F) | (r & 0x80);
+        af.set_h(val);
+        af.set_l((af.l() & FLAG_C) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (iff2 ? FLAG_PV : 0));
+        update_xy_flags(val);
+        cycle_count += 1;
+    }
+
+    void op_reti() {
+        pc = pop();
+    }
+
+    void op_retn() {
+        iff1 = iff2;
+        pc = pop();
+    }
+
+    void op_rrd() {
+        uint8_t mem = read_byte(hl.w);
+        uint8_t new_mem = (mem >> 4) | (af.h() << 4);
+        uint8_t new_a = (af.h() & 0xF0) | (mem & 0x0F);
+        write_byte(hl.w, new_mem);
+        af.set_h(new_a);
+        af.set_l((af.l() & FLAG_C) | (new_a == 0 ? FLAG_Z : 0) | (new_a & FLAG_S) | (check_parity(new_a) ? FLAG_PV : 0));
+        update_xy_flags(new_a);
+        cycle_count += 4;
+    }
+
+    void op_rld() {
+        uint8_t mem = read_byte(hl.w);
+        uint8_t new_mem = (mem << 4) | (af.h() & 0x0F);
+        uint8_t new_a = (af.h() & 0xF0) | (mem >> 4);
+        write_byte(hl.w, new_mem);
+        af.set_h(new_a);
+        af.set_l((af.l() & FLAG_C) | (new_a == 0 ? FLAG_Z : 0) | (new_a & FLAG_S) | (check_parity(new_a) ? FLAG_PV : 0));
+        update_xy_flags(new_a);
+        cycle_count += 4;
+    }
+
+    void op_ldi();
+    void op_ldir();
+    void op_ldd();
+    void op_lddr();
+    void op_cpi();
+    void op_cpir();
+    void op_cpd();
+    void op_cpdr();
+    void op_ini();
+    void op_inir();
+    void op_ind();
+    void op_indr();
+    void op_outi();
+    void op_otir();
+    void op_outd();
+    void op_otdr();
+
     void op_unimplemented() { unimplemented(); }
     void op_cb();
     void op_dd();
@@ -423,10 +577,63 @@ private:
         return table;
     }
 
+    template <std::size_t... Is>
+    static constexpr void init_ed_in_out(std::array<OpcodeHandler, 256>& table, std::index_sequence<Is...>) {
+        ( (table[0x40 + Is * 8] = &Z80::op_in_r_c<static_cast<Reg8>(Is)>), ... );
+        ( (table[0x41 + Is * 8] = &Z80::op_out_c_r<static_cast<Reg8>(Is)>), ... );
+    }
+
+    template <std::size_t... Is>
+    static constexpr void init_ed_sbc_adc(std::array<OpcodeHandler, 256>& table, std::index_sequence<Is...>) {
+        ( (table[0x42 + Is * 16] = &Z80::op_sbc_hl_rp<static_cast<Reg16>(Is)>), ... );
+        ( (table[0x4A + Is * 16] = &Z80::op_adc_hl_rp<static_cast<Reg16>(Is)>), ... );
+    }
+
+    template <std::size_t... Is>
+    static constexpr void init_ed_ld_rp(std::array<OpcodeHandler, 256>& table, std::index_sequence<Is...>) {
+        ( (table[0x43 + Is * 16] = &Z80::op_ld_nn_rp<static_cast<Reg16>(Is)>), ... );
+        ( (table[0x4B + Is * 16] = &Z80::op_ld_rp_nn_ind<static_cast<Reg16>(Is)>), ... );
+    }
+
     static consteval std::array<OpcodeHandler, 256> build_ed_dispatch_table() {
         std::array<OpcodeHandler, 256> table{};
         for (auto& entry : table) entry = &Z80::op_unimplemented;
-        // TO DO: Implement ED instructions
+        
+        init_ed_in_out(table, std::make_index_sequence<8>{});
+        init_ed_sbc_adc(table, std::make_index_sequence<4>{});
+        init_ed_ld_rp(table, std::make_index_sequence<4>{});
+        
+        table[0x44] = &Z80::op_neg; table[0x4C] = &Z80::op_neg; table[0x54] = &Z80::op_neg;
+        table[0x5C] = &Z80::op_neg; table[0x64] = &Z80::op_neg; table[0x6C] = &Z80::op_neg;
+        table[0x74] = &Z80::op_neg; table[0x7C] = &Z80::op_neg;
+        
+        table[0x45] = &Z80::op_retn; table[0x55] = &Z80::op_retn; table[0x5D] = &Z80::op_retn;
+        table[0x65] = &Z80::op_retn; table[0x6D] = &Z80::op_retn; table[0x75] = &Z80::op_retn;
+        table[0x7D] = &Z80::op_retn;
+        table[0x4D] = &Z80::op_reti;
+        
+        table[0x46] = &Z80::op_im<0>; table[0x66] = &Z80::op_im<0>;
+        table[0x4E] = &Z80::op_im<0>; table[0x6E] = &Z80::op_im<0>;
+        table[0x56] = &Z80::op_im<1>; table[0x76] = &Z80::op_im<1>;
+        table[0x5E] = &Z80::op_im<2>; table[0x7E] = &Z80::op_im<2>;
+        
+        table[0x47] = &Z80::op_ld_i_a;
+        table[0x4F] = &Z80::op_ld_r_a;
+        table[0x57] = &Z80::op_ld_a_i;
+        table[0x5F] = &Z80::op_ld_a_r;
+        
+        table[0x67] = &Z80::op_rrd;
+        table[0x6F] = &Z80::op_rld;
+        
+        table[0xA0] = &Z80::op_ldi; table[0xB0] = &Z80::op_ldir;
+        table[0xA1] = &Z80::op_cpi; table[0xB1] = &Z80::op_cpir;
+        table[0xA2] = &Z80::op_ini; table[0xB2] = &Z80::op_inir;
+        table[0xA3] = &Z80::op_outi; table[0xB3] = &Z80::op_otir;
+        table[0xA8] = &Z80::op_ldd; table[0xB8] = &Z80::op_lddr;
+        table[0xA9] = &Z80::op_cpd; table[0xB9] = &Z80::op_cpdr;
+        table[0xAA] = &Z80::op_ind; table[0xBA] = &Z80::op_indr;
+        table[0xAB] = &Z80::op_outd; table[0xBB] = &Z80::op_otdr;
+        
         return table;
     }
 

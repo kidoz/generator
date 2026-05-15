@@ -369,4 +369,160 @@ void Z80::set(uint8_t b, uint8_t& val) {
     val |= (1 << b);
 }
 
+void Z80::op_ldi() {
+    uint8_t val = read_byte(hl.w);
+    write_byte(de.w, val);
+    hl.w++;
+    de.w++;
+    bc.w--;
+    af.set_l((af.l() & (FLAG_C | FLAG_Z | FLAG_S)) | (bc.w != 0 ? FLAG_PV : 0));
+    uint8_t nval = val + af.h();
+    update_xy_flags(nval);
+    cycle_count += 2;
+}
+
+void Z80::op_ldir() {
+    op_ldi();
+    if (bc.w != 0) {
+        pc -= 2;
+        cycle_count += 5;
+    }
+}
+
+void Z80::op_ldd() {
+    uint8_t val = read_byte(hl.w);
+    write_byte(de.w, val);
+    hl.w--;
+    de.w--;
+    bc.w--;
+    af.set_l((af.l() & (FLAG_C | FLAG_Z | FLAG_S)) | (bc.w != 0 ? FLAG_PV : 0));
+    uint8_t nval = val + af.h();
+    update_xy_flags(nval);
+    cycle_count += 2;
+}
+
+void Z80::op_lddr() {
+    op_ldd();
+    if (bc.w != 0) {
+        pc -= 2;
+        cycle_count += 5;
+    }
+}
+
+void Z80::op_cpi() {
+    uint8_t val = read_byte(hl.w);
+    uint8_t res = af.h() - val;
+    bool half_carry = (af.h() & 0x0F) < (val & 0x0F);
+    hl.w++;
+    bc.w--;
+    
+    af.set_l((af.l() & FLAG_C) | FLAG_N | (res == 0 ? FLAG_Z : 0) | (res & FLAG_S) | (half_carry ? FLAG_H : 0) | (bc.w != 0 ? FLAG_PV : 0));
+    
+    uint8_t nval = res - (half_carry ? 1 : 0);
+    update_xy_flags(nval);
+    cycle_count += 5;
+}
+
+void Z80::op_cpir() {
+    op_cpi();
+    if (bc.w != 0 && !get_flag(FLAG_Z)) {
+        pc -= 2;
+        cycle_count += 5;
+    }
+}
+
+void Z80::op_cpd() {
+    uint8_t val = read_byte(hl.w);
+    uint8_t res = af.h() - val;
+    bool half_carry = (af.h() & 0x0F) < (val & 0x0F);
+    hl.w--;
+    bc.w--;
+    
+    af.set_l((af.l() & FLAG_C) | FLAG_N | (res == 0 ? FLAG_Z : 0) | (res & FLAG_S) | (half_carry ? FLAG_H : 0) | (bc.w != 0 ? FLAG_PV : 0));
+    
+    uint8_t nval = res - (half_carry ? 1 : 0);
+    update_xy_flags(nval);
+    cycle_count += 5;
+}
+
+void Z80::op_cpdr() {
+    op_cpd();
+    if (bc.w != 0 && !get_flag(FLAG_Z)) {
+        pc -= 2;
+        cycle_count += 5;
+    }
+}
+
+void Z80::op_ini() {
+    uint8_t val = port_read(bc.w);
+    write_byte(hl.w, val);
+    hl.w++;
+    bc.set_h(bc.h() - 1);
+    
+    af.set_l((af.l() & FLAG_C) | (bc.h() == 0 ? FLAG_Z : 0) | (val & FLAG_S) | FLAG_N);
+    cycle_count += 5;
+}
+
+void Z80::op_inir() {
+    op_ini();
+    if (bc.h() != 0) {
+        pc -= 2;
+        cycle_count += 5;
+    }
+}
+
+void Z80::op_ind() {
+    uint8_t val = port_read(bc.w);
+    write_byte(hl.w, val);
+    hl.w--;
+    bc.set_h(bc.h() - 1);
+    
+    af.set_l((af.l() & FLAG_C) | (bc.h() == 0 ? FLAG_Z : 0) | (val & FLAG_S) | FLAG_N);
+    cycle_count += 5;
+}
+
+void Z80::op_indr() {
+    op_ind();
+    if (bc.h() != 0) {
+        pc -= 2;
+        cycle_count += 5;
+    }
+}
+
+void Z80::op_outi() {
+    uint8_t val = read_byte(hl.w);
+    bc.set_h(bc.h() - 1);
+    port_write(bc.w, val);
+    hl.w++;
+    
+    af.set_l((af.l() & FLAG_C) | (bc.h() == 0 ? FLAG_Z : 0) | (val & FLAG_S) | FLAG_N);
+    cycle_count += 5;
+}
+
+void Z80::op_otir() {
+    op_outi();
+    if (bc.h() != 0) {
+        pc -= 2;
+        cycle_count += 5;
+    }
+}
+
+void Z80::op_outd() {
+    uint8_t val = read_byte(hl.w);
+    bc.set_h(bc.h() - 1);
+    port_write(bc.w, val);
+    hl.w--;
+    
+    af.set_l((af.l() & FLAG_C) | (bc.h() == 0 ? FLAG_Z : 0) | (val & FLAG_S) | FLAG_N);
+    cycle_count += 5;
+}
+
+void Z80::op_otdr() {
+    op_outd();
+    if (bc.h() != 0) {
+        pc -= 2;
+        cycle_count += 5;
+    }
+}
+
 } // namespace generator::z80
