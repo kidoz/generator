@@ -88,6 +88,92 @@ public:
 
 private:
     void step();
+
+    uint16_t fetch_word() {
+        uint8_t lo = fetch();
+        uint8_t hi = fetch();
+        return (hi << 8) | lo;
+    }
+
+    uint16_t read_word(uint16_t addr) {
+        uint8_t lo = read_byte(addr);
+        cycle_count += 3;
+        uint8_t hi = read_byte(addr + 1);
+        cycle_count += 3;
+        return (hi << 8) | lo;
+    }
+
+    void write_word(uint16_t addr, uint16_t val) {
+        write_byte(addr, val & 0xFF);
+        cycle_count += 3;
+        write_byte(addr + 1, val >> 8);
+        cycle_count += 3;
+    }
+
+    void push(uint16_t val) {
+        sp--;
+        write_byte(sp, val >> 8);
+        cycle_count += 3;
+        sp--;
+        write_byte(sp, val & 0xFF);
+        cycle_count += 3;
+    }
+
+    uint16_t pop() {
+        uint8_t lo = read_byte(sp);
+        sp++;
+        cycle_count += 3;
+        uint8_t hi = read_byte(sp);
+        sp++;
+        cycle_count += 3;
+        return (hi << 8) | lo;
+    }
+
+    void add_a(uint8_t val);
+    void adc_a(uint8_t val);
+    void sub_a(uint8_t val);
+    void sbc_a(uint8_t val);
+    void and_a(uint8_t val);
+    void xor_a(uint8_t val);
+    void or_a(uint8_t val);
+    void cp_a(uint8_t val);
+
+    uint8_t inc8(uint8_t val);
+    uint8_t dec8(uint8_t val);
+    
+    void add_hl(uint16_t val);
+    void adc_hl(uint16_t val);
+    void sbc_hl(uint16_t val);
+
+    void rlca();
+    void rrca();
+    void rla();
+    void rra();
+    void daa();
+    void cpl();
+    void scf();
+    void ccf();
+
+    void rlc(uint8_t& val);
+    void rrc(uint8_t& val);
+    void rl(uint8_t& val);
+    void rr(uint8_t& val);
+    void sla(uint8_t& val);
+    void sra(uint8_t& val);
+    void srl(uint8_t& val);
+
+    void bit(uint8_t b, uint8_t val);
+    void res(uint8_t b, uint8_t& val);
+    void set(uint8_t b, uint8_t& val);
+
+    void jr(bool cond);
+    void jp(bool cond);
+    void call(bool cond);
+    void ret(bool cond);
+    void rst(uint16_t addr);
+    void djnz();
+    void unimplemented();
+
     uint8_t fetch() {
         uint8_t val = read_byte(pc++);
         cycle_count += 4; // basic M1
