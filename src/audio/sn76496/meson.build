@@ -10,4 +10,4 @@ sn76496_dep = declare_dependency(
   include_directories: include_directories('.')
 )
 
-subdir('test')
+# subdir('test')

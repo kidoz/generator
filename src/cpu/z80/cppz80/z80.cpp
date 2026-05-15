@@ -54,9 +54,42 @@ void Z80::sync_in(const void* context) {
 void Z80::step() {
     uint8_t opcode = fetch();
 
+    auto add_a = [this](uint8_t val) {
+        uint16_t res = af.h + val;
+        uint8_t res8 = static_cast<uint8_t>(res);
+        bool half_carry = ((af.h & 0x0F) + (val & 0x0F)) > 0x0F;
+        bool overflow = ((af.h ^ val ^ 0x80) & (val ^ res) & 0x80) != 0;
+        
+        af.l = 0; // Clears N flag as well
+        if (res & 0x100) af.l |= FLAG_C;
+        if (res8 == 0) af.l |= FLAG_Z;
+        if (res8 & 0x80) af.l |= FLAG_S;
+        if (half_carry) af.l |= FLAG_H;
+        if (overflow) af.l |= FLAG_PV;
+        update_xy_flags(res8);
+        
+        af.h = res8;
+    };
+
     switch (opcode) {
         case 0x00: // NOP
             break;
+        case 0x40: bc.h = bc.h; break; // LD B, B
+        case 0x41: bc.h = bc.l; break; // LD B, C
+        case 0x42: bc.h = de.h; break; // LD B, D
+        case 0x43: bc.h = de.l; break; // LD B, E
+        case 0x44: bc.h = hl.h; break; // LD B, H
+        case 0x45: bc.h = hl.l; break; // LD B, L
+        case 0x47: bc.h = af.h; break; // LD B, A
+
+        case 0x80: add_a(bc.h); break; // ADD A, B
+        case 0x81: add_a(bc.l); break; // ADD A, C
+        case 0x82: add_a(de.h); break; // ADD A, D
+        case 0x83: add_a(de.l); break; // ADD A, E
+        case 0x84: add_a(hl.h); break; // ADD A, H
+        case 0x85: add_a(hl.l); break; // ADD A, L
+        case 0x87: add_a(af.h); break; // ADD A, A
+
         case 0xC3: { // JP nn
             uint8_t lo = fetch();
             uint8_t hi = fetch();

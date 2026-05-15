@@ -20,8 +20,10 @@ build_deps = [
 # Add Z80 backend
 if z80_backend == 'cmz80'
   build_deps += cmz80_dep
-else
+elif z80_backend == 'raze'
   build_deps += raze_dep
+elif z80_backend == 'cppz80'
+  build_deps += cppz80_dep
 endif
 
 # Add network library (if enabled)

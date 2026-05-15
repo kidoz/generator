@@ -114,6 +114,42 @@ private:
     int cycle_count{0};
 
 public:
+    enum Flags : uint8_t {
+        FLAG_C  = 1 << 0,
+        FLAG_N  = 1 << 1,
+        FLAG_PV = 1 << 2,
+        FLAG_X  = 1 << 3,
+        FLAG_H  = 1 << 4,
+        FLAG_Y  = 1 << 5,
+        FLAG_Z  = 1 << 6,
+        FLAG_S  = 1 << 7
+    };
+
+    void set_flag(Flags flag, bool value) {
+        if (value) af.l |= flag;
+        else af.l &= ~flag;
+    }
+
+    bool get_flag(Flags flag) const {
+        return (af.l & flag) != 0;
+    }
+
+    void update_xy_flags(uint8_t result) {
+        af.l = (af.l & ~(FLAG_X | FLAG_Y)) | (result & (FLAG_X | FLAG_Y));
+    }
+
+    // Accessors for testing and debugging
+    uint16_t get_af() const { return af.w; }
+    uint16_t get_bc() const { return bc.w; }
+    uint16_t get_de() const { return de.w; }
+    uint16_t get_hl() const { return hl.w; }
+    uint16_t get_pc() const { return pc; }
+    void set_af(uint16_t val) { af.w = val; }
+    void set_bc(uint16_t val) { bc.w = val; }
+    void set_de(uint16_t val) { de.w = val; }
+    void set_hl(uint16_t val) { hl.w = val; }
+    void set_pc(uint16_t val) { pc = val; }
+
     // Accessors for cycle counts (used by the bridge)
     int get_cycles() const { return cycle_count; }
     void add_cycles(int cycles) { cycle_count += cycles; }

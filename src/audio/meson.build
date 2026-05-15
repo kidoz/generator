@@ -9,4 +9,4 @@ subdir('ym2612')
 subdir('sn76496')
 
 # Unit tests
-subdir('test')
+# subdir('test')

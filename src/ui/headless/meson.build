@@ -40,8 +40,10 @@ headless_deps = [
 # Add Z80 backend
 if z80_backend == 'cmz80'
   headless_deps += cmz80_dep
-else
+elif z80_backend == 'raze'
   headless_deps += raze_dep
+elif z80_backend == 'cppz80'
+  headless_deps += cppz80_dep
 endif
 
 # Headless backend needs minimal dependencies - no SDL3, no GTK
