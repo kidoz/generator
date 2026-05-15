@@ -306,4 +306,67 @@ void Z80::djnz() {
     }
 }
 
+void Z80::rlc(uint8_t& val) {
+    uint8_t c = val >> 7;
+    val = (val << 1) | c;
+    af.set_l((c ? FLAG_C : 0) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (check_parity(val) ? FLAG_PV : 0));
+    update_xy_flags(val);
+}
+
+void Z80::rrc(uint8_t& val) {
+    uint8_t c = val & 1;
+    val = (val >> 1) | (c << 7);
+    af.set_l((c ? FLAG_C : 0) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (check_parity(val) ? FLAG_PV : 0));
+    update_xy_flags(val);
+}
+
+void Z80::rl(uint8_t& val) {
+    uint8_t c = val >> 7;
+    val = (val << 1) | (get_flag(FLAG_C) ? 1 : 0);
+    af.set_l((c ? FLAG_C : 0) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (check_parity(val) ? FLAG_PV : 0));
+    update_xy_flags(val);
+}
+
+void Z80::rr(uint8_t& val) {
+    uint8_t c = val & 1;
+    val = (val >> 1) | (get_flag(FLAG_C) ? 0x80 : 0);
+    af.set_l((c ? FLAG_C : 0) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (check_parity(val) ? FLAG_PV : 0));
+    update_xy_flags(val);
+}
+
+void Z80::sla(uint8_t& val) {
+    uint8_t c = val >> 7;
+    val <<= 1;
+    af.set_l((c ? FLAG_C : 0) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (check_parity(val) ? FLAG_PV : 0));
+    update_xy_flags(val);
+}
+
+void Z80::sra(uint8_t& val) {
+    uint8_t c = val & 1;
+    val = (val & 0x80) | (val >> 1);
+    af.set_l((c ? FLAG_C : 0) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (check_parity(val) ? FLAG_PV : 0));
+    update_xy_flags(val);
+}
+
+void Z80::srl(uint8_t& val) {
+    uint8_t c = val & 1;
+    val >>= 1;
+    af.set_l((c ? FLAG_C : 0) | (val == 0 ? FLAG_Z : 0) | (val & FLAG_S) | (check_parity(val) ? FLAG_PV : 0));
+    update_xy_flags(val);
+}
+
+void Z80::bit(uint8_t b, uint8_t val) {
+    bool z = (val & (1 << b)) == 0;
+    af.set_l((af.l() & FLAG_C) | FLAG_H | (z ? (FLAG_Z | FLAG_PV) : 0) | (b == 7 && !z ? FLAG_S : 0));
+    update_xy_flags(val);
+}
+
+void Z80::res(uint8_t b, uint8_t& val) {
+    val &= ~(1 << b);
+}
+
+void Z80::set(uint8_t b, uint8_t& val) {
+    val |= (1 << b);
+}
+
 } // namespace generator::z80

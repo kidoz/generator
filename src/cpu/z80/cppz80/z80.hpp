@@ -6,6 +6,8 @@
 
 namespace generator::z80 {
 
+bool check_parity(uint8_t val);
+
 struct alignas(2) RegisterPair {
     uint16_t w{0};
     constexpr uint8_t h() const { return static_cast<uint8_t>(w >> 8); }
@@ -374,12 +376,73 @@ private:
     void op_in_a_n() { af.set_h(port_read(fetch())); }
 
     void op_unimplemented() { unimplemented(); }
-    void op_cb() { cycle_count--; pc--; unimplemented(); }
-    void op_dd() { cycle_count--; pc--; unimplemented(); }
-    void op_ed() { cycle_count--; pc--; unimplemented(); }
-    void op_fd() { cycle_count--; pc--; unimplemented(); }
+    void op_cb();
+    void op_dd();
+    void op_ed();
+    void op_fd();
 
     using OpcodeHandler = void (Z80::*)();
+
+    template<Reg8 R> void op_rlc_r() { uint8_t v = read_reg8<R>(); rlc(v); write_reg8<R>(v); }
+    template<Reg8 R> void op_rrc_r() { uint8_t v = read_reg8<R>(); rrc(v); write_reg8<R>(v); }
+    template<Reg8 R> void op_rl_r() { uint8_t v = read_reg8<R>(); rl(v); write_reg8<R>(v); }
+    template<Reg8 R> void op_rr_r() { uint8_t v = read_reg8<R>(); rr(v); write_reg8<R>(v); }
+    template<Reg8 R> void op_sla_r() { uint8_t v = read_reg8<R>(); sla(v); write_reg8<R>(v); }
+    template<Reg8 R> void op_sra_r() { uint8_t v = read_reg8<R>(); sra(v); write_reg8<R>(v); }
+    template<Reg8 R> void op_sll_r() { uint8_t v = read_reg8<R>(); uint8_t c = v >> 7; v = (v << 1) | 1; af.set_l((c ? FLAG_C : 0) | (v == 0 ? FLAG_Z : 0) | (v & FLAG_S) | (check_parity(v) ? FLAG_PV : 0)); update_xy_flags(v); write_reg8<R>(v); }
+    template<Reg8 R> void op_srl_r() { uint8_t v = read_reg8<R>(); srl(v); write_reg8<R>(v); }
+
+    template<uint8_t B, Reg8 R> void op_bit_b_r() { bit(B, read_reg8<R>()); }
+    template<uint8_t B, Reg8 R> void op_res_b_r() { uint8_t v = read_reg8<R>(); res(B, v); write_reg8<R>(v); }
+    template<uint8_t B, Reg8 R> void op_set_b_r() { uint8_t v = read_reg8<R>(); set(B, v); write_reg8<R>(v); }
+
+    template <std::size_t... Is>
+    static constexpr void init_cb_rot(std::array<OpcodeHandler, 256>& table, std::index_sequence<Is...>) {
+        ( (table[0x00 + Is] = &Z80::op_rlc_r<static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0x08 + Is] = &Z80::op_rrc_r<static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0x10 + Is] = &Z80::op_rl_r<static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0x18 + Is] = &Z80::op_rr_r<static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0x20 + Is] = &Z80::op_sla_r<static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0x28 + Is] = &Z80::op_sra_r<static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0x30 + Is] = &Z80::op_sll_r<static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0x38 + Is] = &Z80::op_srl_r<static_cast<Reg8>(Is % 8)>), ... );
+    }
+
+    template <std::size_t... Is>
+    static constexpr void init_cb_bit(std::array<OpcodeHandler, 256>& table, std::index_sequence<Is...>) {
+        ( (table[0x40 + Is] = &Z80::op_bit_b_r<static_cast<uint8_t>(Is / 8), static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0x80 + Is] = &Z80::op_res_b_r<static_cast<uint8_t>(Is / 8), static_cast<Reg8>(Is % 8)>), ... );
+        ( (table[0xC0 + Is] = &Z80::op_set_b_r<static_cast<uint8_t>(Is / 8), static_cast<Reg8>(Is % 8)>), ... );
+    }
+
+    static consteval std::array<OpcodeHandler, 256> build_cb_dispatch_table() {
+        std::array<OpcodeHandler, 256> table{};
+        for (auto& entry : table) entry = &Z80::op_unimplemented;
+        init_cb_rot(table, std::make_index_sequence<8>{});
+        init_cb_bit(table, std::make_index_sequence<64>{});
+        return table;
+    }
+
+    static consteval std::array<OpcodeHandler, 256> build_ed_dispatch_table() {
+        std::array<OpcodeHandler, 256> table{};
+        for (auto& entry : table) entry = &Z80::op_unimplemented;
+        // TO DO: Implement ED instructions
+        return table;
+    }
+
+    static consteval std::array<OpcodeHandler, 256> build_dd_dispatch_table() {
+        std::array<OpcodeHandler, 256> table{};
+        for (auto& entry : table) entry = &Z80::op_unimplemented;
+        // TO DO: Implement DD instructions
+        return table;
+    }
+
+    static consteval std::array<OpcodeHandler, 256> build_fd_dispatch_table() {
+        std::array<OpcodeHandler, 256> table{};
+        for (auto& entry : table) entry = &Z80::op_unimplemented;
+        // TO DO: Implement FD instructions
+        return table;
+    }
 
     template <std::size_t... Is>
     static constexpr void init_ld_r_r(std::array<OpcodeHandler, 256>& table, std::index_sequence<Is...>) {
@@ -519,6 +582,30 @@ inline void Z80::step() {
     uint8_t opcode = fetch();
     static constexpr std::array<OpcodeHandler, 256> dispatch_table = build_dispatch_table();
     (this->*dispatch_table[opcode])();
+}
+
+inline void Z80::op_cb() {
+    uint8_t opcode = fetch();
+    static constexpr std::array<OpcodeHandler, 256> cb_table = build_cb_dispatch_table();
+    (this->*cb_table[opcode])();
+}
+
+inline void Z80::op_dd() {
+    uint8_t opcode = fetch();
+    static constexpr std::array<OpcodeHandler, 256> dd_table = build_dd_dispatch_table();
+    (this->*dd_table[opcode])();
+}
+
+inline void Z80::op_ed() {
+    uint8_t opcode = fetch();
+    static constexpr std::array<OpcodeHandler, 256> ed_table = build_ed_dispatch_table();
+    (this->*ed_table[opcode])();
+}
+
+inline void Z80::op_fd() {
+    uint8_t opcode = fetch();
+    static constexpr std::array<OpcodeHandler, 256> fd_table = build_fd_dispatch_table();
+    (this->*fd_table[opcode])();
 }
 
 } // namespace generator::z80
