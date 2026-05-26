@@ -16,7 +16,7 @@ sudo pacman -S meson ninja gtk4 libadwaita sdl3
 sudo apt-get install meson ninja-build libgtk-4-dev libadwaita-1-dev libsdl3-dev
 
 # Configure and build
-meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80
+meson setup build -Dui-backend=gtk4
 meson compile -C build
 
 # Run
@@ -31,12 +31,15 @@ sudo pacman -S meson ninja sdl3  # Arch
 sudo apt-get install meson ninja-build libsdl3-dev  # Debian/Ubuntu
 
 # Build console version
-meson setup build -Dui-backend=console -Dz80-backend=cmz80
+meson setup build -Dui-backend=console
 meson compile -C build
 
 # Run
 ./build/src/app/generator-console [rom-file.bin]
 ```
+
+A `generator-headless` binary is built alongside either UI backend and is used
+by the test/regression harness.
 
 ## Build Options
 
@@ -45,25 +48,24 @@ meson compile -C build
 - `gtk4` - Modern GTK4/libadwaita interface (recommended, default)
 - `console` - SDL3-based lightweight interface
 
-### Z80 Emulators
+### Z80 Emulator
 
-- `cmz80` - Portable C implementation (works everywhere, default)
-- `raze` - x86 assembly (faster, requires nasm, x86/x86_64 only)
+Single C++23 backend: [kidoz/z80f](https://github.com/kidoz/z80f), pulled in
+automatically as a Meson subproject (`subprojects/z80f.wrap`) and wired
+through `src/cpu/z80/z80f/cpuz80-z80f.cpp`. No build option to choose;
+nothing to install.
 
 ### Build Examples
 
 ```bash
-# GTK4 with portable Z80 (recommended)
-meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80
+# GTK4 (recommended)
+meson setup build -Dui-backend=gtk4
 
-# Console with portable Z80 (lightweight)
-meson setup build -Dui-backend=console -Dz80-backend=cmz80
-
-# GTK4 with fast x86 Z80 (requires nasm)
-meson setup build -Dui-backend=gtk4 -Dz80-backend=raze
+# Console (lightweight)
+meson setup build -Dui-backend=console
 
 # Release build (optimized)
-meson setup build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
+meson setup build --buildtype=release -Dui-backend=gtk4
 ```
 
 ## Dependencies
@@ -83,7 +85,6 @@ meson setup build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
 ### Optional
 
 - **libjpeg** - for JPEG screenshot support
-- **nasm** - required for RAZE Z80 emulator (x86 only)
 
 ## Usage
 
@@ -125,7 +126,9 @@ meson setup build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
 - **68000**: Two-stage code generation
   1. `def68k` reads instruction definitions from `def68k.def`
   2. `gen68k` generates 16 C files covering 64K instruction space
-- **Z80**: Choice of portable C (cmz80) or optimized x86 assembly (raze)
+- **Z80**: [z80f](https://github.com/kidoz/z80f) (C++23) via Meson subproject,
+  bridged into the C codebase by a thin `extern "C"` adapter
+  (`src/cpu/z80/z80f/cpuz80-z80f.cpp`).
 
 ### Project Structure
 
