@@ -1,23 +1,12 @@
 # Zilog Z80 CPU Emulation
-# Multiple backend implementations available
+#
+# Single backend: kidoz/z80f, pulled in as a Meson subproject and wired
+# through the local adapter (src/cpu/z80/z80f/cpuz80-z80f.cpp).
 
-# Z80 coordination sources
 cpuz80_sources = files(
-  'cpuz80.c',
   'memz80.c'
 )
 
-# Select Z80 implementation based on build option
-if z80_backend == 'cmz80'
-  subdir('cmz80')
-  z80_lib = cmz80_lib
-  z80_dep = cmz80_dep
-elif z80_backend == 'raze'
-  subdir('raze')
-  z80_lib = raze_lib
-  z80_dep = raze_dep
-elif z80_backend == 'cppz80'
-  subdir('cppz80')
-  z80_lib = cppz80_lib
-  z80_dep = cppz80_dep
-endif
+subdir('z80f')
+z80_lib = z80f_adapter_lib
+z80_dep = z80f_adapter_dep

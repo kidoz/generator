@@ -1030,12 +1030,8 @@ void ui_licensescreen(void)
   ui_plotstring("Copyright (C) 1997-2001 James Ponder", 160, 130);
   ui_plotstring("YM2612 chip emulation by Tatsuyuki Satoh", 160, 150);
   ui_plotstring("SN76496 chip emulation by Nicola Salmoria et al", 160, 160);
-#ifdef RAZE
-  ui_plotstring("RAZE z80 CPU emulator by Richard Mitton", 160, 170);
-#else
-  ui_plotstring("Multi-Z80 CPU emulator by Neil Bradley", 160, 170);
-  ui_plotstring("  Portable C version written by Edward Massey", 160, 180);
-#endif
+  ui_plotstring("z80f Z80 CPU core by Aleksandr Pavlov", 160, 170);
+  ui_plotstring("  github.com/kidoz/z80f", 160, 180);
   ui_plotstring("This program is free software; you can redistribute", 160,
                 200);
   ui_plotstring("it and/or modify it under the terms of the GNU", 160, 210);

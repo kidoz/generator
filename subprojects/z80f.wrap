@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/kidoz/z80f.git
+revision = 32ebcd5d
+clone-recursive = false
+
+[provide]
+z80f = z80f_dep

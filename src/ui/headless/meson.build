@@ -37,14 +37,8 @@ headless_deps = [
   common_deps
 ]
 
-# Add Z80 backend
-if z80_backend == 'cmz80'
-  headless_deps += cmz80_dep
-elif z80_backend == 'raze'
-  headless_deps += raze_dep
-elif z80_backend == 'cppz80'
-  headless_deps += cppz80_dep
-endif
+# Add Z80 backend (z80f core + generator adapter)
+headless_deps += z80_dep
 
 # Headless backend needs minimal dependencies - no SDL3, no GTK
 executable('generator-headless',

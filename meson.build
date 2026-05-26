@@ -19,7 +19,6 @@ host_cpu = host_machine.cpu_family()
 
 # Get options
 ui_backend = get_option('ui-backend')
-z80_backend = get_option('z80-backend')
 enable_debug = get_option('debug')
 enable_logging = get_option('logging')
 gcc_opt_version = get_option('gcc-version')
@@ -150,14 +149,11 @@ endif
 catch2_dep = dependency('catch2-with-main', version: '>=3.0.0',
   default_options: ['tests=false'])
 
-# Z80 backend configuration
-if z80_backend == 'cmz80'
-  add_project_arguments('-DCMZ80=1', language: ['c', 'cpp'])
-elif z80_backend == 'raze'
-  add_project_arguments('-DRAZE=1', language: ['c', 'cpp'])
-elif z80_backend == 'cppz80'
-  add_project_arguments('-DCPPZ80=1', language: ['c', 'cpp'])
-endif
+# Z80 core: kidoz/z80f, pulled in via subprojects/z80f.wrap.
+# Generator embeds it through src/cpu/z80/z80f/cpuz80-z80f.cpp.
+z80f_dep = dependency('z80f',
+  fallback: ['z80f', 'z80f_dep'],
+  default_options: ['tests=false', 'examples=false'])
 
 # UI backend dependencies
 ui_deps = []
@@ -197,7 +193,6 @@ inc = include_directories(
   'include/generator',
   'src/core',
   'src/cpu/68k/codegen',
-  'src/cpu/z80/cmz80',
   'src/audio/ym2612',
   'src/audio/sn76496',
   'src/xbrz'
@@ -242,7 +237,7 @@ subdir('tests')
 # Summary
 summary({
   'UI Backend': ui_backend,
-  'Z80 Emulator': z80_backend,
+  'Z80 Emulator': 'z80f @0@'.format(z80f_dep.version()),
   'Processor': host_cpu,
   'Debug': enable_debug,
   'Logging': enable_logging,

@@ -26,18 +26,17 @@ test('xbrz_tools', test_xbrz_tools,
 #   suite: 'catch2'
 # )
 
-cppz80_inc = include_directories('../src/cpu/z80/cppz80', '../src/cpu/z80/cmz80', '../include/generator')
-
-test_cppz80 = executable('test_cppz80',
-  'test_cppz80.cpp',
-  '../src/cpu/z80/cppz80/z80.cpp',
-  include_directories: [cppz80_inc],
-  dependencies: [catch2_dep],
+# Z80 backend is now z80f (kidoz/z80f, fetched via subprojects/z80f.wrap).
+# z80f ships its own Catch2 test suite; we run it from the subproject directly
+# so generator's `meson test` reports z80f core correctness alongside ours.
+test_z80f_core = executable('test_z80f_core',
+  'test_z80f_core.cpp',
+  dependencies: [catch2_dep, z80f_dep],
   override_options: ['cpp_std=c++23'],
   build_by_default: false
 )
 
-test('cppz80_tests', test_cppz80,
+test('z80f_core_smoke', test_z80f_core,
   timeout: 30,
   suite: 'catch2'
 )

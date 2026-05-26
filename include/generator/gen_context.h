@@ -5,7 +5,7 @@
 #define GENERATOR_GEN_CONTEXT_H
 
 #include "machine.h"
-#include "cmz80.h"
+#include "cpuz80.h"
 #include <signal.h>
 
 /* Forward declarations */

@@ -8,14 +8,6 @@ option('ui-backend',
   description: 'User interface backend to build (gtk4=GTK4/libadwaita, console=SDL3 only)'
 )
 
-# Z80 Emulator (required - choose one)
-option('z80-backend',
-  type: 'combo',
-  choices: ['cmz80', 'raze', 'cppz80'],
-  value: 'cmz80',
-  description: 'Z80 emulator implementation (cmz80=portable C, raze=x86 assembly, cppz80=modern C++23)'
-)
-
 # Optional features
 option('logging',
   type: 'boolean',
