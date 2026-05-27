@@ -12,11 +12,14 @@ def68k_exe = executable('def68k',
   native: true
 )
 
-# Generate header files from def68k.def
+# Generate header files from def68k.def. The def68k tool writes its
+# outputs (FNAME_OUT* in def68k.c) into its current working directory,
+# so we cd into @OUTDIR@ first to land the generated headers in the
+# codegen build dir where ninja expects them.
 def68k_headers = custom_target('def68k_headers',
-  output: ['def68k-iibs.h', 'def68k-funcs.h', 'def68k-proto.h'],
+  output: ['def68k_iibs.h', 'def68k_funcs.h', 'def68k_proto.h'],
   input: 'def68k.def',
-  command: ['sh', '-c', 'cp "$1" . && "$2" && rm def68k.def', 'sh', '@INPUT@', def68k_exe],
+  command: ['sh', '-c', 'cp "$1" "$3" && cd "$3" && "$2" && rm def68k.def', 'sh', '@INPUT@', def68k_exe, '@OUTDIR@'],
   depend_files: 'def68k.def'
 )
 

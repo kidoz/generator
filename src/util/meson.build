@@ -2,5 +2,5 @@
 # Helper functions and compatibility code
 
 util_sources = files(
-  'log.c'
+  'log.cpp'
 )

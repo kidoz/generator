@@ -10,9 +10,9 @@
 #include "mem68k.h"
 #include "vdp.h"
 #include "ui.h"
-#include "def68k-iibs.h"
-#include "def68k-proto.h"
-#include "def68k-funcs.h"
+#include "def68k_iibs.h"
+#include "def68k_proto.h"
+#include "def68k_funcs.h"
 
 /*** externed variables ***/
 

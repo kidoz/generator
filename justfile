@@ -7,22 +7,22 @@ default:
 
 # Build console version
 build-console:
-    meson setup --wipe build -Dui-backend=console -Dz80-backend=cmz80
+    meson setup --wipe build -Dui-backend=console
     meson compile -C build
 
 # Build GTK4 version
 build-gtk4:
-    meson setup --wipe build -Dui-backend=gtk4 -Dz80-backend=cmz80
+    meson setup --wipe build -Dui-backend=gtk4
     meson compile -C build
 
 # Build console version (release mode, optimized)
 build-console-release:
-    meson setup --wipe build --buildtype=release -Dui-backend=console -Dz80-backend=cmz80
+    meson setup --wipe build --buildtype=release -Dui-backend=console
     meson compile -C build
 
 # Build GTK4 version (release mode, optimized)
 build-gtk4-release:
-    meson setup --wipe build --buildtype=release -Dui-backend=gtk4 -Dz80-backend=cmz80
+    meson setup --wipe build --buildtype=release -Dui-backend=gtk4
     meson compile -C build
 
 # Run console version with custom ROM
@@ -47,10 +47,10 @@ clean:
 
 # Reconfigure without wiping (preserves build artifacts)
 reconfigure-console:
-    meson setup --reconfigure build -Dui-backend=console -Dz80-backend=cmz80
+    meson setup --reconfigure build -Dui-backend=console
 
 reconfigure-gtk4:
-    meson setup --reconfigure build -Dui-backend=gtk4 -Dz80-backend=cmz80
+    meson setup --reconfigure build -Dui-backend=gtk4
 
 # Quick compile without reconfigure (fast iteration)
 compile:
@@ -72,7 +72,7 @@ run-gtk4-quick ROM: compile
 # Show build configuration
 show-config:
     @if [ -d build ]; then \
-        meson configure build | grep -E "(ui-backend|z80-backend|buildtype)"; \
+        meson configure build | grep -E "(ui-backend|buildtype)"; \
     else \
         echo "No build directory found. Run 'just build-console' or 'just build-gtk4' first."; \
     fi
@@ -87,15 +87,6 @@ run-gtk4-verbose ROM: build-gtk4
 # Build and run with memory debugging (valgrind)
 run-console-valgrind ROM: build-console
     valgrind --leak-check=full ./build/src/app/generator-console "{{ROM}}"
-
-# Build with RAZE Z80 backend (x86 only, faster)
-build-console-raze:
-    meson setup --wipe build -Dui-backend=console -Dz80-backend=raze
-    meson compile -C build
-
-build-gtk4-raze:
-    meson setup --wipe build -Dui-backend=gtk4 -Dz80-backend=raze
-    meson compile -C build
 
 # Install to system
 install:
@@ -113,14 +104,14 @@ uninstall:
 analyze:
     @if [ ! -d build ]; then \
         echo "Setting up build directory..."; \
-        meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80; \
+        meson setup build -Dui-backend=gtk4; \
     fi
     ninja -C build scan-build
 
 # Run analyzer with HTML report (opens in browser)
 analyze-report:
     @if [ ! -d build ]; then \
-        meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80; \
+        meson setup build -Dui-backend=gtk4; \
     fi
     scan-build -o ./analysis-report -V meson compile -C build
     @echo "Report saved to ./analysis-report/"
@@ -128,7 +119,7 @@ analyze-report:
 # Run analyzer for CI (fails on bugs found)
 analyze-ci:
     @if [ ! -d build ]; then \
-        meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80; \
+        meson setup build -Dui-backend=gtk4; \
     fi
     SCANBUILD="scan-build --status-bugs" ninja -C build scan-build
 
@@ -146,9 +137,9 @@ format-check:
 tidy:
     @if [ ! -f build/compile_commands.json ]; then \
         echo "Setting up build directory..."; \
-        meson setup build -Dui-backend=gtk4 -Dz80-backend=cmz80; \
+        meson setup build -Dui-backend=gtk4; \
     fi
-    find src/app -name '*.c' | head -20 | xargs clang-tidy -p build
+    find src -name '*.c' -o -name '*.cpp' | xargs clang-tidy -p build
 
 # Clean analysis reports
 clean-reports:

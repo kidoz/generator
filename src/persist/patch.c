@@ -196,7 +196,7 @@ int patch_apply(const char *code, const char *action)
 
 int patch_genietoraw(const char *code, uint32 *addr, uint16 *data)
 {
-  char *p;
+  const char *p;
   uint32 a = 0, d = 0, v;
   int i;
 

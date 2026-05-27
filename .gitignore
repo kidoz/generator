@@ -2,3 +2,7 @@ autom4te.cache/
 build/
 
 *.iml
+.idea
+/subprojects/Catch2-3.15.0/
+/subprojects/packagecache/
+/subprojects/z80f/

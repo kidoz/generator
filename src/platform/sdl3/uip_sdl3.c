@@ -12,7 +12,7 @@
 
 #include "uip.h"
 #include "ui.h"
-#include "ui-console.h"
+#include "ui_console.h"
 #include "vdp.h"
 #include "cpu68k.h"
 #include "mem68k.h"

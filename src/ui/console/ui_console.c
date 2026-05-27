@@ -32,7 +32,7 @@
 #include "logo.h"
 #include "font.h"
 #include "uip.h"
-#include "ui-console.h"
+#include "ui_console.h"
 #include "state.h"
 #include "uiplot.h"
 #include "gen_context.h"

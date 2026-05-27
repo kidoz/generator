@@ -3,7 +3,7 @@
 # subprojects/z80f.wrap and the z80f_dep declared in the top-level meson.build).
 
 z80f_adapter_sources = files(
-  'cpuz80-z80f.cpp'
+  'cpuz80_z80f.cpp'
 )
 
 z80f_adapter_lib = static_library('z80f-adapter',

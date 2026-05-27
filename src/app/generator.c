@@ -168,6 +168,7 @@ char *gen_loadimage(const char *filename)
   unsigned int blocks, x, i;
   uint8 *new;
   char *p;
+  const char *cp;
 
   /* Remove current file */
   if (cpu68k_rom) {
@@ -332,11 +333,11 @@ char *gen_loadimage(const char *filename)
   }
 
   /* is this icky? */
-  if ((p = strrchr(filename, '/')) == nullptr &&
-      (p = strrchr(filename, '\\')) == nullptr) {
+  if ((cp = strrchr(filename, '/')) == nullptr &&
+      (cp = strrchr(filename, '\\')) == nullptr) {
     snprintf(gen_leafname, sizeof(gen_leafname), "%s", filename);
   } else {
-    snprintf(gen_leafname, sizeof(gen_leafname), "%s", p + 1);
+    snprintf(gen_leafname, sizeof(gen_leafname), "%s", cp + 1);
   }
   if ((p = strrchr(gen_leafname, '.')) != nullptr) {
     if ((!strcasecmp(p, ".smd")) || (!strcasecmp(p, ".bin")))
@@ -523,3 +524,4 @@ uint16 gen_checksum(uint8 *start, unsigned int length)
   }
   return checksum;
 }
+

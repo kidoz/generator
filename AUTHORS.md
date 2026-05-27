@@ -26,26 +26,6 @@ This document provides comprehensive attribution for Generator and its component
 - **Origin**: MAME project
 - **License**: MAME license
 
-### cmz80 Z80 Emulator (`src/cpu/z80/cmz80/`)
-
-- **Original Author**: Edward Massey (1997)
-- **C Port**: Jeff Mitchell
-- **Z80 Tables**: Marcel de Kogel (1996-1997)
-- **cmz80.h**: Neil Bradley (1999)
-- **License**: See source files for individual terms
-
-### RAZE Z80 Emulator (`src/cpu/z80/raze/`)
-
-- **Author**: Richard Mitton <richard.mitton@bigfoot.com>
-- **Copyright**: © 1999 Richard Mitton
-- **License**: Custom (see raze.html)
-- **Note**: x86 assembly, requires NASM
-
-### Spectrum Emulator Code (`src/cpu/z80/raze/spec.c`)
-
-- **Author**: Allard van der Bas <avdbas@wi.leidenuniv.nl>
-- **Copyright**: © 1997 Allard van der Bas
-
 ### xBRZ Upscaler (`src/xbrz/`)
 
 - **Author**: Zenju <zenju@gmx.de>

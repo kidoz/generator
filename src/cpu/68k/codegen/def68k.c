@@ -10,9 +10,9 @@
 
 #define BUFLEN 1024
 #define FNAME_CPUDEF "def68k.def"
-#define FNAME_OUTIIBS "def68k-iibs.h"
-#define FNAME_OUTFUNCS "def68k-funcs.h"
-#define FNAME_OUTPROTO "def68k-proto.h"
+#define FNAME_OUTIIBS "def68k_iibs.h"
+#define FNAME_OUTFUNCS "def68k_funcs.h"
+#define FNAME_OUTPROTO "def68k_proto.h"
 
 typedef enum {
   bit0,

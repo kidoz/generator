@@ -1,7 +1,7 @@
 # Zilog Z80 CPU Emulation
 #
 # Single backend: kidoz/z80f, pulled in as a Meson subproject and wired
-# through the local adapter (src/cpu/z80/z80f/cpuz80-z80f.cpp).
+# through the local adapter (src/cpu/z80/z80f/cpuz80_z80f.cpp).
 
 cpuz80_sources = files(
   'memz80.c'

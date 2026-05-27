@@ -5,7 +5,7 @@
 
 #include "generator.h"
 
-#include "def68k-iibs.h"
+#include "def68k_iibs.h"
 
 /* forward references */
 
@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
 
     /* output header */
     fprintf(output, HEADER, i);
-    fprintf(output, "#include \"cpu68k-inline.h\"\n\n");
+    fprintf(output, "#include \"cpu68k_inline.h\"\n\n");
 
     generate(output, i);
 

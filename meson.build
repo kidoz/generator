@@ -57,7 +57,6 @@ strict_cpp_flags = [
   '-Werror=narrowing',
   '-Wformat=2',
   '-Wno-format-nonliteral',
-  '-Wold-style-cast',
 ]
 foreach flag : strict_cpp_flags
   if cpp.has_argument(flag)
@@ -160,9 +159,10 @@ ui_deps = []
 
 if ui_backend == 'gtk4'
   gtk4_dep = dependency('gtk4', version: '>=4.10.0')
+  gtkmm_dep = dependency('gtkmm-4.0', version: '>=4.10.0')
   adwaita_dep = dependency('libadwaita-1', version: '>=1.4.0')
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
-  ui_deps = [gtk4_dep, adwaita_dep, sdl3_dep]
+  ui_deps = [gtk4_dep, gtkmm_dep, adwaita_dep, sdl3_dep]
 
 elif ui_backend == 'console'
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
@@ -219,6 +219,7 @@ endif
 # UI-specific libraries
 if ui_backend == 'gtk4'
   subdir('src/ui/gtk4')
+  subdir('src/ui/gtkmm')
   ui_libs = [gtkopts_dep]
 elif ui_backend == 'console'
   subdir('src/ui/console')
@@ -255,6 +256,7 @@ summary({
 if ui_backend == 'gtk4'
   summary({
     'GTK4': gtk4_dep.version(),
+    'GTKmm': gtkmm_dep.version(),
     'libadwaita': adwaita_dep.version(),
     'SDL3': sdl3_dep.version(),
   }, section: 'Dependencies')

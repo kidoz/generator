@@ -37,8 +37,8 @@ if ui_backend == 'gtk4'
     audio_sources,
     # Video subsystem
     video_sources,
-    # Platform layer (SDL3 audio only for GTK4, no uip-sdl3.c)
-    files('../platform/sdl3/gensoundp-sdl3.c'),
+    # Platform layer (SDL3 audio only for GTK4, no uip_sdl3.c)
+    files('../platform/sdl3/gensoundp_sdl3.c'),
     # Persistence
     persist_sources,
     # Data
@@ -46,7 +46,7 @@ if ui_backend == 'gtk4'
     # Utilities
     util_sources,
     # UI
-    gtk4_ui_sources
+    gtkmm_ui_sources
   ]
 
   build_deps += [ui_deps, gtkopts_dep, declare_dependency(link_with: tab68k_lib)]

@@ -2,7 +2,7 @@
 # Provides the central context struct and Core API for clean architecture
 
 core_sources = files(
-  'gen_context.c',
+  'gen_context.cpp',
   'gen_core.c',
   'gen_ui_callbacks.c'
 )

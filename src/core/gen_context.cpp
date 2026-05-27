@@ -1,15 +1,23 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Core context - implementation of context lifecycle functions */
 
-#include "gen_context.h"
+
 
 #include <stdlib.h>
 #include <string.h>
 
+extern "C" {
+#include "gen_context.h"
 #include "generator.h"
 #include "vdp.h"
 #include "gensound.h"
 #include "cpu68k.h"
+}
+
+
+
+
+
 
 /*
  * Global context pointer (transition aid)
@@ -25,20 +33,20 @@ gen_context_t *gen_context_create(void)
   gen_context_t *ctx;
 
   /* Allocate zeroed context */
-  ctx = calloc(1, sizeof(gen_context_t));
+  ctx = (gen_context_t *)calloc(1, sizeof(gen_context_t));
   if (ctx == nullptr) {
     return nullptr;
   }
 
   /* Allocate 68k RAM */
-  ctx->cpu68k.ram = calloc(1, GEN_CONTEXT_RAM_SIZE);
+  ctx->cpu68k.ram = (uint8 *)calloc(1, GEN_CONTEXT_RAM_SIZE);
   if (ctx->cpu68k.ram == nullptr) {
     free(ctx);
     return nullptr;
   }
 
   /* Allocate Z80 RAM */
-  ctx->cpuz80.ram = calloc(1, GEN_CONTEXT_Z80_RAM_SIZE);
+  ctx->cpuz80.ram = (uint8 *)calloc(1, GEN_CONTEXT_Z80_RAM_SIZE);
   if (ctx->cpuz80.ram == nullptr) {
     free(ctx->cpu68k.ram);
     free(ctx);
