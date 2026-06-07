@@ -14,6 +14,11 @@ if ui_backend == 'gtk4'
   )
 
   install_data(
+    'icons/hicolor/symbolic/apps/org.generator.Emulator-symbolic.svg',
+    install_dir: join_paths(get_option('datadir'), 'icons/hicolor/symbolic/apps')
+  )
+
+  install_data(
     'org.generator.Emulator.desktop',
     install_dir: join_paths(get_option('datadir'), 'applications')
   )

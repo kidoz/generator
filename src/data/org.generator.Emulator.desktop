@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Generator
+Comment=Sega Genesis and Mega Drive emulator
+Exec=generator-gtk4 %f
+Icon=org.generator.Emulator
+Terminal=false
+Categories=Game;Emulator;
+StartupNotify=true
