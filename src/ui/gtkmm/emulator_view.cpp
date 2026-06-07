@@ -28,6 +28,11 @@ EmulatorView::EmulatorView(EmulatorThread& emu_thread)
     set_hexpand(true);
     set_can_shrink(true);
 
+    // Stretch the frame to fill the whole widget instead of preserving the
+    // 320x224 aspect ratio (the default CONTAIN, which pillarboxes the image
+    // with empty bars on the left and right when the window is wider).
+    set_content_fit(Gtk::ContentFit::FILL);
+
     add_tick_callback(sigc::mem_fun(*this, &EmulatorView::on_tick));
 }
 
