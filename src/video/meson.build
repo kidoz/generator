@@ -2,7 +2,7 @@
 # VDP emulation and rendering
 
 video_sources = files(
-  'vdp.c',
+  'vdp.cpp',
   'uiplot.cpp',
   'dib.cpp'
 )

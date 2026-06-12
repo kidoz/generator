@@ -14,15 +14,17 @@
  * 1 entry per 2 scanlines during active display (faster during blank).
  * Status register bits 8-9 report FIFO full/empty state. */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
 
+extern "C" {
 #include "generator.h"
 #include "vdp.h"
 #include "cpu68k.h"
 #include "ui.h"
 #include "event.h"
+}
 
 #undef DEBUG_VDP
 #undef DEBUG_VDPDMA
@@ -275,7 +277,7 @@ void vdp_storectrl(uint16 data)
         return;
       }
       vdp_reg[reg] = regdata;
-      vdp_code = 0;
+      vdp_code = (t_code)0;
 #ifdef DEBUG_VDP
       LOG_VERBOSE(
           "%08X [VDP] Register %d set to %04X", regs.pc, reg, regdata);
@@ -289,7 +291,7 @@ void vdp_storectrl(uint16 data)
   } else {
     vdp_second = data;
     vdp_ctrlflag = 0;
-    vdp_code = ((vdp_first >> 14) & 3) | ((data >> 2) & (3 << 2));
+    vdp_code = (t_code)(((vdp_first >> 14) & 3) | ((data >> 2) & (3 << 2)));
     vdp_address = (vdp_first & 0x3FFF) | (data << 14 & 0xC000);
 
 #ifdef DEBUG_VDP
