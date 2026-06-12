@@ -2,13 +2,15 @@
 
 /* user interface platform layer for SDL3 (console mode) */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <unistd.h>
 
-#include "generator.h"
 #include <SDL3/SDL.h>
+
+extern "C" {
+#include "generator.h"
 
 #include "uip.h"
 #include "ui.h"
@@ -17,6 +19,7 @@
 #include "cpu68k.h"
 #include "mem68k.h"
 #include "gensoundp.h"
+}
 
 #define SCREEN_WIDTH 640
 #define SCREEN_HEIGHT 480
@@ -159,7 +162,7 @@ int uip_vgamode(void)
     }
 
     /* Allocate screen memory */
-    uip_screenmem[i] = malloc(BANKSIZE);
+    uip_screenmem[i] = (uint8 *)malloc(BANKSIZE);
     if (!uip_screenmem[i]) {
       LOG_CRITICAL("Failed to allocate screen memory bank %d", i);
       uip_textmode();

@@ -1,19 +1,20 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* SDL3 sound platform implementation */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
 #include <unistd.h>
 #include <stdatomic.h>
-#include <stdbool.h>
 #include <SDL3/SDL.h>
 
+extern "C" {
 #include "generator.h"
 #include "gensound.h"
 #include "gensoundp.h"
 #include "vdp.h"
 #include "ui.h"
+}
 
 /*** file scoped variables ***/
 
@@ -21,7 +22,7 @@ static SDL_AudioStream *soundp_stream = nullptr;
 static SDL_AudioDeviceID soundp_dev = 0;
 
 /* Track samples we've written but not yet confirmed played */
-static _Atomic unsigned int soundp_samples_pending = 0;
+static _Atomic(unsigned int) soundp_samples_pending = 0;
 
 /*** soundp_detect_audio_backend - Detect audio backend ***/
 

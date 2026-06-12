@@ -38,7 +38,7 @@ if ui_backend == 'gtk4'
     # Video subsystem
     video_sources,
     # Platform layer (SDL3 audio only for GTK4, no uip_sdl3.c)
-    files('../platform/sdl3/gensoundp_sdl3.c'),
+    files('../platform/sdl3/gensoundp_sdl3.cpp'),
     # Persistence
     persist_sources,
     # Data
