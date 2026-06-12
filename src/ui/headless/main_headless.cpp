@@ -1,17 +1,18 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Headless Backend - Run emulator without UI for testing/benchmarking */
 
+#include "emulator_core.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <getopt.h>
 #include <ctime>
+#include <iostream>
+#include <iomanip>
+#include <vector>
 
 extern "C" {
-#include "gen_context.h"
-#include "gen_core.h"
-#include "gen_ui_callbacks.h"
-#include "generator.h"
+#include "ui.h"
 }
 
 /* Version info */
@@ -22,22 +23,54 @@ extern "C" {
 /* Default number of frames to run */
 #define DEFAULT_FRAMES 600
 
-static void headless_log_sink(int level, const char *msg, void *user_data);
+static int verbose_mode = 0;
+static int quiet_mode = 0;
 
-/* Command line options */
-static struct option long_options[] = {
-  {"help",       no_argument,       0, 'h'},
-  {"version",    no_argument,       0, 'v'},
-  {"frames",     required_argument, 0, 'f'},
-  {"verbose",    no_argument,       0, 'V'},
-  {"quiet",      no_argument,       0, 'q'},
-  {"load-state", required_argument, 0, 'l'},
-  {"save-state", required_argument, 0, 's'},
-  {0, 0, 0, 0}
+using namespace generator;
+
+class HeadlessAudio : public IAudioBackend {
+public:
+    void output_samples(std::span<const uint16_t> left, std::span<const uint16_t> right) override {
+        // No-op for headless
+    }
 };
 
-static void print_usage(const char *progname)
-{
+class HeadlessVideo : public IVideoBackend {
+public:
+    void render_line(int line, std::span<const uint8_t> pixels) override {
+        // No-op
+    }
+    void present_field() override {
+        // No-op
+    }
+};
+
+class HeadlessLogger : public ILogger {
+public:
+    void log(LogLevel level, std::string_view message) override {
+        switch (level) {
+        case LogLevel::Debug3:
+        case LogLevel::Debug2:
+        case LogLevel::Debug1:
+            return;
+        case LogLevel::Verbose:
+            if (!verbose_mode || quiet_mode) return;
+            std::cout << "[VERBOSE] " << message << "\n";
+            break;
+        case LogLevel::User:
+        case LogLevel::Normal:
+            if (quiet_mode) return;
+            std::cout << "[INFO] " << message << "\n";
+            break;
+        case LogLevel::Critical:
+        default:
+            std::cerr << "[ERROR] " << message << "\n";
+            break;
+        }
+    }
+};
+
+static void print_usage(const char *progname) {
   printf("Usage: %s [OPTIONS] <rom-file>\n", progname);
   printf("\n");
   printf("Run Genesis emulator in headless mode (no display, no audio).\n");
@@ -51,80 +84,32 @@ static void print_usage(const char *progname)
   printf("  -s, --save-state F  Save state to file after running\n");
   printf("  -V, --verbose       Enable verbose output\n");
   printf("  -q, --quiet         Suppress all output except errors\n");
-  printf("\n");
-  printf("Examples:\n");
-  printf("  %s game.bin                        # Run 600 frames\n", progname);
-  printf("  %s -f 3600 game.bin                # Run 1 minute (60fps * 60s)\n", progname);
-  printf("  %s -s state.gt0 -f 60 game.bin     # Run 60 frames and save state\n", progname);
-  printf("  %s -l state.gt0 -f 60 game.bin     # Load state and run 60 frames\n", progname);
 }
 
-static void print_version(void)
-{
+static void print_version(void) {
   printf("Generator Headless Backend v%s\n", VERSION);
   printf("Sega Genesis/Mega Drive Emulator\n");
   printf("See AUTHORS.md for copyright attribution.\n");
 }
 
-/* Verbose logging callback */
-static int verbose_mode = 0;
-static int quiet_mode = 0;
-
-static void headless_log_verbose(gen_context_t *ctx, const char *msg)
-{
-  (void)ctx;
-  if (verbose_mode && !quiet_mode) {
-    printf("[VERBOSE] %s\n", msg);
-  }
-}
-
-static void headless_log_normal(gen_context_t *ctx, const char *msg)
-{
-  (void)ctx;
-  if (!quiet_mode) {
-    printf("[INFO] %s\n", msg);
-  }
-}
-
-static void headless_log_critical(gen_context_t *ctx, const char *msg)
-{
-  (void)ctx;
-  fprintf(stderr, "[ERROR] %s\n", msg);
-}
-
-/* Headless callbacks - mostly no-ops but with optional logging */
-static gen_ui_callbacks_t headless_callbacks = {
-  .line = gen_ui_noop_line,
-  .end_field = gen_ui_noop_end_field,
-  .audio_output = gen_ui_noop_audio_output,
-  .log_debug3 = gen_ui_noop_log,
-  .log_debug2 = gen_ui_noop_log,
-  .log_debug1 = gen_ui_noop_log,
-  .log_user = headless_log_normal,
-  .log_verbose = headless_log_verbose,
-  .log_normal = headless_log_normal,
-  .log_critical = headless_log_critical,
-  .log_request = headless_log_normal,
-  .musiclog = gen_ui_noop_musiclog,
-  .fatal_error = gen_ui_noop_fatal_error
-};
-
-int main(int argc, char *argv[])
-{
-  gen_context_t *ctx;
+int main(int argc, char *argv[]) {
   const char *rom_file = nullptr;
   const char *load_state_file = nullptr;
   const char *save_state_file = nullptr;
-  const char *error;
   unsigned int num_frames = DEFAULT_FRAMES;
-  unsigned int frame;
   int opt;
-  clock_t start_time, end_time;
-  double elapsed;
+  
+  static struct option long_options[] = {
+    {"help",       no_argument,       0, 'h'},
+    {"version",    no_argument,       0, 'v'},
+    {"frames",     required_argument, 0, 'f'},
+    {"verbose",    no_argument,       0, 'V'},
+    {"quiet",      no_argument,       0, 'q'},
+    {"load-state", required_argument, 0, 'l'},
+    {"save-state", required_argument, 0, 's'},
+    {0, 0, 0, 0}
+  };
 
-  gen_log_set_sink(headless_log_sink, nullptr);
-
-  /* Parse command line options */
   while ((opt = getopt_long(argc, argv, "hvf:Vql:s:", long_options, nullptr)) != -1) {
     switch (opt) {
     case 'h':
@@ -136,7 +121,7 @@ int main(int argc, char *argv[])
     case 'f':
       num_frames = (unsigned int)atoi(optarg);
       if (num_frames == 0) {
-        fprintf(stderr, "Error: Invalid frame count\n");
+        std::cerr << "Error: Invalid frame count\n";
         return 1;
       }
       break;
@@ -158,9 +143,8 @@ int main(int argc, char *argv[])
     }
   }
 
-  /* Get ROM file argument */
   if (optind >= argc) {
-    fprintf(stderr, "Error: No ROM file specified\n");
+    std::cerr << "Error: No ROM file specified\n";
     print_usage(argv[0]);
     return 1;
   }
@@ -168,204 +152,91 @@ int main(int argc, char *argv[])
 
   if (!quiet_mode) {
     print_version();
-    printf("\n");
-    printf("ROM file: %s\n", rom_file);
-    printf("Frames to run: %u\n", num_frames);
-    printf("\n");
+    printf("\nROM file: %s\nFrames to run: %u\n\n", rom_file, num_frames);
   }
 
-  /* Create emulator context */
-  ctx = gen_context_create();
-  if (ctx == nullptr) {
-    fprintf(stderr, "Error: Failed to create emulator context\n");
-    return 1;
-  }
+  try {
+    auto core = std::make_unique<EmulatorCore>(
+      std::make_unique<HeadlessAudio>(),
+      std::make_unique<HeadlessVideo>(),
+      std::make_shared<HeadlessLogger>()
+    );
 
-  /* Initialize context with defaults */
-  if (gen_context_init(ctx) != 0) {
-    fprintf(stderr, "Error: Failed to initialize emulator context\n");
-    gen_context_destroy(ctx);
-    return 1;
-  }
-
-  /* Set headless callbacks */
-  gen_ui_set_callbacks(ctx, &headless_callbacks, nullptr);
-
-  /* Initialize core */
-  if (gen_core_init(ctx) != 0) {
-    fprintf(stderr, "Error: Failed to initialize emulator core\n");
-    gen_context_destroy(ctx);
-    return 1;
-  }
-
-  /* Load ROM */
-  error = gen_core_load_rom(ctx, rom_file);
-  if (error != nullptr) {
-    fprintf(stderr, "Error: Failed to load ROM: %s\n", error);
-    gen_core_shutdown(ctx);
-    gen_context_destroy(ctx);
-    return 1;
-  }
-
-  if (!quiet_mode) {
-    const gen_cartinfo_t *info = gen_core_get_rom_info(ctx);
-    if (info != nullptr) {
-      printf("Loaded: %s\n", info->name_overseas[0] ? info->name_overseas
-                                                     : info->name_domestic);
-      printf("Region: %s%s%s\n",
-             info->flag_japan ? "J" : "",
-             info->flag_usa ? "U" : "",
-             info->flag_europe ? "E" : "");
+    auto res = core->load_rom(rom_file);
+    if (!res) {
+        std::cerr << "Error: Failed to load ROM: " << res.error() << "\n";
+        return 1;
     }
-  }
 
-  /* Load state if specified */
-  if (load_state_file != nullptr) {
-    if (gen_core_load_state(ctx, load_state_file) != 0) {
-      fprintf(stderr, "Error: Failed to load state from: %s\n", load_state_file);
-      gen_core_shutdown(ctx);
-      gen_context_destroy(ctx);
-      return 1;
-    }
     if (!quiet_mode) {
-      printf("State loaded from: %s\n", load_state_file);
-    }
-  }
-
-  if (!quiet_mode) {
-    printf("\n");
-    printf("Running %u frames...\n", num_frames);
-  }
-
-  /* Run emulation */
-  start_time = clock();
-
-  for (frame = 0; frame < num_frames; frame++) {
-    gen_core_run_frame(ctx);
-
-    /* Check for quit signal */
-    if (ctx->quit) {
-      if (!quiet_mode) {
-        printf("Quit signal received at frame %u\n", frame);
+      const gen_cartinfo_t *info = gen_core_get_rom_info(core->get_context());
+      if (info != nullptr) {
+        printf("Loaded: %s\n", info->name_overseas[0] ? info->name_overseas : info->name_domestic);
+        printf("Region: %s%s%s\n",
+               info->flag_japan ? "J" : "",
+               info->flag_usa ? "U" : "",
+               info->flag_europe ? "E" : "");
       }
-      break;
     }
 
-    /* Progress output every 10 seconds of emulated time */
-    if (verbose_mode && !quiet_mode && frame > 0 &&
-        (frame % (gen_core_get_framerate(ctx) * 10)) == 0) {
-      printf("Frame %u / %u (%.1f%%)\n", frame, num_frames,
-             100.0 * frame / num_frames);
+    if (load_state_file != nullptr) {
+      if (gen_core_load_state(core->get_context(), load_state_file) != 0) {
+        std::cerr << "Error: Failed to load state from: " << load_state_file << "\n";
+        return 1;
+      }
+      if (!quiet_mode) printf("State loaded from: %s\n", load_state_file);
     }
-  }
 
-  end_time = clock();
-  elapsed = (double)(end_time - start_time) / CLOCKS_PER_SEC;
+    if (!quiet_mode) printf("\nRunning %u frames...\n", num_frames);
 
-  /* Report results */
-  if (!quiet_mode) {
-    printf("\n");
-    printf("Completed %u frames in %.2f seconds\n", frame, elapsed);
-    printf("Average: %.2f frames/sec (%.2fx realtime at %uhz)\n",
-           frame / elapsed,
-           (frame / elapsed) / gen_core_get_framerate(ctx),
-           gen_core_get_framerate(ctx));
-  }
+    clock_t start_time = clock();
+    unsigned int frame = 0;
+    
+    for (; frame < num_frames; frame++) {
+      core->run_frame();
 
-  /* Save state if specified */
-  if (save_state_file != nullptr) {
-    if (gen_core_save_state(ctx, save_state_file) != 0) {
-      fprintf(stderr, "Error: Failed to save state to: %s\n", save_state_file);
-      gen_core_shutdown(ctx);
-      gen_context_destroy(ctx);
-      return 1;
+      if (core->get_context()->quit) {
+        if (!quiet_mode) printf("Quit signal received at frame %u\n", frame);
+        break;
+      }
+
+      if (verbose_mode && !quiet_mode && frame > 0 &&
+          (frame % (gen_core_get_framerate(core->get_context()) * 10)) == 0) {
+        printf("Frame %u / %u (%.1f%%)\n", frame, num_frames, 100.0 * frame / num_frames);
+      }
     }
+
+    clock_t end_time = clock();
+    double elapsed = (double)(end_time - start_time) / CLOCKS_PER_SEC;
+
     if (!quiet_mode) {
-      printf("State saved to: %s\n", save_state_file);
+      printf("\nCompleted %u frames in %.2f seconds\n", frame, elapsed);
+      printf("Average: %.2f frames/sec (%.2fx realtime at %uhz)\n",
+             frame / elapsed,
+             (frame / elapsed) / gen_core_get_framerate(core->get_context()),
+             gen_core_get_framerate(core->get_context()));
     }
+
+    if (save_state_file != nullptr) {
+      if (gen_core_save_state(core->get_context(), save_state_file) != 0) {
+        std::cerr << "Error: Failed to save state to: " << save_state_file << "\n";
+        return 1;
+      }
+      if (!quiet_mode) printf("State saved to: %s\n", save_state_file);
+    }
+  } catch (const std::exception& e) {
+      std::cerr << "Fatal error: " << e.what() << "\n";
+      return 1;
   }
 
-  /* Cleanup */
-  gen_core_shutdown(ctx);
-  gen_context_destroy(ctx);
-
   return 0;
 }
 
-/*
- * UI interface stubs required by existing code.
- * These are minimal implementations for headless mode.
- */
-
-extern "C" {
-#include "ui.h"
-}
-#include <cstdarg>
-
-int ui_init(int argc, char *argv[])
-{
-  (void)argc;
-  (void)argv;
-  return 0;
-}
-
-int ui_loop(void)
-{
-  return 0;
-}
-
-void ui_line(int line)
-{
-  (void)line;
-}
-
-void ui_endfield(void)
-{
-}
-
-void ui_final(void)
-{
-}
-
-/* Logging sink — registered with the central logger in main(). */
-static void headless_log_sink(int level, const char *msg, void *user_data)
-{
-  (void)user_data;
-  switch (level) {
-  case GEN_LOG_DEBUG3:
-  case GEN_LOG_DEBUG2:
-  case GEN_LOG_DEBUG1:
-    return;
-  case GEN_LOG_VERBOSE:
-    if (!verbose_mode || quiet_mode)
-      return;
-    printf("%s\n", msg);
-    return;
-  case GEN_LOG_USER:
-  case GEN_LOG_NORMAL:
-    if (quiet_mode)
-      return;
-    printf("%s\n", msg);
-    return;
-  case GEN_LOG_CRITICAL:
-  default:
-    fprintf(stderr, "%s\n", msg);
-    return;
-  }
-}
-
-[[noreturn]] void ui_err(const char *text, ...)
-{
-  va_list args;
-  va_start(args, text);
-  vfprintf(stderr, text, args);
-  va_end(args);
-  fprintf(stderr, "\n");
-  exit(1);
-}
-
-void ui_musiclog(uint8 *data, unsigned int length)
-{
-  (void)data;
-  (void)length;
-}
+/* UI interface stubs required by existing code. */
+int ui_init(int argc, char *argv[]) { return 0; }
+int ui_loop(void) { return 0; }
+void ui_line(int line) { }
+void ui_endfield(void) { }
+void ui_final(void) { }
+[[noreturn]] void ui_err(const char *text, ...) { exit(1); }
+void ui_musiclog(uint8_t *data, unsigned int length) { }
