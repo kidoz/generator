@@ -2,7 +2,7 @@
 # Provides the central context struct and Core API for clean architecture
 
 core_sources = files(
-  'EmulatorCore.cpp',
+  'emulator_core.cpp',
   'gen_context.cpp',
   'gen_core.cpp',
   'gen_ui_callbacks.cpp'

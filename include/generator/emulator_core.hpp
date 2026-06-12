@@ -9,9 +9,9 @@ extern "C" {
 #include "gen_core.h"
 }
 
-#include "interfaces/IAudioBackend.hpp"
-#include "interfaces/IVideoBackend.hpp"
-#include "interfaces/ILogger.hpp"
+#include "interfaces/audio_backend.hpp"
+#include "interfaces/video_backend.hpp"
+#include "interfaces/logger.hpp"
 
 #include <memory>
 #include <expected>
@@ -24,9 +24,9 @@ namespace generator {
 class EmulatorCore {
 public:
     // Constructor Injection
-    EmulatorCore(std::unique_ptr<IAudioBackend> audio,
-                 std::unique_ptr<IVideoBackend> video,
-                 std::shared_ptr<ILogger> logger);
+    EmulatorCore(std::unique_ptr<AudioBackend> audio,
+                 std::unique_ptr<VideoBackend> video,
+                 std::shared_ptr<Logger> logger);
 
     ~EmulatorCore();
 
@@ -60,9 +60,9 @@ public:
     // Get the underlying C context (for incremental migration access)
     gen_context_t* get_context() const { return m_ctx.get(); }
 
-    IAudioBackend& get_audio_backend() const { return *m_audio; }
-    IVideoBackend& get_video_backend() const { return *m_video; }
-    ILogger& get_logger() const { return *m_logger; }
+    AudioBackend& get_audio_backend() const { return *m_audio; }
+    VideoBackend& get_video_backend() const { return *m_video; }
+    Logger& get_logger() const { return *m_logger; }
 
 private:
     void setup_callbacks();
@@ -91,9 +91,9 @@ private:
     };
 
     std::unique_ptr<gen_context_t, ContextDeleter> m_ctx;
-    std::unique_ptr<IAudioBackend> m_audio;
-    std::unique_ptr<IVideoBackend> m_video;
-    std::shared_ptr<ILogger> m_logger;
+    std::unique_ptr<AudioBackend> m_audio;
+    std::unique_ptr<VideoBackend> m_video;
+    std::shared_ptr<Logger> m_logger;
     gen_ui_callbacks_t m_c_callbacks{};
 };
 

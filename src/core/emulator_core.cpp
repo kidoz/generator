@@ -1,15 +1,15 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* EmulatorCore - C++23 DI Wrapper Implementation */
 
-#include "EmulatorCore.hpp"
+#include "emulator_core.hpp"
 #include <stdexcept>
 #include <utility>
 
 namespace generator {
 
-EmulatorCore::EmulatorCore(std::unique_ptr<IAudioBackend> audio,
-                           std::unique_ptr<IVideoBackend> video,
-                           std::shared_ptr<ILogger> logger)
+EmulatorCore::EmulatorCore(std::unique_ptr<AudioBackend> audio,
+                           std::unique_ptr<VideoBackend> video,
+                           std::shared_ptr<Logger> logger)
     : m_ctx(gen_context_create()),
       m_audio(std::move(audio)),
       m_video(std::move(video)),

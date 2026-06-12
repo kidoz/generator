@@ -8,9 +8,9 @@
 
 namespace generator {
 
-class IAudioBackend {
+class AudioBackend {
 public:
-    virtual ~IAudioBackend() = default;
+    virtual ~AudioBackend() = default;
 
     /*
      * Output audio samples to the audio device.

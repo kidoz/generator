@@ -8,9 +8,9 @@
 
 namespace generator {
 
-class IVideoBackend {
+class VideoBackend {
 public:
-    virtual ~IVideoBackend() = default;
+    virtual ~VideoBackend() = default;
 
     /*
      * Render a single scanline to the backend's internal buffer.
