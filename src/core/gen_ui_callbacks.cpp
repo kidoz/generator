@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* UI Callback Interface - No-op implementation for headless/testing */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 
+extern "C" {
 #include "gen_ui_callbacks.h"
 #include "gen_context.h"
+}
 
 /*** No-op callback implementations ***/
 

@@ -4,7 +4,7 @@
 core_sources = files(
   'gen_context.cpp',
   'gen_core.c',
-  'gen_ui_callbacks.c'
+  'gen_ui_callbacks.cpp'
 )
 
 core_lib = static_library('gen_core',
