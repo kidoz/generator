@@ -13,6 +13,11 @@ PreferencesDialog::PreferencesDialog(Gtk::Window& parent) : m_parent(parent) {
 
 void PreferencesDialog::setup_ui() {
     m_dialog = ADW_PREFERENCES_DIALOG(adw_preferences_dialog_new());
+
+    // AdwDialog is destroyed when the user closes it. The weak pointer
+    // nulls m_dialog at that point so present() knows to rebuild instead
+    // of presenting a dangling pointer.
+    g_object_add_weak_pointer(G_OBJECT(m_dialog), (gpointer*)&m_dialog);
     
     // Video Page
     AdwPreferencesPage* video_page = ADW_PREFERENCES_PAGE(adw_preferences_page_new());
@@ -130,5 +135,7 @@ void PreferencesDialog::on_audio_driver_changed() {
 }
 
 void PreferencesDialog::present() {
+    if (!m_dialog)
+        setup_ui(); /* previous dialog was destroyed on close */
     adw_dialog_present(ADW_DIALOG(m_dialog), GTK_WIDGET(m_parent.gobj()));
 }
