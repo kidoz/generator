@@ -4,5 +4,5 @@
 video_sources = files(
   'vdp.c',
   'uiplot.c',
-  'dib.c'
+  'dib.cpp'
 )
