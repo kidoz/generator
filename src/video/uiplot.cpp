@@ -2,13 +2,16 @@
 
 /* plotter routines for user interfaces - used by console and gtk */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
+
+extern "C" {
 #include "generator.h"
 #include "vdp.h"
 
 #include "uiplot.h"
-#include "xbrz_wrapper.h" /* xBRZ high-quality upscaling */
+}
+#include "xbrz_wrapper.h" /* xBRZ high-quality upscaling (self-guarded) */
 
 uint32 uiplot_palcache[192];
 
