@@ -2,7 +2,7 @@
 # Save states, recording, and ROM patching
 
 persist_sources = files(
-  'state.c',
+  'state.cpp',
   'avi.c',
   'patch.cpp'
 )

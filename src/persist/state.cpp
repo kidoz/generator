@@ -2,13 +2,13 @@
 
 #include <sys/stat.h>
 #include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <time.h>
-#include <string.h>
-#include <errno.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <ctime>
+#include <cstring>
 
+extern "C" {
 #include "generator.h"
 
 #include "state.h"
@@ -19,6 +19,7 @@
 #include "gensound.h"
 #include "fm.h"
 #include "sn76496.h"
+}
 
 typedef struct _t_statelist {
   struct _t_statelist *next;
@@ -255,7 +256,7 @@ static void state_dotransfer(unsigned int mode)
   state_transfer8("vdp", "code", 0, (uint8 *)&vdp_code, 1);
   state_transfer16("vdp", "first", 0, &vdp_first, 1);
   state_transfer16("vdp", "second", 0, &vdp_second, 1);
-  state_transfer32("vdp", "dmabytes", 0, &vdp_dmabytes, 1);
+  state_transfer32("vdp", "dmabytes", 0, (uint32 *)&vdp_dmabytes, 1);
   state_transfer16("vdp", "address", 0, &vdp_address, 1);
   state_transfer8("68k", "ram", 0, cpu68k_ram, 0x10000);
   state_transfer32("68k", "regs", 0, regs.regs, 16);
@@ -343,7 +344,7 @@ int state_loadfile(const char *filename)
     return -1;
   }
 
-  if ((blk = malloc(statbuf.st_size)) == nullptr) {
+  if ((blk = (char *)malloc(statbuf.st_size)) == nullptr) {
     LOG_CRITICAL("Failed to allocate memory whilst loading '%s'", filename);
     return -1;
   }
@@ -365,8 +366,8 @@ int state_loadfile(const char *filename)
   }
   fclose(f);
 
-  p = blk;
-  e = blk + statbuf.st_size;
+  p = (uint8 *)blk;
+  e = (uint8 *)blk + statbuf.st_size;
 
   /* skip first line comment */
   while (p < e && *p++ != '\n')
@@ -381,7 +382,7 @@ int state_loadfile(const char *filename)
     if (e == p)
       /* EOF */
       break;
-    if ((ent = malloc(sizeof(t_statelist))) == nullptr)
+    if ((ent = (t_statelist *)malloc(sizeof(t_statelist))) == nullptr)
       ui_err("out of memory");
     if ((e - p) < 8)
       goto OVERRUN;

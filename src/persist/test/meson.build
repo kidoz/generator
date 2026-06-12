@@ -2,11 +2,12 @@
 
 test_state = executable('test_state',
   'test_state.c',
-  '../state.c',  # Include state.c directly
+  '../state.cpp',  # Include state.cpp directly
   '../../util/log.cpp',  # Centralized logger
   include_directories: [inc],
   dependencies: common_deps,
   c_args: ['-DCMZ80=1', '-DGENERATOR_BUILD_TOOL=1'],
+  cpp_args: ['-DCMZ80=1', '-DGENERATOR_BUILD_TOOL=1'],
   build_by_default: false
 )
 

@@ -22,7 +22,7 @@ headless_common_sources = [
   # Video subsystem (VDP only, no rendering needed)
   files('../../video/vdp.c'),
   # Persistence (needed for state_* functions)
-  files('../../persist/state.c'),
+  files('../../persist/state.cpp'),
   # Utilities
   util_sources
 ]
@@ -46,5 +46,6 @@ executable('generator-headless',
   include_directories: inc,
   dependencies: headless_deps,
   c_args: ['-D_GNU_SOURCE', '-DGENERATOR_LIB_ONLY'],
+  cpp_args: ['-D_GNU_SOURCE', '-DGENERATOR_LIB_ONLY'],
   install: true
 )
