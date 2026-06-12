@@ -134,7 +134,8 @@ MainWindow::MainWindow(EmulatorThread &emu_thread) : m_emu_thread(emu_thread)
 {
   set_title("Generator");
   set_icon_name("org.generator.Emulator");
-  set_default_size(960, 640);
+  /* 960x720 view (4:3) plus header/status bar chrome */
+  set_default_size(960, 800);
   add_css_class("generator-window");
 
   m_view = std::make_unique<EmulatorView>(m_emu_thread);
@@ -197,12 +198,21 @@ void MainWindow::setup_ui()
   // (CSD)
   set_titlebar(*m_header_bar);
 
-  // Pack the emulator view into the main box
+  // Pack the emulator view into the main box, constrained to the 4:3
+  // display aspect of a real Mega Drive TV. The view itself stretches
+  // (ContentFit::FILL) inside the frame, so both H32 (256px) and H40
+  // (320px) modes fill the same 4:3 area, matching real hardware; the
+  // frame letterboxes within the window instead of distorting.
   m_view->add_css_class("emulator-screen");
+  auto *aspect = Gtk::make_managed<Gtk::AspectFrame>(
+      Gtk::Align::CENTER, Gtk::Align::CENTER, 4.0f / 3.0f, false);
+  aspect->set_child(*m_view);
+  aspect->set_vexpand(true);
+  aspect->set_hexpand(true);
   m_viewport.add_css_class("emulator-viewport");
   m_viewport.set_vexpand(true);
   m_viewport.set_hexpand(true);
-  m_viewport.append(*m_view);
+  m_viewport.append(*aspect);
   m_vbox.append(m_viewport);
 
   // Bottom status bar with compact runtime state.
