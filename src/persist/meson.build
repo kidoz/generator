@@ -4,7 +4,7 @@
 persist_sources = files(
   'state.c',
   'avi.c',
-  'patch.c'
+  'patch.cpp'
 )
 
 # Unit tests

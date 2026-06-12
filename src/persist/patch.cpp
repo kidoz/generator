@@ -1,15 +1,17 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cerrno>
 
+extern "C" {
 #include "generator.h"
 
 #include "ui.h"
 #include "cpu68k.h"
 #include "patch.h"
+}
 
 /* Merlyn LeRoy's lamp.c comment: */
 
@@ -111,7 +113,7 @@ int patch_loadfile(const char *filename)
       fclose(f);
       return -1;
     }
-    if ((ent = malloc(sizeof(t_patchlist))) == nullptr)
+    if ((ent = (t_patchlist *)malloc(sizeof(t_patchlist))) == nullptr)
       ui_err("out of memory");
     snprintf(ent->code, 12, "%s", linebuf);
     for (p = linebuf + 11; *p == ' '; p++)
@@ -156,7 +158,7 @@ void patch_addcode(const char *code, const char *action)
     ;
 
   /* create and insert */
-  if ((ent = malloc(sizeof(t_patchlist))) == nullptr)
+  if ((ent = (t_patchlist *)malloc(sizeof(t_patchlist))) == nullptr)
     ui_err("out of memory");
   snprintf(ent->code, sizeof(ent->code), "%s", code);
   ent->action = strdup(action);
