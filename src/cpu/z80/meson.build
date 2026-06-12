@@ -4,7 +4,7 @@
 # through the local adapter (src/cpu/z80/z80f/cpuz80_z80f.cpp).
 
 cpuz80_sources = files(
-  'memz80.c'
+  'memz80.cpp'
 )
 
 subdir('z80f')

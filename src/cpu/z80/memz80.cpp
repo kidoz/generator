@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 
-#include <stdio.h>
+#include <cstdio>
 
+extern "C" {
 #include "generator.h"
 #include "cpu68k.h"
 #include "mem68k.h"
@@ -9,6 +10,7 @@
 #include "memz80.h"
 #include "gensound.h"
 #include "ui.h"
+}
 
 /*** forward references ***/
 
