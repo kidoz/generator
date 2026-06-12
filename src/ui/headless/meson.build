@@ -9,7 +9,7 @@ headless_sources = files(
 # Common sources for headless - from various subsystems
 headless_common_sources = [
   # Core entry point (with GENERATOR_LIB_ONLY to exclude main())
-  files('../../app/generator.c', '../../app/event.c'),
+  files('../../app/generator.c', '../../app/event.cpp'),
   # CPU subsystem (without diss68k.c to avoid tab68k dependency)
   files(
     '../../cpu/68k/cpu68k.c',

@@ -3,7 +3,7 @@
 
 # Core sources (entry point and event handling)
 main_core_sources = files(
-  'event.c',
+  'event.cpp',
   'generator.c'
 )
 

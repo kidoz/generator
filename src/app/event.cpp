@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 
-#include <stdio.h>
+#include <cstdio>
 
+extern "C" {
 #include "generator.h"
+#include "event.h"
 #include "vdp.h"
 #include "cpu68k.h"
 #include "cpuz80.h"
@@ -12,6 +14,7 @@
 #include "gen_context.h"
 #include "gen_ui_callbacks.h"
 #include "mem68k.h"
+}
 
 
 /* due to DMA transfers, event_nextevent can be called during an instruction
