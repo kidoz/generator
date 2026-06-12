@@ -3,7 +3,7 @@
 
 core_sources = files(
   'gen_context.cpp',
-  'gen_core.c',
+  'gen_core.cpp',
   'gen_ui_callbacks.cpp'
 )
 

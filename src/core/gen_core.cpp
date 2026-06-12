@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Core API - Implementation of clean interface for emulator control */
 
-#include "gen_core.h"
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
 
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
+extern "C" {
+#include "gen_core.h"
 
 #include "generator.h"
 #include "cpu68k.h"
@@ -19,6 +20,7 @@
 /* External functions */
 extern void event_doframe(void);
 extern int memz80_init(void);
+}
 
 /* Paused state (will move to context in later phase) */
 static int core_paused = 0;
@@ -185,7 +187,7 @@ const char *gen_core_load_rom_mem(gen_context_t *ctx, const uint8 *rom,
   /* Use existing memory loader */
   if (copy) {
     /* Allocate and copy */
-    uint8 *romcopy = malloc(romlen);
+    uint8 *romcopy = (uint8 *)malloc(romlen);
     if (romcopy == nullptr) {
       return "Out of memory";
     }
