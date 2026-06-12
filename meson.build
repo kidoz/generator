@@ -24,8 +24,8 @@ enable_logging = get_option('logging')
 gcc_opt_version = get_option('gcc-version')
 
 # Version info
-add_project_arguments('-DVERSION="@0@"'.format(meson.project_version()), language: 'c')
-add_project_arguments('-DPACKAGE="generator"', language: 'c')
+add_project_arguments('-DVERSION="@0@"'.format(meson.project_version()), language: ['c', 'cpp'])
+add_project_arguments('-DPACKAGE="generator"', language: ['c', 'cpp'])
 
 # Enable GNU extensions for POSIX functions like strcasecmp
 add_project_arguments('-D_GNU_SOURCE', language: 'c')

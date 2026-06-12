@@ -6,13 +6,15 @@
 #define _BSD_SOURCE 1
 #define __EXTENSIONS__ 1
 
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstring>
+#include <cerrno>
+#include <cstdlib>
 
+extern "C" {
 #include "generator.h"
 #include "gtkopts.h"
+}
 
 t_conf *gtkopts_conf = nullptr;
 
@@ -21,10 +23,10 @@ static const char *gtkopts_default(const char *key);
 #define CONFLINELEN 1024
 
 typedef struct {
-  char *key;
-  char *vals;
-  char *def;
-  char *desc;
+  const char *key;
+  const char *vals;
+  const char *def;
+  const char *desc;
 } t_opts;
 
 /* *INDENT-OFF* */
@@ -131,7 +133,7 @@ int gtkopts_load(const char *file)
     /* check for comment */
     if (!*p || *p == '#' || *p == ';')
       continue;
-    if ((conf = malloc(sizeof(t_conf))) == nullptr) {
+    if ((conf = (t_conf *)malloc(sizeof(t_conf))) == nullptr) {
       fprintf(stderr, "%s: Out of memory adding to conf\n", PACKAGE);
       goto error;
     }
@@ -215,7 +217,7 @@ int gtkopts_setvalue(const char *key, const char *value)
       return 0;
     }
   }
-  if ((c = malloc(sizeof(t_conf))) == nullptr)
+  if ((c = (t_conf *)malloc(sizeof(t_conf))) == nullptr)
     return -1;
   c->key = strdup(key);
   if (c->key == nullptr) {
