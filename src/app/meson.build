@@ -4,7 +4,7 @@
 # Core sources (entry point and event handling)
 main_core_sources = files(
   'event.cpp',
-  'generator.c'
+  'generator.cpp'
 )
 
 # Build dependencies - common to all

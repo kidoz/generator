@@ -2,24 +2,27 @@
 
 #define _GNU_SOURCE 1 /* For strcasestr() */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <fcntl.h>
-#include <ctype.h>
-#include <signal.h>
-#include <errno.h>
+#include <cctype>
+#include <csignal>
+#include <cerrno>
 
+extern "C" {
 #include "generator.h"
+}
 
 /* Signal handler return type (typically void on POSIX systems) */
 #ifndef RETSIGTYPE
 #define RETSIGTYPE void
 #endif
 
+extern "C" {
 #include "ui.h"
 #include "memz80.h"
 #include "cpu68k.h"
@@ -27,6 +30,7 @@
 #include "cpuz80.h"
 #include "vdp.h"
 #include "gensound.h"
+}
 
 #ifdef ALLEGRO
 #include "allegro.h"
@@ -39,7 +43,10 @@ unsigned int gen_debugmode = 0;
 unsigned int gen_loglevel =
     GEN_LOG_NORMAL;               /* Default: show normal + critical */
 unsigned int gen_autodetect = 1;  /* 0 = no, 1 = yes */
-unsigned int gen_musiclog = 0;    /* 0 = no, 1 = GYM, 2 = GNM */
+t_musiclog gen_musiclog = musiclog_off; /* off / GYM / GNM (was unsigned int
+                                         * in the C original; C++ requires the
+                                         * definition to match the extern
+                                         * t_musiclog declaration) */
 unsigned int gen_modifiedrom = 0; /* 0 = no, 1 = yes */
 t_cartinfo gen_cartinfo;
 char gen_leafname[128];
@@ -73,7 +80,8 @@ RETSIGTYPE gen_sighandler(int signum)
   signal(signum, gen_sighandler);
 }
 
-static char thing[] = ("\n\nIt's the year 2000 is there anyone out there?\n"
+[[maybe_unused]] static char thing[] =
+                       ("\n\nIt's the year 2000 is there anyone out there?\n"
                        "\nIf you're from another planet put your hand in the "
                        "air, say yeah!\n\n");
 
@@ -166,7 +174,7 @@ char *gen_loadimage(const char *filename)
   const char *extension;
   uint8 *buffer;
   unsigned int blocks, x, i;
-  uint8 *new;
+  uint8 *newrom; /* 'new' in the C original; renamed (C++ keyword) */
   char *p;
   const char *cp;
 
@@ -181,16 +189,16 @@ char *gen_loadimage(const char *filename)
 
   /* Load file */
   if (stat(filename, &statbuf) != 0)
-    return ("Unable to stat file.");
+    return ((char *)"Unable to stat file.");
   cpu68k_romlen = statbuf.st_size;
   if (cpu68k_romlen < 0x200)
-    return ("File is too small");
+    return ((char *)"File is too small");
 
   /* allocate enough memory plus 16 bytes for disassembler to cope
      with the last instruction */
-  if ((cpu68k_rom = malloc(cpu68k_romlen + 16)) == nullptr) {
+  if ((cpu68k_rom = (uint8 *)malloc(cpu68k_romlen + 16)) == nullptr) {
     cpu68k_romlen = 0;
-    return ("Out of memory!");
+    return ((char *)"Out of memory!");
   }
   gen_freerom = 1;
   memset(cpu68k_rom, 0, cpu68k_romlen + 16);
@@ -204,7 +212,7 @@ char *gen_loadimage(const char *filename)
     cpu68k_rom = nullptr;
     cpu68k_romlen = 0;
     gen_freerom = 0;
-    return ("Unable to open file.");
+    return ((char *)"Unable to open file.");
   }
   buffer = cpu68k_rom;
   bytesleft = cpu68k_romlen;
@@ -226,7 +234,7 @@ char *gen_loadimage(const char *filename)
     cpu68k_rom = nullptr;
     cpu68k_romlen = 0;
     gen_freerom = 0;
-    return ("invalid return code from read()");
+    return ((char *)"invalid return code from read()");
   }
   if (bytesleft) {
     LOG_CRITICAL("%d bytes left to read?!", bytesleft);
@@ -234,7 +242,7 @@ char *gen_loadimage(const char *filename)
     cpu68k_rom = nullptr;
     cpu68k_romlen = 0;
     gen_freerom = 0;
-    return ("Error whilst loading file");
+    return ((char *)"Error whilst loading file");
   }
 
   imagetype = 1; /* BIN file by default */
@@ -274,13 +282,13 @@ char *gen_loadimage(const char *filename)
       int rom_has_sega =
           (!memcmp(rom_sega, "SEGA", 4) || !memcmp(rom_sega, "ESAG", 4));
       if (hdr_has_sega && !rom_has_sega) {
-        uint8 *trim = malloc(cpu68k_romlen - 512 + 16);
+        uint8 *trim = (uint8 *)malloc(cpu68k_romlen - 512 + 16);
         if (trim == nullptr) {
           free(cpu68k_rom);
           cpu68k_rom = nullptr;
           cpu68k_romlen = 0;
           gen_freerom = 0;
-          return ("Out of memory!");
+          return ((char *)"Out of memory!");
         }
         memcpy(trim, cpu68k_rom + 512, cpu68k_romlen - 512);
         memset(trim + (cpu68k_romlen - 512), 0, 16);
@@ -306,29 +314,29 @@ char *gen_loadimage(const char *filename)
       cpu68k_rom = nullptr;
       cpu68k_romlen = 0;
       gen_freerom = 0;
-      return ("Image is corrupt.");
+      return ((char *)"Image is corrupt.");
     }
 
-    if ((new = malloc(cpu68k_romlen - 512)) == nullptr) {
+    if ((newrom = (uint8 *)malloc(cpu68k_romlen - 512)) == nullptr) {
       free(cpu68k_rom);
       cpu68k_rom = nullptr;
       cpu68k_romlen = 0;
       gen_freerom = 0;
-      return ("Out of memory!");
+      return ((char *)"Out of memory!");
     }
 
     for (i = 0; i < blocks; i++) {
       for (x = 0; x < 8192; x++) {
-        new[i * 16384 + x * 2 + 0] = cpu68k_rom[512 + i * 16384 + 8192 + x];
-        new[i * 16384 + x * 2 + 1] = cpu68k_rom[512 + i * 16384 + x];
+        newrom[i * 16384 + x * 2 + 0] = cpu68k_rom[512 + i * 16384 + 8192 + x];
+        newrom[i * 16384 + x * 2 + 1] = cpu68k_rom[512 + i * 16384 + x];
       }
     }
     free(cpu68k_rom);
-    cpu68k_rom = new;
+    cpu68k_rom = newrom;
     cpu68k_romlen -= 512;
     break;
   default:
-    return ("Unknown image type");
+    return ((char *)"Unknown image type");
     break;
   }
 
