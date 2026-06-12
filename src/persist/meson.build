@@ -3,7 +3,7 @@
 
 persist_sources = files(
   'state.cpp',
-  'avi.c',
+  'avi.cpp',
   'patch.cpp'
 )
 

@@ -1,19 +1,21 @@
 #include <sys/types.h>
 #include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cerrno>
+#include <cstring>
 
+extern "C" {
 #include "generator.h"
 
 #include "vdp.h"
 #include "ui.h"
 #include "dib.h"
 #include "avi.h"
+}
 
 #ifdef JPEG
-#include "jpeglib.h"
+#include "jpeglib.h" /* self-guarded for C++ */
 #endif
 
 /* From vfw.h */
@@ -100,7 +102,7 @@ t_avi *avi_open(char *filename, t_aviinfo *info, int jpeg)
   t_bmih *diblittle;
 
   memset(&h, 0, sizeof(t_avi_header));
-  if ((avi = malloc(sizeof(t_avi))) == nullptr)
+  if ((avi = (t_avi *)malloc(sizeof(t_avi))) == nullptr)
     return nullptr;
   memset(avi, 0, sizeof(t_avi));
   avi->fd = fopen(filename, "wb");
