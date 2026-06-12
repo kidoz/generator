@@ -1,16 +1,18 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Headless Backend - Run emulator without UI for testing/benchmarking */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <getopt.h>
-#include <time.h>
+#include <ctime>
 
+extern "C" {
 #include "gen_context.h"
 #include "gen_core.h"
 #include "gen_ui_callbacks.h"
 #include "generator.h"
+}
 
 /* Version info */
 #ifndef VERSION
@@ -295,8 +297,10 @@ int main(int argc, char *argv[])
  * These are minimal implementations for headless mode.
  */
 
+extern "C" {
 #include "ui.h"
-#include <stdarg.h>
+}
+#include <cstdarg>
 
 int ui_init(int argc, char *argv[])
 {

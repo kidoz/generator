@@ -2,8 +2,8 @@
 # Run emulator without UI for testing/benchmarking
 
 headless_sources = files(
-  'main_headless.c',
-  'soundp_null.c'
+  'main_headless.cpp',
+  'soundp_null.cpp'
 )
 
 # Common sources for headless - from various subsystems
