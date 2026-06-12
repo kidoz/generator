@@ -18,9 +18,9 @@ enum class LogLevel {
     Debug3 = 7
 };
 
-class Logger {
+class ILogger {
 public:
-    virtual ~Logger() = default;
+    virtual ~ILogger() = default;
 
     /*
      * Output a log message at the specified level.

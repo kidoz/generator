@@ -7,9 +7,9 @@
 
 namespace generator {
 
-EmulatorCore::EmulatorCore(std::unique_ptr<AudioBackend> audio,
-                           std::unique_ptr<VideoBackend> video,
-                           std::shared_ptr<Logger> logger)
+EmulatorCore::EmulatorCore(std::unique_ptr<IAudioBackend> audio,
+                           std::unique_ptr<IVideoBackend> video,
+                           std::shared_ptr<ILogger> logger)
     : m_ctx(gen_context_create()),
       m_audio(std::move(audio)),
       m_video(std::move(video)),
