@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Audiophile-quality sound system with oversampling, float processing, and dithering */
 
-#include <stdlib.h>
-#include <string.h>
-#include <math.h>
-#include <stdint.h>
+#include <cstdlib>
+#include <cstring>
+#include <cmath>
+#include <cstdint>
 
+extern "C" {
 #include "generator.h"
 #include "gensound.h"
 #include "gensoundp.h"
@@ -21,6 +22,7 @@
 #include "support.h"
 #include "fm.h"
 #endif
+}
 
 /*** variables externed ***/
 
@@ -238,8 +240,8 @@ int sound_init(void)
     if (needed > sound_oversample_buf_size) {
       free(sound_oversample_buf[0]);
       free(sound_oversample_buf[1]);
-      sound_oversample_buf[0] = malloc(needed * sizeof(int16_t));
-      sound_oversample_buf[1] = malloc(needed * sizeof(int16_t));
+      sound_oversample_buf[0] = (int16_t *)malloc(needed * sizeof(int16_t));
+      sound_oversample_buf[1] = (int16_t *)malloc(needed * sizeof(int16_t));
       if (!sound_oversample_buf[0] || !sound_oversample_buf[1]) {
         LOG_CRITICAL("Failed to allocate oversampling buffers");
         return 1;
@@ -280,7 +282,7 @@ int sound_init(void)
   if (sound_logdata)
     free(sound_logdata);
   sound_logdata_size = 8192;
-  sound_logdata = malloc(sound_logdata_size);
+  sound_logdata = (uint8 *)malloc(sound_logdata_size);
   if (!sound_logdata)
     ui_err("out of memory");
 
@@ -758,7 +760,7 @@ static void sound_writetolog(unsigned char c)
   if (sound_logdata_p >= sound_logdata_size) {
     LOG_VERBOSE("sound log buffer limit increased");
     sound_logdata_size += 8192;
-    sound_logdata = realloc(sound_logdata, sound_logdata_size);
+    sound_logdata = (uint8 *)realloc(sound_logdata, sound_logdata_size);
     if (!sound_logdata)
       ui_err("out of memory");
   }
