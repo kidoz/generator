@@ -2,6 +2,7 @@
 #include "emulator_thread.hpp"
 #include "generator_app.hpp"
 #include "main_window.hpp"
+#include "ui_bridge.hpp"
 
 #include <gdkmm/memorytexture.h>
 #include <glibmm/bytes.h>
@@ -57,7 +58,7 @@ bool EmulatorView::on_tick(const Glib::RefPtr<Gdk::FrameClock>& /* frame_clock *
 }
 
 void EmulatorView::update_texture() {
-    if (!g_screen0 || !g_screen1 || !g_ctx) return;
+    if (!g_screen0 || !g_screen1 || !g_emulator_core || !g_emulator_core->get_context()) return;
 
     unsigned int base_width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
     unsigned int base_height = gen_ctx_vdp_vislines();

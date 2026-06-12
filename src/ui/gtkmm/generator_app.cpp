@@ -1,6 +1,7 @@
 #include "generator_app.hpp"
 #include "main_window.hpp"
 
+#include "ui_bridge.hpp"
 #include <iostream>
 
 extern "C" {
@@ -26,7 +27,12 @@ void GeneratorApp::on_open(const Gio::Application::type_vec_files& files, const 
         // Stop the emulation thread to prevent race conditions during reset
         m_emu_thread.stop();
         // Let the core handle loading the ROM
-        gen_loadimage(rom_path.c_str());
+        if (g_emulator_core) {
+            auto res = g_emulator_core->load_rom(rom_path);
+            if (!res) {
+                std::cerr << "Failed to load ROM: " << res.error() << std::endl;
+            }
+        }
         m_emu_thread.start();
     }
 }
@@ -113,10 +119,13 @@ void GeneratorApp::on_action_open_rom() {
                 std::string path = file->get_path();
                 std::cout << "Loading ROM: " << path << std::endl;
                 m_emu_thread.stop();
-                if (char* err = gen_loadimage(path.c_str())) {
-                    std::cerr << "Failed to load ROM: " << err << std::endl;
-                    m_emu_thread.start();
-                    return;
+                if (g_emulator_core) {
+                    auto res = g_emulator_core->load_rom(path);
+                    if (!res) {
+                        std::cerr << "Failed to load ROM: " << res.error() << std::endl;
+                        m_emu_thread.start();
+                        return;
+                    }
                 }
                 m_emu_thread.start();
                 m_emu_thread.set_emulation_running(true);

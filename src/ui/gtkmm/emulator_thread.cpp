@@ -1,4 +1,5 @@
 #include "emulator_thread.hpp"
+#include "ui_bridge.hpp"
 
 #include <glibmm/main.h>
 
@@ -75,7 +76,7 @@ void EmulatorThread::thread_loop() {
         m_frame_requested = false;
         lock.unlock();
         
-        if (m_emulation_running.load() && g_ctx != nullptr) {
+        if (m_emulation_running.load() && g_emulator_core && g_emulator_core->get_context() != nullptr) {
             now = g_get_monotonic_time();
             elapsed = now - last_frame_time;
             
@@ -98,7 +99,7 @@ void EmulatorThread::thread_loop() {
             if (need_frame) {
                 frame_duration_us = gen_ctx_vdp_pal() ? 20000 : 16667;
                 
-                gen_core_run_frame(g_ctx);
+                g_emulator_core->run_frame();
                 last_frame_time = now;
                 
                 render_complete.store(1);
