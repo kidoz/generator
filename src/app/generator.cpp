@@ -108,30 +108,6 @@ int main(int argc, char *argv[])
   if ((retval = ui_init(argc, argv)))
     return retval;
 
-  /* initialise 68k memory system */
-  if ((retval = mem68k_init()))
-    ui_err("Failed to initialise mem68k module (%d)", retval);
-
-  /* initialise z80 memory system */
-  if ((retval = memz80_init()))
-    ui_err("Failed to initialise memz80 module (%d)", retval);
-
-  /* initialise vdp system */
-  if ((retval = vdp_init()))
-    ui_err("Failed to initialise vdp module (%d)", retval);
-
-  /* initialise cpu system */
-  if ((retval = cpu68k_init()))
-    ui_err("Failed to initialise cpu68k module (%d)", retval);
-
-  /* initialise z80 cpu system */
-  if ((retval = cpuz80_init()))
-    ui_err("Failed to initialise cpuz80 module (%d)", retval);
-
-  /* initialise sound system */
-  if ((retval = sound_init()))
-    ui_err("Failed to initialise sound module (%d)", retval);
-
   /* Install signal handlers for graceful shutdown */
   signal(SIGINT, gen_sighandler);  /* Ctrl+C */
   signal(SIGTERM, gen_sighandler); /* kill command / systemd stop */

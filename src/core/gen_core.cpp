@@ -9,6 +9,7 @@ extern "C" {
 #include "gen_core.h"
 
 #include "generator.h"
+#include "log.h"
 #include "cpu68k.h"
 #include "cpuz80.h"
 #include "vdp.h"
@@ -97,24 +98,29 @@ int gen_core_init(gen_context_t *ctx)
   /* Initialize subsystems
    * Note: These still use global state, will be migrated in later phases */
   if (mem68k_init() != 0) {
+    LOG_CRITICAL("gen_core_init: mem68k_init failed");
     return -1;
   }
 
   if (memz80_init() != 0) {
+    LOG_CRITICAL("gen_core_init: memz80_init failed");
     return -1;
   }
 
   if (vdp_init() != 0) {
+    LOG_CRITICAL("gen_core_init: vdp_init failed");
     return -1;
   }
 
   if (cpu68k_init() != 0) {
+    LOG_CRITICAL("gen_core_init: cpu68k_init failed");
     return -1;
   }
 
   cpuz80_init();
 
   if (sound_init() != 0) {
+    LOG_CRITICAL("gen_core_init: sound_init failed");
     return -1;
   }
 

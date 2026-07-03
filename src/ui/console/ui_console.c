@@ -292,8 +292,11 @@ int ui_init(int argc, char *argv[])
     return 1;
   }
   gen_ui_set_callbacks(console_ctx, &console_callbacks, nullptr);
-  if (gen_core_attach(console_ctx) != 0) {
-    fprintf(stderr, "Failed to attach emulator context\n");
+  if (gen_core_init(console_ctx) != 0) {
+    fprintf(stderr, "Failed to initialize emulator core\n");
+    gen_context_destroy(console_ctx);
+    console_ctx = nullptr;
+    return 1;
   }
 
   return 0;
