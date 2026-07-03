@@ -2,14 +2,12 @@
 /* Headless Backend - Run emulator without UI for testing/benchmarking */
 
 #include "emulator_core.hpp"
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #include <getopt.h>
 #include <ctime>
 #include <iostream>
-#include <iomanip>
-#include <vector>
 
 extern "C" {
 #include "ui.h"
@@ -238,5 +236,13 @@ int ui_loop(void) { return 0; }
 void ui_line(int line) { }
 void ui_endfield(void) { }
 void ui_final(void) { }
-[[noreturn]] void ui_err(const char *text, ...) { exit(1); }
+[[noreturn]] void ui_err(const char *text, ...)
+{
+    va_list args;
+    va_start(args, text);
+    vfprintf(stderr, text, args);
+    va_end(args);
+    fputc('\n', stderr);
+    exit(1);
+}
 void ui_musiclog(uint8_t *data, unsigned int length) { }
