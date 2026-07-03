@@ -91,9 +91,12 @@ void EmulatorCore::set_input(int player, unsigned int up, unsigned int down,
 
 void EmulatorCore::c_bridge_line(gen_context_t *ctx, int line) {
     auto* self = static_cast<EmulatorCore*>(ctx->ui_data);
-    // VRAM/CRAM data is not passed directly per line in the old C callback, 
-    // it was read globally or from ctx. For now we pass empty span or could pass ctx->vdp.vram.
-    // Assuming UI does its own plotting from ctx.
+    // Per-line pixel data is not yet threaded through this callback: the C core
+    // renders each scanline into VDP state, and backends read it back from the
+    // shared gen_context (video_backend implementations call vdp_renderline off
+    // the context themselves). The pixels span is reserved for a later migration
+    // phase that plumbs the rendered line buffer through the DI boundary; until
+    // then it is intentionally empty and backends must not rely on it.
     self->get_video_backend().render_line(line, {});
 }
 
