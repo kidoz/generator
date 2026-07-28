@@ -144,3 +144,7 @@ tidy:
 # Clean analysis reports
 clean-reports:
     rm -rf analysis-report
+
+# Check markdown docs for stale source-file references (renamed/removed files)
+check-doc-refs:
+    python3 scripts/check_doc_refs.py
