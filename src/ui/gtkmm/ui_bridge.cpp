@@ -101,6 +101,7 @@ class UiBridgeLogger : public ILogger {
 public:
     void log(LogLevel level, std::string_view message) override {
         switch (level) {
+        case LogLevel::None:
         case LogLevel::Debug3:
         case LogLevel::Debug2:
         case LogLevel::Debug1:
