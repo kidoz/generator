@@ -19,10 +19,8 @@ Generator TODO
 
 - [ ] Step code calls fetchword twice
 
-## GTK4 UI
+## GTK4 UI (now `src/ui/gtkmm/`)
 
-- [ ] Implement ROM save functionality (ui-gtk4.c:514)
-- [ ] Implement question dialog (ui-gtk4.c:1718)
 - [ ] Add preferences for controller configuration
 - [ ] Add fullscreen toggle keyboard shortcut
 
@@ -37,7 +35,7 @@ Generator TODO
 ## Build System
 
 - [ ] Add install target with proper paths
-- [ ] Add desktop file and icon for GTK4 version
+- [x] Add desktop file and icon for GTK4 version (src/data/org.generator.Emulator.desktop + icons)
 
 ## Documentation
 

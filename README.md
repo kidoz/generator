@@ -52,7 +52,7 @@ by the test/regression harness.
 
 Single C++23 backend: [kidoz/z80f](https://github.com/kidoz/z80f), pulled in
 automatically as a Meson subproject (`subprojects/z80f.wrap`) and wired
-through `src/cpu/z80/z80f/cpuz80-z80f.cpp`. No build option to choose;
+through `src/cpu/z80/z80f/cpuz80_z80f.cpp`. No build option to choose;
 nothing to install.
 
 ### Build Examples
@@ -128,7 +128,7 @@ meson setup build --buildtype=release -Dui-backend=gtk4
   2. `gen68k` generates 16 C files covering 64K instruction space
 - **Z80**: [z80f](https://github.com/kidoz/z80f) (C++23) via Meson subproject,
   bridged into the C codebase by a thin `extern "C"` adapter
-  (`src/cpu/z80/z80f/cpuz80-z80f.cpp`).
+  (`src/cpu/z80/z80f/cpuz80_z80f.cpp`).
 
 ### Project Structure
 

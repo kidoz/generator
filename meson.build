@@ -149,7 +149,7 @@ catch2_dep = dependency('catch2-with-main', version: '>=3.0.0',
   default_options: ['tests=false'])
 
 # Z80 core: kidoz/z80f, pulled in via subprojects/z80f.wrap.
-# Generator embeds it through src/cpu/z80/z80f/cpuz80-z80f.cpp.
+# Generator embeds it through src/cpu/z80/z80f/cpuz80_z80f.cpp.
 z80f_dep = dependency('z80f',
   fallback: ['z80f', 'z80f_dep'],
   default_options: ['tests=false', 'examples=false'])
