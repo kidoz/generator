@@ -79,7 +79,7 @@ private:
     static void c_bridge_log_normal(gen_context_t *ctx, const char *msg);
     static void c_bridge_log_critical(gen_context_t *ctx, const char *msg);
     static void c_bridge_log_request(gen_context_t *ctx, const char *msg);
-    static void c_bridge_fatal_error(gen_context_t *ctx, const char *msg);
+    [[noreturn]] static void c_bridge_fatal_error(gen_context_t *ctx, const char *msg);
     static void c_bridge_musiclog(gen_context_t *ctx, const uint8_t *data, unsigned int length);
 
     struct ContextDeleter {

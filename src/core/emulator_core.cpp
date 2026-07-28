@@ -2,6 +2,7 @@
 /* EmulatorCore - C++23 DI Wrapper Implementation */
 
 #include "emulator_core.hpp"
+#include <cstdlib>
 #include <stdexcept>
 #include <utility>
 
@@ -153,11 +154,19 @@ void EmulatorCore::c_bridge_log_request(gen_context_t *ctx, const char *msg) {
 }
 
 void EmulatorCore::c_bridge_fatal_error(gen_context_t *ctx, const char *msg) {
+    // Contract (gen_ui_callbacks.h): fatal_error "should not return".
+    // The other backends (noop, console) are [[noreturn]] and exit().
+    // We must NOT throw here: this function is invoked through the C callback
+    // ABI, so a C++ exception would unwind through C frames (undefined
+    // behavior). On the GTK emulator thread an uncaught exception would call
+    // std::terminate -> abort with no UI feedback. Match the other backends
+    // instead: log at Critical, then terminate immediately via quick_exit
+    // (avoids running atexit/DTOR machinery that could re-enter the C core).
     auto* self = static_cast<EmulatorCore*>(ctx->ui_data);
     if (self && self->m_logger) {
         self->get_logger().log(LogLevel::Critical, msg ? msg : "Fatal error");
     }
-    throw std::runtime_error(msg ? msg : "Fatal emulator error");
+    std::quick_exit(EXIT_FAILURE);
 }
 
 void EmulatorCore::c_bridge_musiclog(gen_context_t *ctx, const uint8_t *data, unsigned int length) {
