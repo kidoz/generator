@@ -40,3 +40,24 @@ test('z80f_core_smoke', test_z80f_core,
   timeout: 30,
   suite: 'catch2'
 )
+
+# SN76496 PSG characterization tests.
+# sn76496.c is compiled directly into the test (mirroring how
+# src/persist/test/test_state.c pulls in state.cpp); the only external symbol
+# it references (state_transfer32) is stubbed in the test source, keeping the
+# link self-contained without dragging in the full audio/core globals.
+sn76496_inc = include_directories('../include/generator', '../src/audio/sn76496')
+
+test_sn76496 = executable('test_sn76496',
+  'test_sn76496.cpp',
+  '../src/audio/sn76496/sn76496.c',
+  include_directories: [sn76496_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sn76496_psg', test_sn76496,
+  timeout: 30,
+  suite: 'catch2'
+)
