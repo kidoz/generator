@@ -245,14 +245,14 @@ TEST_CASE("calc_eg SSG-EG inversion reflects output as MAX - volume",
 }
 
 // ---------------------------------------------------------------------------
-// CALC_FCSLOT: phase increment (GEMS-PIN — TD-019 will change this)
+// CALC_FCSLOT: phase increment (TD-019 — 17-bit detune overflow mask applied)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("CALC_FCSLOT sets Incr from detune+multiple (unmasked)",
-          "[ym2612][eg][gems-pin]")
+TEST_CASE("CALC_FCSLOT sets Incr from masked detune+multiple", "[ym2612][eg]")
 {
-  // GEMS-PIN: TD-019 adds a 17-bit overflow mask (fc &= 0x1ffff) before the
-  // multiply. This test pins the CURRENT unmasked arithmetic.
+  // TD-019 applied: the detune addition is masked to 17 bits before the
+  // multiply. For non-overflowing inputs the result is unchanged from the
+  // previous unmasked form.
   // DT is indexed by kc (the key code), which in the real chip spans 0..127;
   // size the local table accordingly.
   INT32 dt_table[128] = {0};
@@ -278,14 +278,46 @@ TEST_CASE("CALC_FCSLOT sets Incr from detune+multiple (unmasked)",
 
   CALC_FCSLOT(&s, fc, kc);
 
-  // Incr = ((fc + DT[kc]) * mul) >> 1 = ((0x1234 + 300) * 2) >> 1.
-  // GEMS-PIN: current form has no fc mask.
-  const int expected_incr =
-      ((fc + dt_table[kc]) * static_cast<int>(s.mul)) >> 1;
+  // fc + DT[kc] = 0x1234 + 300 = 0x1360 (< 0x1ffff, no truncation).
+  // Incr = (0x1360 * 2) >> 1 = 0x1360.
+  const int masked_fc = (fc + dt_table[kc]) & 0x1ffff;
+  const int expected_incr = (masked_fc * static_cast<int>(s.mul)) >> 1;
   REQUIRE(static_cast<int>(s.Incr) == expected_incr);
   // ksr changed (0 -> 1), so the rate-recalc branch must have run.
   REQUIRE(s.ksr == 1);
   REQUIRE(s.delta_ar == rates[1]);
+}
+
+TEST_CASE("CALC_FCSLOT masks detune overflow to 17 bits (TD-019)",
+          "[ym2612][eg][gems-fix]")
+{
+  // The regression TD-019 fixes: when fc + DT[kc] exceeds the 17-bit FNUM
+  // range, the old unmasked code would carry the overflow into the multiply,
+  // producing a wildly wrong phase increment. The mask truncates it.
+  INT32 dt_table[128] = {0};
+  dt_table[5] = 0x8000;  // large detune at kc=5
+  FM_SLOT s{};
+  s.DT = dt_table;
+  s.mul = 1;
+  s.KSR = 0;
+  s.ksr = -1;  // any value != 5 to exercise the rate branch
+  s.ARval = 0;
+  static UINT32 rates[64] = {0};
+  s.AR = s.DR = s.SR = s.RR = rates;
+
+  const int fc = 0x18000;  // fc + DT = 0x18000 + 0x8000 = 0x20000 (> 0x1ffff)
+  const int kc = 5;
+
+  CALC_FCSLOT(&s, fc, kc);
+
+  // Masked: 0x20000 & 0x1ffff = 0 (bit 17 is cleared by the 17-bit mask).
+  // Incr = (0 * 1) >> 1 = 0.
+  // Unmasked (pre-TD-019): (0x20000 * 1) >> 1 = 0x10000 — wrong.
+  const int masked = (fc + dt_table[kc]) & 0x1ffff;
+  REQUIRE(masked == 0);
+  REQUIRE(static_cast<int>(s.Incr) ==
+          ((masked * static_cast<int>(s.mul)) >> 1));
+  REQUIRE(static_cast<int>(s.Incr) == 0);
 }
 
 TEST_CASE("CALC_FCSLOT skips rate recalc when ksr unchanged", "[ym2612][eg]")

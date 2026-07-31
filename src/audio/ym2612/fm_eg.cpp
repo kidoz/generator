@@ -137,8 +137,14 @@ void CALC_FCSLOT(FM_SLOT *SLOT, int fc, int kc)
 {
   int ksr;
 
-  /* (frequency) phase increment counter */
-  SLOT->Incr = ((fc + SLOT->DT[kc]) * SLOT->mul) >> 1;
+  /* (frequency) phase increment counter.
+   * The detune addition can overflow the 17-bit FNUM range; mask it back to
+   * 17 bits before the multiply, matching the real YM2612/Genesis Plus GX
+   * behavior. Fixes incorrect sound in GEMS-driver games (Comix Zone,
+   * Flashback, etc.) — TECH_DEBT TD-019. */
+  fc += SLOT->DT[kc];
+  fc &= 0x1ffff; /* 17-bit phase overflow */
+  SLOT->Incr = (fc * SLOT->mul) >> 1;
 
   ksr = kc >> SLOT->KSR;
   if (SLOT->ksr != ksr) {
