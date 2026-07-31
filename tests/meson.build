@@ -61,3 +61,24 @@ test('sn76496_psg', test_sn76496,
   timeout: 30,
   suite: 'catch2'
 )
+
+# YM2612 envelope-core characterization tests.
+# fm_eg.cpp (extracted from fm.c) is compiled directly into the test, like
+# sn76496.c above, so the test links only the envelope math — not fm.c's full
+# chip/global state. The [gems-pin] cases pin current (incorrect) behavior so
+# the deferred TD-019/020/021 fixes land as visible diffs.
+fm_inc = include_directories('../src/audio/ym2612', '../include/generator')
+
+test_fm_eg = executable('test_fm_eg',
+  'test_fm_eg.cpp',
+  '../src/audio/ym2612/fm_eg.cpp',
+  include_directories: [fm_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('fm_eg_envelope', test_fm_eg,
+  timeout: 30,
+  suite: 'catch2'
+)

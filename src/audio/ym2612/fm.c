@@ -107,6 +107,7 @@ DELTAN register = 0) !!!!!!
 #include "support.h"
 #include "fm.h"
 #include "genstate.h"
+#include "fm_eg.hpp" /* FM_SLOT struct + calc_eg/CALC_FCSLOT (extracted, tested) */
 #define _STATE_H
 
 #ifndef PI
@@ -273,42 +274,8 @@ static FILE *sample[1];
 
 
 /* ---------- OPN / OPM one channel  ---------- */
-typedef struct fm_slot {
-  INT32 *DT;        /* detune          :DT_TABLE[DT]		*/
-  int DT2;          /* multiple,Detune2:(DT2<<4)|ML for OPM	*/
-  UINT32 TL;        /* total level     :TL << 3				*/
-  UINT8 KSR;        /* key scale rate  :3-KSR				*/
-  UINT8 ARval;      /* current AR							*/
-  const UINT32 *AR; /* attack rate     :&AR_TABLE[AR<<1]	*/
-  const UINT32 *DR; /* decay rate      :&DR_TABLE[DR<<1]	*/
-  const UINT32 *SR; /* sustain rate    :&DR_TABLE[SR<<1]	*/
-  const UINT32 *RR; /* release rate    :&DR_TABLE[RR<<2+2]	*/
-  UINT8 SEG;        /* SSG EG type     :SSGEG				*/
-  UINT8 ssg_inv;    /* SSG-EG output inversion flag        */
-  UINT8 ksr;        /* key scale rate  :kcode>>(3-KSR)		*/
-  UINT32 mul;       /* multiple        :ML_TABLE[ML]		*/
-
-  /* Phase Generator */
-  UINT32 Cnt;  /* frequency count :					*/
-  UINT32 Incr; /* frequency step  :					*/
-
-  /* Envelope Generator */
-  UINT8 state;  /* phase type							*/
-  INT32 volume; /* envelope counter						*/
-  UINT32 sl;    /* sustain level   :SL_TABLE[SL]		*/
-
-  UINT32 delta_ar; /* envelope step for Attack				*/
-  UINT32 delta_dr; /* envelope step for Decay				*/
-  UINT32 delta_sr; /* envelope step for Sustain			*/
-  UINT32 delta_rr; /* envelope step for Release			*/
-  UINT32 TLL;      /* adjusted TotalLevel					*/
-
-  UINT32 key; /* 0=last key was KEY OFF, 1=KEY ON		*/
-
-  /* LFO */
-  UINT32 amon; /* AMS enable flag						*/
-  UINT32 ams;  /* AMS depth level of this SLOT			*/
-} FM_SLOT;
+/* FM_SLOT is defined in fm_eg.hpp (shared with the extracted envelope core
+ * and unit tests). */
 
 typedef struct fm_chan {
   FM_SLOT SLOT[4];
@@ -893,123 +860,9 @@ INLINE signed int op_calc1(UINT32 phase, unsigned int env, signed int pm)
  *   1111: /_____ (attack then hold low)
  */
 
-INLINE unsigned int calc_eg(FM_SLOT *SLOT)
-{
-  unsigned int out;
-
-  switch (SLOT->state) {
-  case EG_ATT: /* attack phase */
-  {
-    INT32 step = SLOT->volume;
-
-    SLOT->volume -= SLOT->delta_ar;
-    step = (step >> ENV_SH) -
-           (((UINT32)SLOT->volume) >>
-            ENV_SH); /* number of levels passed since last time */
-    if (step > 0) {
-      INT32 tmp_volume =
-          SLOT->volume + (step << ENV_SH); /* adjust by number of levels */
-      do {
-        tmp_volume =
-            tmp_volume - (1 << ENV_SH) - ((tmp_volume >> 4) & ~ENV_MASK);
-        if (tmp_volume <= MIN_ATT_INDEX)
-          break;
-        step--;
-      } while (step);
-      SLOT->volume = tmp_volume;
-    }
-
-    if (SLOT->volume <= MIN_ATT_INDEX) {
-      if (SLOT->volume < 0)
-        SLOT->volume = 0;
-      SLOT->state = EG_DEC;
-    }
-  } break;
-
-  case EG_DEC: /* decay phase */
-    if ((SLOT->volume += SLOT->delta_dr) >= SLOT->sl) {
-      SLOT->volume = SLOT->sl;
-      SLOT->state = EG_SUS;
-    }
-    break;
-
-  case EG_SUS: /* sustain phase */
-#if FM_SEG_SUPPORT
-    /* SSG-EG: check for envelope completion during sustain */
-    if (SLOT->SEG & SSG_ENABLE) {
-      if ((SLOT->volume += SLOT->delta_sr) >= MAX_ATT_INDEX) {
-        /* Envelope reached minimum output (max attenuation) */
-        if (SLOT->SEG & SSG_HOLD) {
-          /* Hold mode */
-          if (SLOT->SEG & SSG_ALTERNATE) {
-            /* Hold with alternate: hold at opposite polarity */
-            SLOT->ssg_inv ^= 1;
-          }
-          /* Hold at current level */
-          SLOT->volume = MAX_ATT_INDEX;
-          SLOT->state = EG_OFF;
-        } else {
-          /* Loop mode */
-          if (SLOT->SEG & SSG_ALTERNATE) {
-            /* Alternate: invert and continue from max */
-            SLOT->ssg_inv ^= 1;
-          }
-          /* Restart from max volume (min attenuation) */
-          SLOT->volume = MIN_ATT_INDEX;
-          SLOT->state = EG_ATT;
-        }
-      }
-    } else
-#endif
-    {
-      /* Normal sustain behavior */
-      if ((SLOT->volume += SLOT->delta_sr) > MAX_ATT_INDEX) {
-        SLOT->volume = MAX_ATT_INDEX;
-        SLOT->state = EG_OFF;
-      }
-    }
-    break;
-
-  case EG_REL: /* release phase */
-#if FM_SEG_SUPPORT
-    /* SSG-EG during release: handle specially */
-    if (SLOT->SEG & SSG_ENABLE) {
-      /* When SSG-EG is active, release may need special handling.
-       * If envelope was inverted, we need to consider the inversion
-       * when transitioning to release. The release phase itself
-       * runs normally but starts from the current (possibly inverted) position. */
-      if ((SLOT->volume += SLOT->delta_rr) > MAX_ATT_INDEX) {
-        SLOT->volume = MAX_ATT_INDEX;
-        SLOT->state = EG_OFF;
-      }
-    } else
-#endif
-    {
-      if ((SLOT->volume += SLOT->delta_rr) > MAX_ATT_INDEX) {
-        SLOT->volume = MAX_ATT_INDEX;
-        SLOT->state = EG_OFF;
-      }
-    }
-    break;
-  }
-
-  /* Calculate output with SSG-EG inversion */
-#if FM_SEG_SUPPORT
-  if ((SLOT->SEG & SSG_ENABLE) && SLOT->ssg_inv && (SLOT->state != EG_OFF)) {
-    /* SSG-EG inversion: output = MAX - volume
-     * This creates the "upward" envelope shapes */
-    out = SLOT->TLL +
-          ((MAX_ATT_INDEX - (unsigned int)SLOT->volume) >> ENV_SH);
-  } else
-#endif
-  {
-    out = SLOT->TLL + (((unsigned int)SLOT->volume) >> ENV_SH);
-  }
-
-  if (SLOT->ams)
-    out += (SLOT->ams * lfo_amd / LFO_RATE);
-  return out;
-}
+/* calc_eg() is implemented in fm_eg.cpp (extracted for unit testing).
+ * It takes lfo_amd as an explicit parameter; callers below pass the file-scope
+ * global of the same name. */
 
 
 /* ---------- calculate one of channel ---------- */
@@ -1021,10 +874,10 @@ INLINE void FM_CALC_CH(FM_CH *CH)
   pg_in2 = pg_in3 = pg_in4 = 0;
 
   /* Envelope Generator */
-  eg_out1 = calc_eg(&CH->SLOT[SLOT1]);
-  eg_out2 = calc_eg(&CH->SLOT[SLOT2]);
-  eg_out3 = calc_eg(&CH->SLOT[SLOT3]);
-  eg_out4 = calc_eg(&CH->SLOT[SLOT4]);
+  eg_out1 = calc_eg(&CH->SLOT[SLOT1], lfo_amd);
+  eg_out2 = calc_eg(&CH->SLOT[SLOT2], lfo_amd);
+  eg_out3 = calc_eg(&CH->SLOT[SLOT3], lfo_amd);
+  eg_out4 = calc_eg(&CH->SLOT[SLOT4], lfo_amd);
 
   /* Connection */
   {
@@ -1076,26 +929,7 @@ INLINE void FM_CALC_CH(FM_CH *CH)
 }
 
 /* ---------- update phase increment counter of operator ---------- */
-INLINE void CALC_FCSLOT(FM_SLOT *SLOT, int fc, int kc)
-{
-  int ksr;
-
-  /* (frequency) phase increment counter */
-  SLOT->Incr = ((fc + SLOT->DT[kc]) * SLOT->mul) >> 1;
-
-  ksr = kc >> SLOT->KSR;
-  if (SLOT->ksr != ksr) {
-    SLOT->ksr = ksr;
-    /* calculate envelope generator rates */
-    if ((SLOT->ARval + ksr) < 32 + 62)
-      SLOT->delta_ar = SLOT->AR[ksr];
-    else
-      SLOT->delta_ar = MAX_ATT_INDEX + 1;
-    SLOT->delta_dr = SLOT->DR[ksr];
-    SLOT->delta_sr = SLOT->SR[ksr];
-    SLOT->delta_rr = SLOT->RR[ksr];
-  }
-}
+/* CALC_FCSLOT() is implemented in fm_eg.cpp (extracted for unit testing). */
 
 /* ---------- update phase increments counters  ---------- */
 INLINE void OPN_CALC_FCOUNT(FM_CH *CH)
