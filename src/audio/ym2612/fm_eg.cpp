@@ -162,3 +162,28 @@ void CALC_FCSLOT(FM_SLOT *SLOT, int fc, int kc)
     SLOT->delta_rr = SLOT->RR[ksr];
   }
 }
+
+/* fm_slot_keyoff - extracted from fm.c's FM_KEYOFF (behavior-neutral).
+ * Lifted verbatim so the SSG-EG key-off path is unit-testable. fm.c's
+ * FM_KEYOFF is now a thin wrapper around this. */
+void fm_slot_keyoff(FM_SLOT *SLOT)
+{
+  if (SLOT->key) {
+    SLOT->key = 0;
+#if FM_SEG_SUPPORT
+    /* SSG-EG: handle inversion on key-off.
+     * If output was inverted, we need to de-invert the volume
+     * so release phase starts from the actual output level. */
+    if ((SLOT->SEG & SSG_ENABLE) && SLOT->ssg_inv) {
+      /* De-invert: convert inverted volume to actual output volume */
+      SLOT->volume = MAX_ATT_INDEX - SLOT->volume;
+      if (SLOT->volume < 0)
+        SLOT->volume = 0;
+      SLOT->ssg_inv = 0;
+    }
+#endif
+    /* phase -> Release */
+    if (SLOT->state > EG_REL)
+      SLOT->state = EG_REL;
+  }
+}

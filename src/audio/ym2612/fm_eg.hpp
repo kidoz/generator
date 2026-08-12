@@ -133,6 +133,12 @@ unsigned int calc_eg(FM_SLOT *SLOT, UINT32 lfo_amd);
  * (kc). Pure function of (SLOT, fc, kc). */
 void CALC_FCSLOT(FM_SLOT *SLOT, int fc, int kc);
 
+/* Key off a single operator: clears the key flag, de-inverts the SSG-EG
+ * envelope volume if applicable, and transitions to the release phase.
+ * Extracted from fm.c's FM_KEYOFF (which now calls this) so the SSG-EG
+ * key-off behavior is unit-testable. Operates purely on FM_SLOT fields. */
+void fm_slot_keyoff(FM_SLOT *SLOT);
+
 #ifdef __cplusplus
 }
 #endif

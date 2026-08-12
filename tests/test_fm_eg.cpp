@@ -282,8 +282,60 @@ TEST_CASE("calc_eg SSG-EG sustain completes at SSG_ATT_THRESHOLD, not MAX",
 }
 
 // ---------------------------------------------------------------------------
-// CALC_FCSLOT: phase increment (TD-019 — 17-bit detune overflow mask applied)
+// fm_slot_keyoff: extracted key-off (behavior pinned pre-TD-020 #5)
 // ---------------------------------------------------------------------------
+
+TEST_CASE("fm_slot_keyoff normal release transitions EG_SUS to EG_REL",
+          "[ym2612][eg]")
+{
+  FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(400));
+  s.key = 1;
+
+  fm_slot_keyoff(&s);
+
+  REQUIRE(s.key == 0);
+  REQUIRE(s.state == EG_REL);
+}
+
+TEST_CASE("fm_slot_keyoff is a no-op when key already off", "[ym2612][eg]")
+{
+  FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(400));
+  s.key = 0;
+
+  fm_slot_keyoff(&s);
+
+  REQUIRE(s.key == 0);
+  REQUIRE(s.state == EG_SUS);  // unchanged
+}
+
+TEST_CASE("fm_slot_keyoff does not regress from EG_OFF", "[ym2612][eg]")
+{
+  // state <= EG_REL must not be pushed back up to EG_REL.
+  FM_SLOT s = make_slot(EG_OFF, MAX_ATT_INDEX);
+  s.key = 1;
+
+  fm_slot_keyoff(&s);
+
+  REQUIRE(s.state == EG_OFF);
+}
+
+TEST_CASE("fm_slot_keyoff de-inverts SSG volume (pre-TD-020 #5, MAX_ATT_INDEX)",
+          "[ym2612][eg][gems-pin]")
+{
+  // GEMS-PIN: TD-020 #5 changes the de-invert constant to SSG_ATT_THRESHOLD.
+  FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(300));
+  s.key = 1;
+  s.SEG = SSG_ENABLE;
+  s.ssg_inv = 1;
+
+  fm_slot_keyoff(&s);
+
+  // Current behavior: de-invert around MAX_ATT_INDEX (1023).
+  REQUIRE(s.volume == static_cast<INT32>(MAX_ATT_INDEX - ENV_UNITS(300)));
+  REQUIRE(s.ssg_inv == 0);
+  REQUIRE(s.state == EG_REL);
+}
+
 
 TEST_CASE("CALC_FCSLOT sets Incr from masked detune+multiple", "[ym2612][eg]")
 {

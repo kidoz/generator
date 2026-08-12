@@ -662,25 +662,9 @@ INLINE void FM_KEYON(FM_CH *CH, int s)
 /* ----- key off of SLOT ----- */
 INLINE void FM_KEYOFF(FM_CH *CH, int s)
 {
-  FM_SLOT *SLOT = &CH->SLOT[s];
-  if (SLOT->key) {
-    SLOT->key = 0;
-#if FM_SEG_SUPPORT
-    /* SSG-EG: handle inversion on key-off.
-     * If output was inverted, we need to de-invert the volume
-     * so release phase starts from the actual output level. */
-    if ((SLOT->SEG & SSG_ENABLE) && SLOT->ssg_inv) {
-      /* De-invert: convert inverted volume to actual output volume */
-      SLOT->volume = MAX_ATT_INDEX - SLOT->volume;
-      if (SLOT->volume < 0)
-        SLOT->volume = 0;
-      SLOT->ssg_inv = 0;
-    }
-#endif
-    /* phase -> Release */
-    if (SLOT->state > EG_REL)
-      SLOT->state = EG_REL;
-  }
+  /* Behavior is implemented in fm_slot_keyoff() (fm_eg.cpp, extracted for
+   * unit testing). */
+  fm_slot_keyoff(&CH->SLOT[s]);
 }
 
 /* setup Algorithm connection */
