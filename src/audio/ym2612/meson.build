@@ -1,7 +1,7 @@
 # YM2612 FM Synthesizer Emulation
 
 ym2612_lib = static_library('ym2612',
-  sources: ['fm.c', 'fm_eg.cpp'],
+  sources: ['fm.c', 'fm_eg.cpp', 'fm_lfo.cpp'],
   include_directories: include_directories('../../../include/generator'),
   c_args: ['-fgnu89-inline']  # Use GNU89 inline semantics for compatibility
 )

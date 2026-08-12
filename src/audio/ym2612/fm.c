@@ -108,6 +108,7 @@ DELTAN register = 0) !!!!!!
 #include "fm.h"
 #include "genstate.h"
 #include "fm_eg.hpp" /* FM_SLOT struct + calc_eg/CALC_FCSLOT (extracted, tested) */
+#include "fm_lfo.hpp" /* opn_lfo_step (extracted, tested) */
 #define _STATE_H
 
 #ifndef PI
@@ -2362,8 +2363,8 @@ void YM2608UpdateOne(int num, INT16 **buffer, int length)
   for (i = 0; i < length; i++) {
     /* LFO */
     if (LFOIncr) {
-      lfo_amd = OPN_LFO_wave[(LFOCnt += LFOIncr) >> LFO_SH];
-      lfo_pmd = lfo_amd - (LFO_RATE / 2);
+      LFOCnt = opn_lfo_step(LFOCnt, LFOIncr, OPN_LFO_wave, 0, &lfo_amd,
+                            &lfo_pmd);
     }
 
     /* clear output acc. */
@@ -2860,8 +2861,8 @@ void YM2610UpdateOne(int num, INT16 **buffer, int length)
   for (i = 0; i < length; i++) {
     /* LFO */
     if (LFOIncr) {
-      lfo_amd = OPN_LFO_wave[(LFOCnt += LFOIncr) >> LFO_SH];
-      lfo_pmd = lfo_amd - (LFO_RATE / 2);
+      LFOCnt = opn_lfo_step(LFOCnt, LFOIncr, OPN_LFO_wave, 0, &lfo_amd,
+                            &lfo_pmd);
     }
 
     /* clear output acc. */
@@ -2993,8 +2994,8 @@ void YM2610BUpdateOne(int num, INT16 **buffer, int length)
   for (i = 0; i < length; i++) {
     /* LFO */
     if (LFOIncr) {
-      lfo_amd = OPN_LFO_wave[(LFOCnt += LFOIncr) >> LFO_SH];
-      lfo_pmd = lfo_amd - (LFO_RATE / 2);
+      LFOCnt = opn_lfo_step(LFOCnt, LFOIncr, OPN_LFO_wave, 0, &lfo_amd,
+                            &lfo_pmd);
     }
 
     /* clear output acc. */
@@ -3527,9 +3528,8 @@ void YM2612UpdateOne(int num, INT16 **buffer, int length)
      * The LFO AM waveform is inverted: LFO_RATE - wave gives correct direction
      * This fixes audio bugs in Spider-Man & Venom, California Games, etc. */
     if (LFOIncr) {
-      UINT32 wave = OPN_LFO_wave[(LFOCnt += LFOIncr) >> LFO_SH];
-      lfo_amd = LFO_RATE - wave;  /* Inverted AM waveform for correct direction */
-      lfo_pmd = wave - (LFO_RATE / 2);  /* PM uses original direction */
+      LFOCnt = opn_lfo_step(LFOCnt, LFOIncr, OPN_LFO_wave, 1, &lfo_amd,
+                            &lfo_pmd);
     }
 
     /* Update busy flag counter */

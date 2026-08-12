@@ -82,3 +82,21 @@ test('fm_eg_envelope', test_fm_eg,
   timeout: 30,
   suite: 'catch2'
 )
+
+# OPN/YM2612 LFO step characterization tests.
+# fm_lfo.cpp (extracted from fm.c's four duplicated LFO blocks) is compiled
+# directly into the test, like fm_eg.cpp above. The [gems-pin] case pins the
+# current (incorrect) PM-clock behavior so TD-021 lands as a visible diff.
+test_fm_lfo = executable('test_fm_lfo',
+  'test_fm_lfo.cpp',
+  '../src/audio/ym2612/fm_lfo.cpp',
+  include_directories: [fm_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('fm_lfo_step', test_fm_lfo,
+  timeout: 30,
+  suite: 'catch2'
+)
