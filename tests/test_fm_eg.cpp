@@ -198,17 +198,18 @@ TEST_CASE(
   REQUIRE(s.ssg_inv == 0);  // no ALTERNATE bit => no toggle
 }
 
-TEST_CASE("calc_eg SSG-EG hold clamps to MAX_ATT_INDEX and goes off",
-          "[ym2612][eg][gems-pin]")
+TEST_CASE("calc_eg SSG-EG hold clamps to SSG_ATT_THRESHOLD and goes off",
+          "[ym2612][eg][gems-fix]")
 {
-  // GEMS-PIN: TD-020 changes the threshold (512 vs MAX 1023).
+  // TD-020 applied: SSG-EG hold clamps at the half-resolution threshold (512),
+  // not MAX_ATT_INDEX (1023).
   FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(500));
   s.SEG = SSG_ENABLE | SSG_HOLD;  // hold mode
-  s.delta_sr = ENV_UNITS(600);
+  s.delta_sr = ENV_UNITS(600);    // 500 + 600 = 1100 >= 512 => completion fires
 
   (void)calc_eg(&s, 0);
 
-  REQUIRE(s.volume == MAX_ATT_INDEX);  // GEMS-PIN: should be SSG_ATT_THRESHOLD
+  REQUIRE(s.volume == SSG_ATT_THRESHOLD);  // = ENV_UNITS(512)
   REQUIRE(s.state == EG_OFF);
 }
 
@@ -227,10 +228,11 @@ TEST_CASE("calc_eg SSG-EG alternate toggles ssg_inv on loop",
   REQUIRE(s.state == EG_ATT);
 }
 
-TEST_CASE("calc_eg SSG-EG inversion reflects output as MAX - volume",
-          "[ym2612][eg][gems-pin]")
+TEST_CASE("calc_eg SSG-EG inversion reflects output around SSG_ATT_THRESHOLD",
+          "[ym2612][eg][gems-fix]")
 {
-  // GEMS-PIN: TD-020 uses SSG_ATT_THRESHOLD - volume, not MAX_ATT_INDEX.
+  // TD-020 applied: inversion is SSG_ATT_THRESHOLD - volume (half-resolution
+  // axis), not MAX_ATT_INDEX - volume.
   FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(400));  // held, no crossing
   s.delta_sr = 0;
   s.SEG = SSG_ENABLE;
@@ -239,9 +241,44 @@ TEST_CASE("calc_eg SSG-EG inversion reflects output as MAX - volume",
 
   const unsigned int out = calc_eg(&s, 0);
 
-  // Inverted output = (MAX_ATT_INDEX - volume) >> ENV_SH = (1023 - 400) = 623.
-  REQUIRE(out == static_cast<unsigned int>((MAX_ATT_INDEX - ENV_UNITS(400)) >>
-                                           ENV_SH));
+  // Inverted output = (SSG_ATT_THRESHOLD - volume) >> ENV_SH = (512 - 400) =
+  // 112.
+  REQUIRE(out == static_cast<unsigned int>(
+                     (SSG_ATT_THRESHOLD - ENV_UNITS(400)) >> ENV_SH));
+  REQUIRE(out == 112u);
+}
+
+TEST_CASE("calc_eg SSG-EG sustain completes at SSG_ATT_THRESHOLD, not MAX",
+          "[ym2612][eg][gems-fix]")
+{
+  // TD-020: SSG-EG sustain completion crosses at the half-resolution threshold
+  // (512), not MAX_ATT_INDEX (1023). A step that lands just below the
+  // threshold must NOT trigger completion; one just above must.
+  const UINT32 ssg_enable = SSG_ENABLE;
+
+  SECTION("below threshold: no completion")
+  {
+    FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(500));
+    s.SEG = ssg_enable;          // loop mode
+    s.delta_sr = ENV_UNITS(10);  // 500 + 10 = 510 < 512
+
+    (void)calc_eg(&s, 0);
+
+    REQUIRE(s.state == EG_SUS);  // no completion
+  }
+
+  SECTION("at/above threshold: completion fires")
+  {
+    FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(500));
+    s.SEG = ssg_enable;          // loop mode
+    s.delta_sr = ENV_UNITS(20);  // 500 + 20 = 520 >= 512
+
+    (void)calc_eg(&s, 0);
+
+    // Loop mode: state goes back to attack (volume-reset behavior is the
+    // still-open TD-020 #2, pinned separately above).
+    REQUIRE(s.state == EG_ATT);
+  }
 }
 
 // ---------------------------------------------------------------------------

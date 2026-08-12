@@ -74,6 +74,14 @@ extern "C" {
 #define SSG_HOLD 0x01 /* bit 0: hold at end of cycle */
 #endif
 
+/* SSG-EG operates at half the normal envelope resolution: its cycle completes
+ * at 512 (0x200) rather than the full 1024-step MAX_ATT_INDEX. This matches
+ * Genesis Plus GX (TD-020). Used for the SSG-EG completion comparison and the
+ * output-inversion axis in calc_eg(). */
+#ifndef SSG_ATT_THRESHOLD
+#define SSG_ATT_THRESHOLD (0x200 << ENV_SH) /* 512 in 16.16 fixed point */
+#endif
+
 /* ---- OPN/OPM one operator ----
  * Single source of truth: fm.c includes this header instead of defining its
  * own FM_SLOT, so the struct layout is shared between production and tests. */

@@ -56,18 +56,20 @@ unsigned int calc_eg(FM_SLOT *SLOT, UINT32 lfo_amd)
 
   case EG_SUS: /* sustain phase */
 #if FM_SEG_SUPPORT
-    /* SSG-EG: check for envelope completion during sustain */
+    /* SSG-EG: check for envelope completion during sustain.
+     * TD-020: SSG-EG cycles complete at SSG_ATT_THRESHOLD (512), not the full
+     * MAX_ATT_INDEX (1023) — the SSG envelope runs at half resolution. */
     if (SLOT->SEG & SSG_ENABLE) {
-      if ((SLOT->volume += SLOT->delta_sr) >= MAX_ATT_INDEX) {
-        /* Envelope reached minimum output (max attenuation) */
+      if ((SLOT->volume += SLOT->delta_sr) >= SSG_ATT_THRESHOLD) {
+        /* Envelope reached SSG-EG completion level */
         if (SLOT->SEG & SSG_HOLD) {
           /* Hold mode */
           if (SLOT->SEG & SSG_ALTERNATE) {
             /* Hold with alternate: hold at opposite polarity */
             SLOT->ssg_inv ^= 1;
           }
-          /* Hold at current level */
-          SLOT->volume = MAX_ATT_INDEX;
+          /* Hold at the SSG-EG threshold level */
+          SLOT->volume = SSG_ATT_THRESHOLD;
           SLOT->state = EG_OFF;
         } else {
           /* Loop mode */
@@ -115,12 +117,13 @@ unsigned int calc_eg(FM_SLOT *SLOT, UINT32 lfo_amd)
     break;
   }
 
-  /* Calculate output with SSG-EG inversion */
+  /* Calculate output with SSG-EG inversion.
+   * TD-020: inversion reflects around SSG_ATT_THRESHOLD (512), not
+   * MAX_ATT_INDEX (1023), matching the half-resolution SSG-EG envelope. */
 #if FM_SEG_SUPPORT
   if ((SLOT->SEG & SSG_ENABLE) && SLOT->ssg_inv && (SLOT->state != EG_OFF)) {
-    /* SSG-EG inversion: output = MAX - volume
-     * This creates the "upward" envelope shapes */
-    out = SLOT->TLL + ((MAX_ATT_INDEX - (unsigned int)SLOT->volume) >> ENV_SH);
+    out = SLOT->TLL +
+          ((SSG_ATT_THRESHOLD - (unsigned int)SLOT->volume) >> ENV_SH);
   } else
 #endif
   {
