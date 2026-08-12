@@ -74,11 +74,11 @@ TEST_CASE("opn_lfo_step inverted AM (YM2612) reflects around LFO_RATE",
   REQUIRE(amd == static_cast<UINT32>(LFO_RATE - 5));
 }
 
-TEST_CASE("opn_lfo_step PM currently shares the AM index (TD-021 open)",
-          "[ym2612][lfo][gems-pin]")
+TEST_CASE("opn_lfo_step PM uses 1/4-rate quantized index (TD-021 fixed)",
+          "[ym2612][lfo][gems-fix]")
 {
-  // GEMS-PIN: TD-021 quantizes the PM index to 1/4 rate (idx & ~3u). This
-  // test pins the CURRENT behavior where PM uses the same index as AM.
+  // TD-021 applied: PM index is quantized to 1/4 the AM rate (idx & ~3u).
+  // At idx=5 the PM sample comes from wave[5 & ~3u == 4], not wave[5].
   const auto wave = make_ramp();
   UINT32 amd = 0;
   INT32 pmd = 0;
@@ -86,8 +86,28 @@ TEST_CASE("opn_lfo_step PM currently shares the AM index (TD-021 open)",
 
   (void)opn_lfo_step(cnt, 1u, wave.data(), /*invert_am=*/0, &amd, &pmd);
 
-  // PM = wave[5] - LFO_RATE/2 = 5 - 32768.
-  REQUIRE(pmd == static_cast<INT32>(5 - LFO_RATE / 2));
-  // And AM/PM currently read the same waveform sample.
-  REQUIRE(amd == static_cast<UINT32>(pmd + LFO_RATE / 2));
+  // AM still uses the precise index: amd = wave[5] = 5.
+  REQUIRE(amd == 5u);
+  // PM uses the quantized index: pmd = wave[4] - LFO_RATE/2 = 4 - 32768.
+  REQUIRE(pmd == static_cast<INT32>(4 - LFO_RATE / 2));
+  // AM and PM now read DIFFERENT samples (the pre-fix code read the same).
+  REQUIRE(amd != static_cast<UINT32>(pmd + LFO_RATE / 2));
+}
+
+TEST_CASE("opn_lfo_step PM groups four AM samples per PM sample (TD-021)",
+          "[ym2612][lfo][gems-fix]")
+{
+  // The 4x clock division means indices 4,5,6,7 all map to PM index 4.
+  const auto wave = make_ramp();
+  for (UINT32 idx = 4; idx < 8; ++idx) {
+    UINT32 amd = 0;
+    INT32 pmd = 0;
+    const UINT32 cnt = lfo_cnt_for_index(idx);
+
+    (void)opn_lfo_step(cnt, 1u, wave.data(), /*invert_am=*/0, &amd, &pmd);
+
+    // AM tracks the precise index; PM is pinned to wave[4].
+    REQUIRE(amd == idx);
+    REQUIRE(pmd == static_cast<INT32>(4 - LFO_RATE / 2));
+  }
 }

@@ -23,9 +23,12 @@ UINT32 opn_lfo_step(UINT32 lfo_cnt, UINT32 lfo_incr, const INT32 *lfo_wave,
   const UINT32 wave_u = (UINT32)lfo_wave[idx];
 
   *out_amd = invert_am ? (LFO_RATE - wave_u) : wave_u;
-  /* TD-021 (open): PM should use a 4x-quantized index. Currently shares the
-   * AM index, which is the bug the follow-up commit fixes. */
-  *out_pmd = (INT32)lfo_wave[idx] - (LFO_RATE / 2);
+  /* TD-021: hardware steps the PM (vibrato) LFO at 1/4 the AM (tremolo) rate.
+   * Quantize the PM index by clearing the bottom 2 bits so four consecutive
+   * AM samples share one PM sample. Fixes vibrato accuracy in games using
+   * LFO PM (Spider-Man & Venom, California Games, etc.). */
+  const UINT32 pm_idx = idx & ~3u;
+  *out_pmd = (INT32)lfo_wave[pm_idx] - (LFO_RATE / 2);
 
   return lfo_cnt;
 }
