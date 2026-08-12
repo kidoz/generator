@@ -182,20 +182,23 @@ TEST_CASE("calc_eg LFO AM adds ams*lfo_amd/LFO_RATE to output", "[ym2612][eg]")
 // These tests pin the CURRENT behavior so the TD-020 fix is a visible diff.
 
 TEST_CASE(
-    "calc_eg SSG-EG sustain loop resets volume to MIN and toggles inversion",
-    "[ym2612][eg][gems-pin]")
+    "calc_eg SSG-EG sustain loop keeps volume and re-attacks (TD-020 #2/#4)",
+    "[ym2612][eg][gems-fix]")
 {
-  // GEMS-PIN: TD-020 changes the loop branch (no volume reset, threshold=512).
+  // TD-020 #2: loop does NOT reset volume to MIN_ATT_INDEX; attack decreases
+  // it naturally from the current level. #4: non-alternate loop resets Cnt.
   FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(500));
   s.SEG = SSG_ENABLE;           // SSG on, no HOLD, no ALTERNATE => loop mode
-  s.delta_sr = ENV_UNITS(600);  // crosses MAX_ATT_INDEX in one step
+  s.delta_sr = ENV_UNITS(600);  // 500 + 600 = 1100 >= 512 => completion fires
+  s.Cnt = 0x1234;               // nonzero; #4 should reset it
 
   (void)calc_eg(&s, 0);
 
-  // Current behavior: loop restarts from MIN_ATT_INDEX, back to attack.
-  REQUIRE(s.volume == MIN_ATT_INDEX);
+  // Volume kept at the post-step level (not reset to MIN_ATT_INDEX).
+  REQUIRE(s.volume == ENV_UNITS(1100));
   REQUIRE(s.state == EG_ATT);
-  REQUIRE(s.ssg_inv == 0);  // no ALTERNATE bit => no toggle
+  REQUIRE(s.ssg_inv == 0);  // no ALTERNATE => no toggle
+  REQUIRE(s.Cnt == 0);      // #4: phase reset on non-alternate loop
 }
 
 TEST_CASE("calc_eg SSG-EG hold clamps to SSG_ATT_THRESHOLD and goes off",
@@ -213,19 +216,24 @@ TEST_CASE("calc_eg SSG-EG hold clamps to SSG_ATT_THRESHOLD and goes off",
   REQUIRE(s.state == EG_OFF);
 }
 
-TEST_CASE("calc_eg SSG-EG alternate toggles ssg_inv on loop",
-          "[ym2612][eg][gems-pin]")
+TEST_CASE(
+    "calc_eg SSG-EG alternate toggles ssg_inv and keeps Cnt (TD-020 #2/#4)",
+    "[ym2612][eg][gems-fix]")
 {
-  // GEMS-PIN: TD-020 changes inversion math (SSG_ATT_THRESHOLD - volume).
+  // TD-020 #4: ALTERNATE loop toggles inversion but does NOT reset the phase
+  // generator (only non-alternate loops reset Cnt). #2: volume kept.
   FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(500));
   s.SEG = SSG_ENABLE | SSG_ALTERNATE;  // loop + alternate
   s.ssg_inv = 0;
-  s.delta_sr = ENV_UNITS(600);
+  s.delta_sr = ENV_UNITS(600);  // crosses threshold
+  s.Cnt = 0xABCD;               // nonzero; ALTERNATE must NOT reset it
 
   (void)calc_eg(&s, 0);
 
   REQUIRE(s.ssg_inv == 1);  // ALTERNATE toggles inversion each loop
   REQUIRE(s.state == EG_ATT);
+  REQUIRE(s.volume == ENV_UNITS(1100));  // #2: kept, not reset
+  REQUIRE(s.Cnt == 0xABCD);              // #4: ALTERNATE does not reset Cnt
 }
 
 TEST_CASE("calc_eg SSG-EG inversion reflects output around SSG_ATT_THRESHOLD",
@@ -275,10 +283,39 @@ TEST_CASE("calc_eg SSG-EG sustain completes at SSG_ATT_THRESHOLD, not MAX",
 
     (void)calc_eg(&s, 0);
 
-    // Loop mode: state goes back to attack (volume-reset behavior is the
-    // still-open TD-020 #2, pinned separately above).
+    // Loop mode: completion hands off to ssg_eg_complete -> EG_ATT.
     REQUIRE(s.state == EG_ATT);
   }
+}
+
+TEST_CASE(
+    "calc_eg SSG-EG decay also completes at SSG_ATT_THRESHOLD (TD-020 #6)",
+    "[ym2612][eg][gems-fix]")
+{
+  // TD-020 #6 (interpretation, not hardware-verified): when SSG-EG is enabled,
+  // the decay phase completes at SSG_ATT_THRESHOLD instead of the normal
+  // sustain level, handing off to the same SSG completion logic as sustain.
+  FM_SLOT s = make_slot(EG_DEC, ENV_UNITS(500));
+  s.SEG = SSG_ENABLE;          // SSG on, no HOLD/ALTERNATE => loop
+  s.sl = ENV_UNITS(900);       // normal decay target — must be ignored
+  s.delta_dr = ENV_UNITS(20);  // 500 + 20 = 520 >= 512 => SSG completion
+  s.Cnt = 0x55;
+
+  (void)calc_eg(&s, 0);
+
+  // Crossed the SSG threshold during decay -> looped back to attack (not
+  // clamped to sl / sent to EG_SUS). Phase reset (#4) since non-alternate.
+  REQUIRE(s.state == EG_ATT);
+  REQUIRE(s.volume == ENV_UNITS(520));  // #2: kept
+  REQUIRE(s.Cnt == 0);                  // #4: reset
+
+  // And the non-SSG decay path is unaffected: same inputs without SSG_ENABLE
+  // clamp to sl and enter sustain.
+  FM_SLOT n = make_slot(EG_DEC, ENV_UNITS(500));
+  n.sl = ENV_UNITS(900);
+  n.delta_dr = ENV_UNITS(20);
+  (void)calc_eg(&n, 0);
+  REQUIRE(n.state == EG_DEC);  // 520 < 900, still decaying
 }
 
 // ---------------------------------------------------------------------------
@@ -319,10 +356,12 @@ TEST_CASE("fm_slot_keyoff does not regress from EG_OFF", "[ym2612][eg]")
   REQUIRE(s.state == EG_OFF);
 }
 
-TEST_CASE("fm_slot_keyoff de-inverts SSG volume (pre-TD-020 #5, MAX_ATT_INDEX)",
-          "[ym2612][eg][gems-pin]")
+TEST_CASE(
+    "fm_slot_keyoff de-inverts SSG volume at SSG_ATT_THRESHOLD (TD-020 #5)",
+    "[ym2612][eg][gems-fix]")
 {
-  // GEMS-PIN: TD-020 #5 changes the de-invert constant to SSG_ATT_THRESHOLD.
+  // TD-020 #5: de-invert uses SSG_ATT_THRESHOLD (512), not MAX_ATT_INDEX.
+  // Interpretation per TECH_DEBT; not hardware-verified.
   FM_SLOT s = make_slot(EG_SUS, ENV_UNITS(300));
   s.key = 1;
   s.SEG = SSG_ENABLE;
@@ -330,10 +369,10 @@ TEST_CASE("fm_slot_keyoff de-inverts SSG volume (pre-TD-020 #5, MAX_ATT_INDEX)",
 
   fm_slot_keyoff(&s);
 
-  // Current behavior: de-invert around MAX_ATT_INDEX (1023).
-  REQUIRE(s.volume == static_cast<INT32>(MAX_ATT_INDEX - ENV_UNITS(300)));
+  // De-invert around SSG_ATT_THRESHOLD: 512 - 300 = 212.
+  REQUIRE(s.volume == static_cast<INT32>(SSG_ATT_THRESHOLD - ENV_UNITS(300)));
   REQUIRE(s.ssg_inv == 0);
-  REQUIRE(s.state == EG_REL);
+  REQUIRE(s.state == EG_REL);  // 212 < 512 => not forced off
 }
 
 

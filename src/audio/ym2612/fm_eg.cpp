@@ -14,6 +14,33 @@
 
 #include "fm_eg.hpp"
 
+/* TD-020 #2/#4: SSG-EG envelope completion, shared by the decay and sustain
+ * phases. Invoked when the envelope volume reaches SSG_ATT_THRESHOLD.
+ *   - HOLD:    clamp to the threshold and go silent (EG_OFF); ALTERNATE toggles
+ *              the inversion flag for the held polarity.
+ *   - Loop:    ALTERNATE toggles inversion; non-ALTERNATE resets the phase
+ *              generator (Cnt=0). The volume is NOT reset (#2) — attack
+ *              decreases it naturally from the current level.
+ * Interpretation per TECH_DEBT; not hardware-verified against Genesis Plus GX.
+ */
+static void ssg_eg_complete(FM_SLOT *SLOT)
+{
+  if (SLOT->SEG & SSG_HOLD) {
+    if (SLOT->SEG & SSG_ALTERNATE)
+      SLOT->ssg_inv ^= 1;
+    SLOT->volume = SSG_ATT_THRESHOLD;
+    SLOT->state = EG_OFF;
+  } else {
+    if (SLOT->SEG & SSG_ALTERNATE) {
+      SLOT->ssg_inv ^= 1;
+    } else {
+      SLOT->Cnt = 0; /* TD-020 #4: phase reset on non-alternate loop */
+    }
+    /* TD-020 #2: keep current volume; re-attack decreases it naturally. */
+    SLOT->state = EG_ATT;
+  }
+}
+
 unsigned int calc_eg(FM_SLOT *SLOT, UINT32 lfo_amd)
 {
   unsigned int out;
@@ -48,9 +75,22 @@ unsigned int calc_eg(FM_SLOT *SLOT, UINT32 lfo_amd)
   } break;
 
   case EG_DEC: /* decay phase */
-    if ((SLOT->volume += SLOT->delta_dr) >= SLOT->sl) {
-      SLOT->volume = SLOT->sl;
-      SLOT->state = EG_SUS;
+#if FM_SEG_SUPPORT
+    /* TD-020 #6: SSG-EG handling during decay — when SSG-EG is enabled the
+     * decay completes at SSG_ATT_THRESHOLD (not the sustain level sl) and
+     * hands off to the shared SSG completion logic. Interpretation per
+     * TECH_DEBT (GPX checks state > EG_REL which includes decay); not
+     * hardware-verified. The non-SSG path is byte-identical to before. */
+    if (SLOT->SEG & SSG_ENABLE) {
+      if ((SLOT->volume += SLOT->delta_dr) >= SSG_ATT_THRESHOLD)
+        ssg_eg_complete(SLOT);
+    } else
+#endif
+    {
+      if ((SLOT->volume += SLOT->delta_dr) >= SLOT->sl) {
+        SLOT->volume = SLOT->sl;
+        SLOT->state = EG_SUS;
+      }
     }
     break;
 
@@ -58,30 +98,12 @@ unsigned int calc_eg(FM_SLOT *SLOT, UINT32 lfo_amd)
 #if FM_SEG_SUPPORT
     /* SSG-EG: check for envelope completion during sustain.
      * TD-020: SSG-EG cycles complete at SSG_ATT_THRESHOLD (512), not the full
-     * MAX_ATT_INDEX (1023) — the SSG envelope runs at half resolution. */
+     * MAX_ATT_INDEX (1023) — the SSG envelope runs at half resolution.
+     * TD-020 #2/#4: completion logic (loop keeps volume; non-alternate resets
+     * phase) lives in ssg_eg_complete(). */
     if (SLOT->SEG & SSG_ENABLE) {
-      if ((SLOT->volume += SLOT->delta_sr) >= SSG_ATT_THRESHOLD) {
-        /* Envelope reached SSG-EG completion level */
-        if (SLOT->SEG & SSG_HOLD) {
-          /* Hold mode */
-          if (SLOT->SEG & SSG_ALTERNATE) {
-            /* Hold with alternate: hold at opposite polarity */
-            SLOT->ssg_inv ^= 1;
-          }
-          /* Hold at the SSG-EG threshold level */
-          SLOT->volume = SSG_ATT_THRESHOLD;
-          SLOT->state = EG_OFF;
-        } else {
-          /* Loop mode */
-          if (SLOT->SEG & SSG_ALTERNATE) {
-            /* Alternate: invert and continue from max */
-            SLOT->ssg_inv ^= 1;
-          }
-          /* Restart from max volume (min attenuation) */
-          SLOT->volume = MIN_ATT_INDEX;
-          SLOT->state = EG_ATT;
-        }
-      }
+      if ((SLOT->volume += SLOT->delta_sr) >= SSG_ATT_THRESHOLD)
+        ssg_eg_complete(SLOT);
     } else
 #endif
     {
@@ -172,14 +194,16 @@ void fm_slot_keyoff(FM_SLOT *SLOT)
     SLOT->key = 0;
 #if FM_SEG_SUPPORT
     /* SSG-EG: handle inversion on key-off.
-     * If output was inverted, we need to de-invert the volume
-     * so release phase starts from the actual output level. */
+     * TD-020 #5: de-invert around SSG_ATT_THRESHOLD (not MAX_ATT_INDEX) and,
+     * if the resulting volume is past the SSG completion point, force EG_OFF
+     * (the note is effectively silent). Interpretation per TECH_DEBT. */
     if ((SLOT->SEG & SSG_ENABLE) && SLOT->ssg_inv) {
-      /* De-invert: convert inverted volume to actual output volume */
-      SLOT->volume = MAX_ATT_INDEX - SLOT->volume;
+      SLOT->volume = SSG_ATT_THRESHOLD - SLOT->volume;
       if (SLOT->volume < 0)
         SLOT->volume = 0;
       SLOT->ssg_inv = 0;
+      if ((UINT32)SLOT->volume >= SSG_ATT_THRESHOLD)
+        SLOT->state = EG_OFF;
     }
 #endif
     /* phase -> Release */
