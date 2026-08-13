@@ -50,6 +50,16 @@ void cpuz80_stop(void);
 void cpuz80_start(void);
 void cpuz80_endfield(void);
 void cpuz80_sync(void);
+
+/* Scale for cpuz80_getburstpos(): positions are expressed in 1/4096 units of
+ * the current sync burst (one scanline). Kept numerically identical to
+ * FMQ_FRAC_ONE in fm_write_queue.hpp; memz80.cpp static-asserts the match. */
+#define CPUZ80_BURSTPOS_ONE 4096u
+
+/* Position within the current Z80 sync burst, scaled to CPUZ80_BURSTPOS_ONE.
+ * Called from YM2612 write handlers while the burst is executing so writes
+ * can be timestamped for the FM write queue. Returns 0 outside a burst. */
+unsigned int cpuz80_getburstpos(void);
 void cpuz80_interrupt(void);
 void cpuz80_uninterrupt(void); /* debug */
 uint8_t cpuz80_portread(uint8_t port);

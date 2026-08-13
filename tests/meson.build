@@ -100,3 +100,18 @@ test('fm_lfo_step', test_fm_lfo,
   timeout: 30,
   suite: 'catch2'
 )
+
+# Timestamped FM write queue unit tests (cycle-accurate Z80->YM2612 writes).
+test_fm_write_queue = executable('test_fm_write_queue',
+  'test_fm_write_queue.cpp',
+  '../src/audio/ym2612/fm_write_queue.cpp',
+  include_directories: [fm_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('fm_write_queue', test_fm_write_queue,
+  timeout: 30,
+  suite: 'catch2'
+)
