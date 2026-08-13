@@ -223,13 +223,16 @@ static inline int16_t apply_dither(float sample, float *state)
     break;
   }
 
-  /* Clamp and convert to int16 */
+  /* Clamp and convert to int16.
+   * Quantize with floor semantics: truncation toward zero is asymmetric for
+   * negative samples and biases the quantization error; floor() is the
+   * textbook operation for TPDF error decorrelation. */
   if (dithered > 32767.0f)
     dithered = 32767.0f;
   if (dithered < -32768.0f)
     dithered = -32768.0f;
 
-  return (int16_t)dithered;
+  return (int16_t)floorf(dithered);
 }
 
 /*** sound_init - initialise this sub-unit ***/
@@ -699,13 +702,18 @@ static void sound_process(void)
     /* Convert to float and mix
      * FM: already signed 16-bit
      * PSG: unsigned 16-bit, convert to signed and scale
-     * Mix ratio: FM * 0.875 + PSG * 0.375 (leaves headroom) */
+     * Mix ratio: FM * 0.875 + PSG * 0.375, then * 0.9375 (15/16) headroom
+     * scale. Without the scale, simultaneous full-scale FM (32767*0.875 =
+     * 28671) + full-scale PSG (16383*0.375 = 6144) peaks at 34815 > 32767
+     * and hard-clips at the mix bus. 15/16 brings the theoretical maximum
+     * to 32639 <= 32767 for a -0.4 dB loudness cost, preserving the 7:3
+     * FM:PSG balance while guaranteeing no clipping. */
     float fm_l = (float)fm_buf_l[i];
     float fm_r = (float)fm_buf_r[i];
     float psg = sound_psg ? ((float)psg_buf[i] - 16384.0f) : 0.0f;
 
-    float mix_l = fm_l * 0.875f + psg * 0.375f;
-    float mix_r = fm_r * 0.875f + psg * 0.375f;
+    float mix_l = (fm_l * 0.875f + psg * 0.375f) * 0.9375f;
+    float mix_r = (fm_r * 0.875f + psg * 0.375f) * 0.9375f;
 
     /* Apply HQ filtering if enabled */
     if (sound_hq_filter) {
