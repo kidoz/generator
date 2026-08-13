@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/* Audiophile-quality sound system with oversampling, float processing, and dithering */
+/* Audiophile-quality sound system with oversampling, float processing, and
+ * dithering */
 
 #include <cstdlib>
 #include <cstring>
@@ -15,6 +16,7 @@ extern "C" {
 #include "sn76496.h"
 #include "gen_context.h"
 #include "gen_ui_callbacks.h"
+#include "fm_write_queue.hpp"
 
 #ifdef JFM
 #include "jfm.h"
@@ -84,18 +86,20 @@ static t_jfm_ctx *sound_ctx;
  * Uses double precision for coefficient calculation, float for processing.
  */
 typedef struct {
-  float b0, b1, b2;  /* feedforward coefficients */
-  float a1, a2;      /* feedback coefficients (a0 normalized to 1) */
-  float z1, z2;      /* delay elements */
+  float b0, b1, b2; /* feedforward coefficients */
+  float a1, a2;     /* feedback coefficients (a0 normalized to 1) */
+  float z1, z2;     /* delay elements */
 } biquad_float_t;
 
 /* Initialize biquad for Butterworth low-pass */
-static void biquad_init_lowpass(biquad_float_t *f, double sample_rate, double cutoff_hz)
+static void biquad_init_lowpass(biquad_float_t *f, double sample_rate,
+                                double cutoff_hz)
 {
   double omega = 2.0 * M_PI * cutoff_hz / sample_rate;
   double sin_omega = sin(omega);
   double cos_omega = cos(omega);
-  double alpha = sin_omega / (2.0 * 0.7071067811865476); /* Q = 1/sqrt(2) for Butterworth */
+  double alpha = sin_omega /
+                 (2.0 * 0.7071067811865476); /* Q = 1/sqrt(2) for Butterworth */
 
   double a0 = 1.0 + alpha;
   f->b0 = (float)((1.0 - cos_omega) / 2.0 / a0);
@@ -108,7 +112,8 @@ static void biquad_init_lowpass(biquad_float_t *f, double sample_rate, double cu
 }
 
 /* Initialize biquad for high-pass (DC blocking) */
-static void biquad_init_highpass(biquad_float_t *f, double sample_rate, double cutoff_hz)
+static void biquad_init_highpass(biquad_float_t *f, double sample_rate,
+                                 double cutoff_hz)
 {
   double omega = 2.0 * M_PI * cutoff_hz / sample_rate;
   double sin_omega = sin(omega);
@@ -135,10 +140,11 @@ static inline float biquad_process_float(biquad_float_t *f, float in)
 }
 
 /* Filter state for HQ filtering (cascaded stages) */
-static biquad_float_t hpf_l, hpf_r;           /* DC blocking high-pass */
-static biquad_float_t lpf1_l, lpf1_r;         /* Anti-aliasing low-pass stage 1 */
-static biquad_float_t lpf2_l, lpf2_r;         /* Anti-aliasing low-pass stage 2 */
-static biquad_float_t downsample_lpf_l, downsample_lpf_r; /* Decimation filter */
+static biquad_float_t hpf_l, hpf_r;   /* DC blocking high-pass */
+static biquad_float_t lpf1_l, lpf1_r; /* Anti-aliasing low-pass stage 1 */
+static biquad_float_t lpf2_l, lpf2_r; /* Anti-aliasing low-pass stage 2 */
+static biquad_float_t downsample_lpf_l,
+    downsample_lpf_r; /* Decimation filter */
 static int filters_initialized = 0;
 
 /* Initialize all filters for current sample rate */
@@ -171,8 +177,9 @@ static void init_filters(void)
 
   filters_initialized = 1;
 
-  LOG_VERBOSE("Audio filters initialized: output=%u Hz, internal=%u Hz, %ux oversampling",
-               sound_speed, sound_internal_rate, sound_oversampling);
+  LOG_VERBOSE("Audio filters initialized: output=%u Hz, internal=%u Hz, %ux "
+              "oversampling",
+              sound_speed, sound_internal_rate, sound_oversampling);
 }
 
 /* Simple PRNG for dithering (fast, good quality) */
@@ -217,8 +224,10 @@ static inline int16_t apply_dither(float sample, float *state)
   }
 
   /* Clamp and convert to int16 */
-  if (dithered > 32767.0f) dithered = 32767.0f;
-  if (dithered < -32768.0f) dithered = -32768.0f;
+  if (dithered > 32767.0f)
+    dithered = 32767.0f;
+  if (dithered < -32768.0f)
+    dithered = -32768.0f;
 
   return (int16_t)dithered;
 }
@@ -256,8 +265,8 @@ int sound_init(void)
 
   /* Initialize sound chips at internal (oversampled) rate */
 #ifdef JFM
-  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_internal_rate, nullptr,
-                            nullptr)) == nullptr) {
+  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_internal_rate,
+                            nullptr, nullptr)) == nullptr) {
 #else
   if (YM2612Init(1, vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
 #endif
@@ -286,9 +295,10 @@ int sound_init(void)
   if (!sound_logdata)
     ui_err("out of memory");
 
-  LOG_VERBOSE("Sound initialized: output=%u Hz, internal=%u Hz, %ux oversampling, HQ filter=%s",
-               sound_speed, sound_internal_rate, sound_oversampling,
-               sound_hq_filter ? "enabled" : "disabled");
+  LOG_VERBOSE("Sound initialized: output=%u Hz, internal=%u Hz, %ux "
+              "oversampling, HQ filter=%s",
+              sound_speed, sound_internal_rate, sound_oversampling,
+              sound_hq_filter ? "enabled" : "disabled");
   return 0;
 }
 
@@ -351,6 +361,8 @@ int sound_reset(void)
 {
   LOG_VERBOSE("Resetting sound (full subsystem restart)...");
 
+  fmq_reset(); /* discard any timestamped writes pending across the reset */
+
   if (sound_active) {
     soundp_stop();
     sound_active = 0;
@@ -373,8 +385,8 @@ int sound_reset(void)
   sound_active = 1;
 
 #ifdef JFM
-  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_internal_rate, nullptr,
-                            nullptr)) == nullptr) {
+  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_internal_rate,
+                            nullptr, nullptr)) == nullptr) {
 #else
   if (YM2612Init(1, vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
 #endif
@@ -428,7 +440,8 @@ void sound_endfield(void)
     } else {
       if (!sound_fieldhassamples) {
         o = sound_logdata + 3;
-        for (p = sound_logdata + 3; p < (sound_logdata + sound_logdata_p); p++) {
+        for (p = sound_logdata + 3; p < (sound_logdata + sound_logdata_p);
+             p++) {
           if ((*p & 0xF0) != 0x00 || *p == 4)
             ui_err("assertion of no samples failed");
           switch (*p) {
@@ -472,7 +485,7 @@ void sound_endfield(void)
 
   if (sound_debug) {
     LOG_VERBOSE("End of field - %d samples buffered, threshold %d, feedback %d",
-                 pending, sound_threshold, sound_feedback);
+                pending, sound_threshold, sound_feedback);
   }
   soundp_output(sound_soundbuf[0], sound_soundbuf[1], sound_sampsperfield);
 }
@@ -490,7 +503,10 @@ uint8 sound_ym2612fetch(uint8 addr)
 
 /*** sound_ym2612store - store a byte to the ym2612 chip ***/
 
-void sound_ym2612store(uint8 addr, uint8 data)
+/* Side channels (address latches, key tracking, music log) are handled
+ * immediately for both entry points; only the chip write differs. */
+
+static void sound_ym2612store_common(uint8 addr, uint8 data)
 {
   switch (addr) {
   case 0:
@@ -525,11 +541,34 @@ void sound_ym2612store(uint8 addr, uint8 data)
     sound_regs2[sound_address2] = data;
     break;
   }
+}
+
+static void sound_ym2612_apply(uint8 addr, uint8 data)
+{
 #ifdef JFM
   jfm_write(sound_ctx, addr, data);
 #else
   YM2612Write(0, addr, data);
 #endif
+}
+
+void sound_ym2612store(uint8 addr, uint8 data)
+{
+  /* Immediate apply: used by the 68K path, whose writes already retire
+   * cycle-interleaved with the scanline. */
+  sound_ym2612store_common(addr, data);
+  sound_ym2612_apply(addr, data);
+}
+
+void sound_ym2612store_at(uint8 addr, uint8 data, unsigned int burstpos)
+{
+  /* Cycle-accurate apply: used by the Z80 path. The Z80 runs in one burst
+   * per scanline (cpuz80_sync), so timestamping each write with its position
+   * in that burst lets sound_process() apply it at the matching sample
+   * offset instead of collapsing every write to the line start. This is what
+   * fixes mistimed PCM streaming in GEMS-driver games (Comix Zone et al.). */
+  sound_ym2612store_common(addr, data);
+  fmq_push(static_cast<uint16_t>(burstpos), addr, data);
 }
 
 /*** sound_sn76496store - store a byte to the sn76496 chip ***/
@@ -596,18 +635,56 @@ static void sound_process(void)
   static int16_t fm_buf_l[SOUND_BUFFER_SAMPLES * 4];
   static int16_t fm_buf_r[SOUND_BUFFER_SAMPLES * 4];
   static uint16 psg_buf[SOUND_BUFFER_SAMPLES * 4];
-  int16_t *fm_bufs[2] = { fm_buf_l, fm_buf_r };
+  int16_t *fm_bufs[2] = {fm_buf_l, fm_buf_r};
 
-  /* Generate samples at internal rate */
+  /* Generate samples at internal rate, applying timestamped Z80 writes at
+   * their cycle-accurate sample positions. Entries pushed during this
+   * scanline's cpuz80_sync() burst carry a position in 1/4096 of the line;
+   * map that onto the window [0, internal_samples) and split the render into
+   * chunks at each write so it takes effect from the right sample onward.
+   * (YM2612UpdateOne is stateful across calls — this is its normal mode of
+   * operation between scanlines; we simply call it more than once per line.) */
   if (sound_fm) {
+    unsigned int rendered = 0;
+    for (;;) {
+      /* Position (in samples) of the oldest pending write. */
+      const uint16_t head_pos = fmq_peek_pos();
+      unsigned int target = internal_samples;
+      if (head_pos != FMQ_FRAC_ONE) {
+        target = (static_cast<unsigned int>(head_pos) * internal_samples) >> 12;
+        if (target > internal_samples)
+          target = internal_samples;
+      }
+
+      if (target > rendered) {
+        int16_t *chunk[2] = {fm_buf_l + rendered, fm_buf_r + rendered};
 #ifdef JFM
-    jfm_update(sound_ctx, (void **)fm_bufs, internal_samples);
+        jfm_update(sound_ctx, (void **)chunk,
+                   static_cast<int>(target - rendered));
 #else
-    YM2612UpdateOne(0, fm_bufs, internal_samples);
+        YM2612UpdateOne(0, chunk, static_cast<int>(target - rendered));
 #endif
+        rendered = target;
+      }
+
+      if (rendered >= internal_samples)
+        break;
+
+      /* Apply every write that lands at this position, in queue order. */
+      uint8_t wport, wval;
+      while (fmq_pop(head_pos, &wport, &wval))
+        sound_ym2612_apply(wport, wval);
+
+      if (head_pos == FMQ_FRAC_ONE)
+        break; /* queue empty and fully rendered */
+    }
   } else {
     memset(fm_buf_l, 0, internal_samples * sizeof(int16_t));
     memset(fm_buf_r, 0, internal_samples * sizeof(int16_t));
+    /* Still drain the queue so writes don't pile up when FM is muted. */
+    uint8_t wport, wval;
+    while (fmq_pop(FMQ_FRAC_ONE, &wport, &wval))
+      sound_ym2612_apply(wport, wval);
   }
 
   if (sound_psg) {

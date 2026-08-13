@@ -9,8 +9,14 @@ extern "C" {
 #include "cpuz80.h"
 #include "memz80.h"
 #include "gensound.h"
+#include "fm_write_queue.hpp"
 #include "ui.h"
 }
+
+/* The Z80 burst-position scale must match the FM write queue's fraction
+ * scale, or timestamps would silently land at wrong sample offsets. */
+static_assert(CPUZ80_BURSTPOS_ONE == FMQ_FRAC_ONE,
+              "burst position scale must match FM write queue scale");
 
 /*** forward references ***/
 
@@ -106,7 +112,7 @@ void memz80_store_yam_byte(uint16 addr, uint8 data)
   addr -= 0x4000;
   /* LOG_USER("[YAM] (z80) store (byte) 0x%X (%d)", addr, data); */
   if (addr < 4)
-    sound_ym2612store(addr, data);
+    sound_ym2612store_at(addr, data, cpuz80_getburstpos());
   else
     LOG_CRITICAL("[Z80] invalid YAM store (byte) 0x%X", addr);
 }
