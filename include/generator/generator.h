@@ -34,6 +34,10 @@ void gen_loadmemrom_owned(uint8 *rom, int romlen);
 #include <machine/endian.h>
 #define SWAP16(x) bswap_16((x))
 #define SWAP32(x) bswap_32((x))
+#elif defined(__APPLE__)
+#include <libkern/OSByteOrder.h>
+#define SWAP16(x) OSSwapInt16((x))
+#define SWAP32(x) OSSwapInt32((x))
 #else
 #define SWAP16(y) ((((y) >> 8) & 0x00ff) | ((((y) << 8) & 0xff00)))
 #define SWAP32(y)                                           \
