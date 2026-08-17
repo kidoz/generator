@@ -52,6 +52,29 @@ if ui_backend == 'gtk4'
 
   build_deps += [ui_deps, gtkopts_dep, declare_dependency(link_with: tab68k_lib)]
 
+elif ui_backend == 'nodalkit'
+  program_name = 'generator-nodalkit'
+
+  main_sources = main_core_sources + [
+    # CPU subsystem
+    cpu68k_sources,
+    cpuz80_sources,
+    # Audio subsystem
+    audio_sources,
+    # Video subsystem
+    video_sources,
+    # Platform layer (SDL3 audio only; NodalKit owns the window and input)
+    files('../platform/sdl3/gensoundp_sdl3.cpp'),
+    # Persistence
+    persist_sources,
+    # Utilities
+    util_sources,
+    # UI
+    nodalkit_ui_sources
+  ]
+
+  build_deps += [ui_deps, declare_dependency(link_with: tab68k_lib)]
+
 elif ui_backend == 'console'
   program_name = 'generator-console'
 

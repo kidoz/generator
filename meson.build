@@ -135,6 +135,15 @@ if ui_backend == 'gtk4'
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
   ui_deps = [gtk4_dep, gtkmm_dep, adwaita_dep, sdl3_dep]
 
+elif ui_backend == 'nodalkit'
+  # NodalKit (kidoz/nodalkit) supplies the widget tree, windowing and
+  # rendering; SDL3 stays on for audio output and gamepad input, which
+  # NodalKit deliberately does not cover.
+  nodalkit_dep = dependency('nodalkit',
+    fallback: ['nodalkit', 'nk_dep'])
+  sdl3_dep = dependency('sdl3', version: '>=3.0.0')
+  ui_deps = [nodalkit_dep, sdl3_dep]
+
 elif ui_backend == 'console'
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
   ui_deps = [sdl3_dep]
@@ -193,6 +202,9 @@ if ui_backend == 'gtk4'
   subdir('src/ui/gtk4')
   subdir('src/ui/gtkmm')
   ui_libs = [gtkopts_dep]
+elif ui_backend == 'nodalkit'
+  subdir('src/ui/nodalkit')
+  ui_libs = []
 elif ui_backend == 'console'
   subdir('src/ui/console')
   ui_libs = []
@@ -230,6 +242,11 @@ if ui_backend == 'gtk4'
     'GTK4': gtk4_dep.version(),
     'GTKmm': gtkmm_dep.version(),
     'libadwaita': adwaita_dep.version(),
+    'SDL3': sdl3_dep.version(),
+  }, section: 'Dependencies')
+elif ui_backend == 'nodalkit'
+  summary({
+    'NodalKit': nodalkit_dep.version(),
     'SDL3': sdl3_dep.version(),
   }, section: 'Dependencies')
 endif

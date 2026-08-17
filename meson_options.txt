@@ -3,9 +3,9 @@
 # UI Backend (required - choose one)
 option('ui-backend',
   type: 'combo',
-  choices: ['gtk4', 'console'],
+  choices: ['gtk4', 'nodalkit', 'console'],
   value: 'gtk4',
-  description: 'User interface backend to build (gtk4=GTK4/libadwaita, console=SDL3 only)'
+  description: 'User interface backend to build (gtk4=GTK4/libadwaita, nodalkit=NodalKit toolkit, console=SDL3 only)'
 )
 
 # Optional features
