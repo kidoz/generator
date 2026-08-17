@@ -1,4 +1,4 @@
-/* kaillera_client.c - Kaillera client implementation */
+/* kaillera_client.cpp - Kaillera client implementation */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -316,7 +316,8 @@ static void client_receive_packets(kaillera_client_t *client, int timeout_ms)
 
 kaillera_client_t *kaillera_client_create(void)
 {
-  kaillera_client_t *client = calloc(1, sizeof(kaillera_client_t));
+  kaillera_client_t *client =
+      static_cast<kaillera_client_t *>(calloc(1, sizeof(kaillera_client_t)));
   if (client == nullptr)
     return nullptr;
 

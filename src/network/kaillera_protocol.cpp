@@ -1,4 +1,4 @@
-/* kaillera_protocol.c - Kaillera protocol packet handling */
+/* kaillera_protocol.cpp - Kaillera protocol packet handling */
 
 #include <stdio.h>
 #include <stdlib.h>

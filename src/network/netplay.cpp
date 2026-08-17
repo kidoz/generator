@@ -1,4 +1,4 @@
-/* netplay.c - High-level netplay API implementation */
+/* netplay.cpp - High-level netplay API implementation */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,10 +9,13 @@
 #include "kaillera_protocol.h"
 #include "socket.h"
 
-/* Include emulator headers for input access */
+/* Emulator headers for input access - unguarded C headers, so wrap them to
+ * keep C linkage for the mem68k symbols this unit references. */
+extern "C" {
 #include "generator.h"
 #include "cpu68k.h"
 #include "mem68k.h"
+}
 
 /* Emulator name sent to Kaillera servers */
 #define NETPLAY_EMULATOR_NAME "Generator " VERSION

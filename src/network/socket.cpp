@@ -1,4 +1,4 @@
-/* socket.c - Cross-platform UDP socket implementation (POSIX) */
+/* socket.cpp - Cross-platform UDP socket implementation (POSIX) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +24,7 @@ struct netplay_socket {
 };
 
 /* Thread-local error buffer */
-static __thread char socket_error_buf[256];
+static thread_local char socket_error_buf[256];
 
 int socket_subsystem_init(void)
 {
@@ -39,7 +39,8 @@ void socket_subsystem_shutdown(void)
 
 netplay_socket_t *socket_create(void)
 {
-  netplay_socket_t *sock = calloc(1, sizeof(netplay_socket_t));
+  netplay_socket_t *sock =
+      static_cast<netplay_socket_t *>(calloc(1, sizeof(netplay_socket_t)));
   if (sock == nullptr) {
     snprintf(socket_error_buf, sizeof(socket_error_buf),
              "Failed to allocate socket structure");

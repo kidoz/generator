@@ -2,10 +2,10 @@
 # Kaillera protocol implementation for netplay support
 
 network_sources = files(
-  'netplay.c',
-  'kaillera_client.c',
-  'kaillera_protocol.c',
-  'socket.c',
+  'netplay.cpp',
+  'kaillera_client.cpp',
+  'kaillera_protocol.cpp',
+  'socket.cpp',
 )
 
 network_lib = static_library('network',
