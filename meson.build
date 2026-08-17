@@ -144,6 +144,17 @@ elif ui_backend == 'nodalkit'
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
   ui_deps = [nodalkit_dep, sdl3_dep]
 
+  # NodalKit's macOS platform layer is Objective-C++, so Meson appends that
+  # language's stdlib to our link line — on top of the -lc++ the clang++
+  # driver already hands to ld. The duplicate is harmless (ld drops it) but
+  # Apple's linker warns about it on every link of the executable.
+  if host_machine.system() == 'darwin'
+    no_dup_libs = '-Wl,-no_warn_duplicate_libraries'
+    if cc.has_link_argument(no_dup_libs)
+      ui_deps += declare_dependency(link_args: no_dup_libs)
+    endif
+  endif
+
 elif ui_backend == 'console'
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
   ui_deps = [sdl3_dep]
