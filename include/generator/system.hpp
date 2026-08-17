@@ -11,6 +11,8 @@
 
 namespace generator {
 
+class SN76496;
+
 /* System owns the emulated machine's subsystems and the I/O backends they
  * communicate with. It is the explicit replacement for cross-module globals
  * during the C++20/23 rewrite: as each subsystem is ported (SN76496, Vdp,
@@ -34,13 +36,36 @@ public:
 
   /* Backends may be constructed absent (EmulatorCore then installs the C
    * no-op callbacks); the reference accessors require a present backend. */
-  IAudioBackend &audio() const { return *m_audio; }
-  IVideoBackend &video() const { return *m_video; }
-  ILogger &logger() const { return *m_logger; }
+  IAudioBackend &audio() const
+  {
+    return *m_audio;
+  }
+  IVideoBackend &video() const
+  {
+    return *m_video;
+  }
+  ILogger &logger() const
+  {
+    return *m_logger;
+  }
 
-  IAudioBackend *audio_ptr() const { return m_audio.get(); }
-  IVideoBackend *video_ptr() const { return m_video.get(); }
-  ILogger *logger_ptr() const { return m_logger.get(); }
+  IAudioBackend *audio_ptr() const
+  {
+    return m_audio.get();
+  }
+  IVideoBackend *video_ptr() const
+  {
+    return m_video.get();
+  }
+  ILogger *logger_ptr() const
+  {
+    return m_logger.get();
+  }
+
+  SN76496 &psg() const
+  {
+    return *m_psg;
+  }
 
   /* Null-safe event emission toward the installed backends. These replace
    * the former gen_ui_callbacks_t vtable: the frame driver and sound
@@ -58,6 +83,7 @@ private:
   std::unique_ptr<IAudioBackend> m_audio;
   std::unique_ptr<IVideoBackend> m_video;
   std::shared_ptr<ILogger> m_logger;
+  std::unique_ptr<SN76496> m_psg;
 };
 
 /* Global System access. EmulatorCore registers the active System for the
@@ -74,4 +100,4 @@ void ui_audio_output(const uint16_t *left, const uint16_t *right,
                      unsigned int samples);
 void ui_musiclog(const uint8_t *data, unsigned int length);
 
-} // namespace generator
+}  // namespace generator

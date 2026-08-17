@@ -60,8 +60,6 @@ namespace generator {
 /* Noise generator initial state - bit 15 set (standard for SN76489) */
 #define NG_PRESET 0x8000
 
-SN76496 sn[MAX_76496];
-
 /* Helper: calculate parity of masked bits (for LFSR feedback) */
 int SN76496::parity(unsigned int val)
 {
@@ -151,7 +149,7 @@ void SN76496::write(int data)
 
 void SN76496::update(uint16 *buffer, int length)
 {
-  int i;
+  int i = 0;
   SN76496 *R = this;
 
   /* If the volume is 0, increase the counter */
@@ -168,8 +166,8 @@ void SN76496::update(uint16 *buffer, int length)
 
   while (length > 0) {
     int vol[4];
-    unsigned int out;
-    int left;
+    unsigned int out = 0;
+    int left = 0;
 
     /* vol[] keeps track of how long each square wave stays */
     /* in the 1 position during the sample period. */
@@ -211,12 +209,13 @@ void SN76496::update(uint16 *buffer, int length)
     /* Noise channel processing */
     left = STEP;
 
-    /* Period 0 for noise means DC output (when using tone 2 freq with period 0) */
+    /* Period 0 for noise means DC output (when using tone 2 freq with period 0)
+     */
     if (R->Period[3] == 0) {
       vol[3] = R->Output[3] ? STEP : 0;
     } else {
       do {
-        int nextevent;
+        int nextevent = 0;
 
         if (R->Count[3] < left)
           nextevent = R->Count[3];
@@ -267,8 +266,8 @@ void SN76496::set_clock(int clock)
 void SN76496::set_gain(int gain)
 {
   SN76496 *R = this;
-  int i;
-  double out;
+  int i = 0;
+  double out = 0.0;
 
   /*
    * SN76489/SN76496 volume attenuation:
@@ -297,14 +296,14 @@ void SN76496::set_gain(int gain)
       R->VolTable[i] = MAX_OUTPUT / 4;
     else
       R->VolTable[i] = (int)(out + 0.5); /* round to nearest */
-    out /= 1.258925412; /* = 10 ^ (2/20) = 2dB attenuation */
+    out /= 1.258925412;                  /* = 10 ^ (2/20) = 2dB attenuation */
   }
   R->VolTable[15] = 0; /* Volume 15 = silence */
 }
 
 int SN76496::init(int clock, int gain, int sample_rate)
 {
-  int i;
+  int i = 0;
   SN76496 *R = this;
 
   R->SampleRate = sample_rate;
@@ -328,7 +327,7 @@ int SN76496::init(int clock, int gain, int sample_rate)
   }
 
   /* Initialize noise channel */
-  R->NoiseFB = FB_PNOISE_TAPS; /* Default to periodic noise */
+  R->NoiseFB = FB_PNOISE_TAPS;       /* Default to periodic noise */
   R->Period[3] = R->UpdateStep << 5; /* Default N/512 rate */
   R->Count[3] = R->Period[3];
   R->RNG = NG_PRESET;
@@ -347,7 +346,8 @@ void SN76496::save_state(int chip_index)
 
   /* Save/load register state */
   state_transfer32(statename, "Register", chip_index, (uint32 *)Register, 8);
-  state_transfer32(statename, "LastReg", chip_index, (uint32 *)&LastRegister, 1);
+  state_transfer32(statename, "LastReg", chip_index, (uint32 *)&LastRegister,
+                   1);
   state_transfer32(statename, "Volume", chip_index, (uint32 *)Volume, 4);
   state_transfer32(statename, "RNG", chip_index, &RNG, 1);
   state_transfer32(statename, "NoiseFB", chip_index, (uint32 *)&NoiseFB, 1);
@@ -356,27 +356,4 @@ void SN76496::save_state(int chip_index)
   state_transfer32(statename, "Output", chip_index, (uint32 *)Output, 4);
 }
 
-} // namespace generator
-
-/* Transitional flat API over the global array - see sn76496.hpp. */
-
-int SN76496Init(int chip, int clock, int gain, int sample_rate)
-{
-  return generator::sn[chip].init(clock, gain, sample_rate);
-}
-
-void SN76496Write(int chip, int data)
-{
-  generator::sn[chip].write(data);
-}
-
-void SN76496Update(int chip, uint16 *buffer, int length)
-{
-  generator::sn[chip].update(buffer, length);
-}
-
-void SN76496_save_state(void)
-{
-  for (int chip = 0; chip < generator::MAX_76496; chip++)
-    generator::sn[chip].save_state(chip);
-}
+}  // namespace generator

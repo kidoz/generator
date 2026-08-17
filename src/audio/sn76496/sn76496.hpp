@@ -31,13 +31,11 @@ inline constexpr int MAX_76496 = 1;
 /* SN76489 / SN76496 programmable tone/noise generator (TMS9919-compatible).
  *
  * C++ port of the MAME-derived C core: the chip state that used to live in
- * the global `struct SN76496 sn[]` array is owned by the class. The
- * transitional global array and the free functions below keep the
- * existing mixer/save-state call sites working until those subsystems are
- * repointed onto System-owned instances; they are the compatibility ABI, not
- * the API. Data members stay public because the save-state layer and the
- * characterization tests access them directly; that coupling is removed when
- * serialization moves into the class in a later rewrite phase.
+ * the global `struct SN76496 sn[]` array is owned by the class. System owns the
+ * runtime instance; the free functions below are a compatibility ABI for the
+ * mixer and save-state layer while those callers migrate to explicit System
+ * access. Data members stay public because serialization and characterization
+ * tests access them directly; that coupling is removed in a later phase.
  */
 class SN76496 {
 public:
@@ -64,14 +62,12 @@ private:
   static int parity(unsigned int val);
 };
 
-extern SN76496 sn[MAX_76496];
+}  // namespace generator
 
-} // namespace generator
-
-/* Transitional flat API over the array above - see class comment. */
+/* Transitional flat API over the System-owned instance - see class comment. */
 int SN76496Init(int chip, int clock, int gain, int sample_rate);
 void SN76496Write(int chip, int data);
 void SN76496Update(int chip, uint16 *buffer, int length);
-void SN76496_save_state(void);
+void SN76496_save_state();
 
 #endif /* SN76496_HPP */

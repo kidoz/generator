@@ -62,6 +62,21 @@ test('sn76496_psg', test_sn76496,
   suite: 'catch2'
 )
 
+# System ownership and transitional PSG compatibility routing.
+test_system = executable('test_system',
+  'test_system.cpp',
+  '../src/core/system.cpp',
+  include_directories: [sn76496_inc],
+  dependencies: [catch2_dep, sn76496_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('system_psg_ownership', test_system,
+  timeout: 30,
+  suite: 'catch2'
+)
+
 # YM2612 envelope-core characterization tests.
 # fm_eg.cpp (extracted from fm.c) is compiled directly into the test, like
 # sn76496.c above, so the test links only the envelope math — not fm.c's full
