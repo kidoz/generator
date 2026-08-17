@@ -13,6 +13,7 @@ namespace generator {
 
 class SN76496;
 class Vdp;
+class FmWriteQueue;
 
 /* System owns the emulated machine's subsystems and the I/O backends they
  * communicate with. It is the explicit replacement for cross-module globals
@@ -71,6 +72,10 @@ public:
   {
     return *m_vdp;
   }
+  FmWriteQueue &fm_write_queue() const
+  {
+    return *m_fm_write_queue;
+  }
 
   /* Null-safe event emission toward the installed backends. These replace
    * the former gen_ui_callbacks_t vtable: the frame driver and sound
@@ -90,6 +95,7 @@ private:
   std::shared_ptr<ILogger> m_logger;
   std::unique_ptr<SN76496> m_psg;
   std::unique_ptr<Vdp> m_vdp;
+  std::unique_ptr<FmWriteQueue> m_fm_write_queue;
 };
 
 /* Global System access. EmulatorCore registers the active System for the

@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdexcept>
 
+#include "fm_write_queue.hpp"
 #include "machine.h"
 #include "sn76496.hpp"
 #include "system.hpp"
@@ -73,6 +74,17 @@ TEST_CASE("System owns independent VDP instances", "[system][vdp]")
   REQUIRE(second.vdp().vdp_pal == 0);
 }
 
+TEST_CASE("System owns independent FM write queues", "[system][fmq]")
+{
+  generator::System first = make_system();
+  generator::System second = make_system();
+
+  REQUIRE(&first.fm_write_queue() != &second.fm_write_queue());
+  first.fm_write_queue().push(100, 1, 0xAA);
+  REQUIRE(first.fm_write_queue().peek_pos() == 100);
+  REQUIRE(second.fm_write_queue().peek_pos() == FMQ_FRAC_ONE);
+}
+
 TEST_CASE("Active VDP access routes to the registered System", "[system][vdp]")
 {
   generator::System system = make_system();
@@ -108,4 +120,32 @@ TEST_CASE("Legacy PSG API rejects calls without an active System",
   generator::set_system(nullptr);
   REQUIRE(SN76496Init(0, PSG_CLOCK, PSG_GAIN, PSG_SAMPLE_RATE) == -1);
   REQUIRE(SN76496Init(1, PSG_CLOCK, PSG_GAIN, PSG_SAMPLE_RATE) == -1);
+}
+
+TEST_CASE("Legacy FM write queue API routes to the active System",
+          "[system][fmq]")
+{
+  generator::System system = make_system();
+  ActiveSystem active{system};
+
+  fmq_push(100, 1, 0xAA);
+  REQUIRE(system.fm_write_queue().peek_pos() == 100);
+
+  uint8_t port = 0;
+  uint8_t value = 0;
+  REQUIRE(fmq_pop(FMQ_FRAC_ONE, &port, &value));
+  REQUIRE(port == 1);
+  REQUIRE(value == 0xAA);
+}
+
+TEST_CASE("Legacy FM write queue API is safe without an active System",
+          "[system][fmq]")
+{
+  generator::set_system(nullptr);
+
+  fmq_reset();
+  fmq_push(100, 1, 0xAA);
+  REQUIRE_FALSE(fmq_pop(FMQ_FRAC_ONE, nullptr, nullptr));
+  REQUIRE(fmq_peek_pos() == FMQ_FRAC_ONE);
+  REQUIRE_FALSE(fmq_overflowed());
 }

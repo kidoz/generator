@@ -48,6 +48,7 @@ test('z80f_core_smoke', test_z80f_core,
 # link self-contained without dragging in the full audio/core globals.
 sn76496_inc = include_directories('../include/generator', '../src/audio/sn76496')
 vdp_inc = include_directories('../include/generator', '../src/video')
+fm_inc = include_directories('../src/audio/ym2612', '../include/generator')
 
 test_sn76496 = executable('test_sn76496',
   'test_sn76496.cpp',
@@ -67,7 +68,9 @@ test('sn76496_psg', test_sn76496,
 test_system = executable('test_system',
   'test_system.cpp',
   '../src/core/system.cpp',
-  include_directories: [sn76496_inc, vdp_inc],
+  '../src/audio/ym2612/fm_write_queue.cpp',
+  '../src/audio/ym2612/fm_write_queue_compat.cpp',
+  include_directories: [sn76496_inc, vdp_inc, fm_inc],
   dependencies: [catch2_dep, sn76496_dep],
   override_options: ['cpp_std=c++23'],
   build_by_default: false
@@ -83,8 +86,6 @@ test('system_subsystem_ownership', test_system,
 # sn76496.c above, so the test links only the envelope math — not fm.c's full
 # chip/global state. The [gems-pin] cases pin current (incorrect) behavior so
 # the deferred TD-019/020/021 fixes land as visible diffs.
-fm_inc = include_directories('../src/audio/ym2612', '../include/generator')
-
 test_fm_eg = executable('test_fm_eg',
   'test_fm_eg.cpp',
   '../src/audio/ym2612/fm_eg.cpp',

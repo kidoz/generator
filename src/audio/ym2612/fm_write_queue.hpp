@@ -19,6 +19,7 @@
 #ifndef FM_WRITE_QUEUE_HPP
 #define FM_WRITE_QUEUE_HPP
 
+#include <array>
 #include <stdint.h>
 
 #define FMQ_FRAC_ONE 4096u /* pos_frac units per scanline (12-bit fraction) */
@@ -26,28 +27,57 @@
   256u /* entries; a scanline is ~228 Z80 cycles, so this \
         * cannot realistically overflow */
 
-/* Reset the queue to empty and clear the overflow flag. Call at frame start
- * (or on sound reset) to discard stale entries. */
+namespace generator {
+
+/* Timestamped YM2612 write queue. System owns the runtime instance; the flat
+ * fmq_* API below remains as a compatibility layer for the audio pipeline
+ * while callers migrate to explicit System access. */
+class FmWriteQueue {
+public:
+  /* Reset the queue to empty and clear the overflow flag. Call at frame start
+   * (or on sound reset) to discard stale entries. */
+  void reset();
+
+  /* Queue one YM2612 port write at the given position within the scanline.
+   * pos_frac >= FMQ_FRAC_ONE is clamped to FMQ_FRAC_ONE - 1. On overflow the
+   * entry is dropped and the sticky overflow flag is set; the drain then
+   * force-applies remaining entries at position 0 (degrades to the legacy
+   * apply-at-line-start behavior). */
+  void push(uint16_t pos_frac, uint8_t port, uint8_t val);
+
+  /* Pop the oldest entry whose position is <= limit_frac. Returns true and
+   * fills the port and value outputs when an entry was popped; false when the
+   * queue is empty or the oldest entry lies beyond limit_frac. Entries are
+   * returned strictly in push order. */
+  bool pop(uint16_t limit_frac, uint8_t *port, uint8_t *val);
+
+  /* Peek the oldest entry's position without popping it. Returns FMQ_FRAC_ONE
+   * when the queue is empty (i.e. "nothing pending"). */
+  [[nodiscard]] uint16_t peek_pos() const;
+
+  /* Sticky overflow flag (see push). */
+  [[nodiscard]] bool overflowed() const;
+
+private:
+  struct Entry {
+    uint16_t pos_frac;
+    uint8_t port;
+    uint8_t val;
+  };
+
+  std::array<Entry, FMQ_CAPACITY> m_queue{};
+  unsigned int m_head = 0;
+  unsigned int m_count = 0;
+  bool m_overflowed = false;
+};
+
+}  // namespace generator
+
+/* Transitional flat API over the System-owned queue - see class comment. */
 void fmq_reset(void);
-
-/* Queue one YM2612 port write at the given position within the scanline.
- * pos_frac >= FMQ_FRAC_ONE is clamped to FMQ_FRAC_ONE - 1. On overflow the
- * entry is dropped and the sticky overflow flag is set; the drain then
- * force-applies remaining entries at position 0 (degrades to the legacy
- * apply-at-line-start behavior). */
 void fmq_push(uint16_t pos_frac, uint8_t port, uint8_t val);
-
-/* Pop the oldest entry whose position is <= limit_frac. Returns true and
- * fills *port/*val when an entry was popped; false when the queue is empty or
- * the oldest entry lies beyond limit_frac. Entries are returned strictly in
- * push order. */
 int fmq_pop(uint16_t limit_frac, uint8_t *port, uint8_t *val);
-
-/* Peek the oldest entry's position without popping it. Returns FMQ_FRAC_ONE
- * when the queue is empty (i.e. "nothing pending"). */
 uint16_t fmq_peek_pos(void);
-
-/* Sticky overflow flag (see fmq_push). */
 int fmq_overflowed(void);
 
 #endif /* FM_WRITE_QUEUE_HPP */
