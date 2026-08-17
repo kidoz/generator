@@ -10,11 +10,19 @@
 #include <time.h>
 
 /* Include project headers for proper type definitions */
+extern "C" {
 #include "generator.h"
 #include "state.h"
-#include "vdp.h"
 #include "cpu68k.h"
 #include "cpuz80.h"
+}
+
+/* VDP state now lives in the class; this test provides the instance the
+ * state.cpp serialization (compiled in below) references. */
+#include "vdp.hpp"
+
+/* the Vdp instance and vdp_setupvideo now come from vdp.cpp, linked below */
+using generator::vdp;
 
 /* Provide mock implementations for dependencies not needed in tests */
 
@@ -27,24 +35,12 @@ char gen_leafname[256] = "test_rom";
 /* Mock cartinfo */
 t_cartinfo gen_cartinfo;
 
-/* VDP state - arrays to match header declarations */
-uint8 vdp_vram[LEN_VRAM];
-uint8 vdp_cram[LEN_CRAM];
-uint8 vdp_vsram[LEN_VSRAM];
-uint8 vdp_reg[25];
-uint8 vdp_pal;
-uint8 vdp_overseas;
-uint8 vdp_ctrlflag;
-t_code vdp_code;
-uint16 vdp_first;
-uint16 vdp_second;
-signed int vdp_dmabytes;
-uint16 vdp_address;
-uint8 vdp_dmabusy;
-
 /* 68K CPU state - pointers to match header declarations */
 uint8 cpu68k_ram_storage[0x10000];
 uint8 *cpu68k_ram = cpu68k_ram_storage;
+static uint8 rom_storage[0x200000];
+uint8 *cpu68k_rom = rom_storage;
+unsigned int cpu68k_clocks = 0;
 t_regs regs;
 
 /* Z80 CPU state (cmz80 backend) - pointers to match header declarations */
@@ -63,45 +59,43 @@ t_musiclog gen_musiclog = musiclog_off;
 volatile sig_atomic_t gen_quit = 0;
 
 /* Mock functions */
-void gen_reset(void) {
-  memset(vdp_vram, 0, sizeof(vdp_vram));
-  memset(vdp_cram, 0, sizeof(vdp_cram));
-  memset(vdp_vsram, 0, sizeof(vdp_vsram));
-  memset(vdp_reg, 0, sizeof(vdp_reg));
+extern "C" void gen_reset(void) {
+  memset(vdp.vdp_vram, 0, sizeof(vdp.vdp_vram));
+  memset(vdp.vdp_cram, 0, sizeof(vdp.vdp_cram));
+  memset(vdp.vdp_vsram, 0, sizeof(vdp.vdp_vsram));
+  memset(vdp.vdp_reg, 0, sizeof(vdp.vdp_reg));
   memset(cpu68k_ram_storage, 0, sizeof(cpu68k_ram_storage));
   memset(cpuz80_ram_storage, 0, sizeof(cpuz80_ram_storage));
   memset(&regs, 0, sizeof(regs));
   memset(&cpuz80_z80, 0, sizeof(cpuz80_z80));
-  vdp_pal = 0;
-  vdp_overseas = 0;
-  vdp_ctrlflag = 0;
-  vdp_code = 0;
-  vdp_first = 0;
-  vdp_second = 0;
-  vdp_dmabytes = 0;
-  vdp_address = 0;
+  vdp.vdp_pal = 0;
+  vdp.vdp_overseas = 0;
+  vdp.vdp_ctrlflag = 0;
+  vdp.vdp_code = (t_code)0;
+  vdp.vdp_first = 0;
+  vdp.vdp_second = 0;
+  vdp.vdp_dmabytes = 0;
+  vdp.vdp_address = 0;
   cpuz80_active = 0;
   cpuz80_resetting = 0;
   cpuz80_bank = 0;
 }
 
-void vdp_setupvideo(void) {
+extern "C" void event_freeze(unsigned int bytes) { (void)bytes; }
+extern "C" void event_freeze_clocks(unsigned int clocks) { (void)clocks; }
+extern "C" void cpuz80_updatecontext(void) {
   /* Mock - no-op */
 }
 
-void cpuz80_updatecontext(void) {
-  /* Mock - no-op */
-}
-
-void YM2612_save_state(void) {
+extern "C" void YM2612_save_state(void) {
   /* Mock - no-op for testing */
 }
 
-void SN76496_save_state(void) {
+extern "C" void SN76496_save_state(void) {
   /* Mock - no-op for testing */
 }
 
-void ui_err(const char *msg, ...) {
+extern "C" void ui_err(const char *msg, ...) {
   fprintf(stderr, "ERROR: %s\n", msg);
   exit(1);
 }
@@ -132,9 +126,9 @@ static void test_save_load_cycle(void) {
   char *filename = get_temp_file("_cycle.gt0");
 
   /* Set up known state */
-  vdp_reg[0] = 0x04;
-  vdp_reg[1] = 0x44;
-  vdp_pal = 1;
+  vdp.vdp_reg[0] = 0x04;
+  vdp.vdp_reg[1] = 0x44;
+  vdp.vdp_pal = 1;
   regs.pc = 0x00000200;
   regs.sp = 0x00FFFE00;
   regs.regs[0] = 0xDEADBEEF;
@@ -150,16 +144,16 @@ static void test_save_load_cycle(void) {
   /* Clear state */
   gen_reset();
   TEST_ASSERT(regs.pc == 0, "gen_reset should clear PC");
-  TEST_ASSERT(vdp_reg[0] == 0, "gen_reset should clear VDP regs");
+  TEST_ASSERT(vdp.vdp_reg[0] == 0, "gen_reset should clear VDP regs");
 
   /* Load state */
   int load_result = state_loadfile(filename);
   TEST_ASSERT(load_result == 0, "state_loadfile failed");
 
   /* Verify state was restored */
-  TEST_ASSERT(vdp_reg[0] == 0x04, "VDP reg 0 not restored");
-  TEST_ASSERT(vdp_reg[1] == 0x44, "VDP reg 1 not restored");
-  TEST_ASSERT(vdp_pal == 1, "VDP pal not restored");
+  TEST_ASSERT(vdp.vdp_reg[0] == 0x04, "VDP reg 0 not restored");
+  TEST_ASSERT(vdp.vdp_reg[1] == 0x44, "VDP reg 1 not restored");
+  TEST_ASSERT(vdp.vdp_pal == 1, "VDP pal not restored");
   TEST_ASSERT(regs.pc == 0x00000200, "68K PC not restored");
   TEST_ASSERT(regs.sp == 0x00FFFE00, "68K SP not restored");
   TEST_ASSERT(regs.regs[0] == 0xDEADBEEF, "68K D0 not restored");
@@ -202,7 +196,7 @@ static void test_version_check_invalid(void) {
 
   /* Set up some state that should NOT be modified */
   regs.pc = 0xCAFEBABE;
-  vdp_reg[0] = 0xFF;
+  vdp.vdp_reg[0] = 0xFF;
 
   /* Try to load - should fail */
   int result = state_loadfile(filename);
@@ -210,7 +204,7 @@ static void test_version_check_invalid(void) {
 
   /* Verify state was NOT modified (version check before gen_reset) */
   TEST_ASSERT(regs.pc == 0xCAFEBABE, "PC should not be modified on version error");
-  TEST_ASSERT(vdp_reg[0] == 0xFF, "VDP regs should not be modified on version error");
+  TEST_ASSERT(vdp.vdp_reg[0] == 0xFF, "VDP regs should not be modified on version error");
 
   unlink(filename);
 }
@@ -274,7 +268,7 @@ static void test_slot_operations(void) {
 
   /* Set up state */
   regs.pc = 0xABCD1234;
-  vdp_reg[5] = 0x77;
+  vdp.vdp_reg[5] = 0x77;
 
   /* Save to slot 3 */
   int save_result = state_save(3);
@@ -291,7 +285,7 @@ static void test_slot_operations(void) {
 
   /* Verify restoration */
   TEST_ASSERT(regs.pc == 0xABCD1234, "PC not restored from slot");
-  TEST_ASSERT(vdp_reg[5] == 0x77, "VDP reg not restored from slot");
+  TEST_ASSERT(vdp.vdp_reg[5] == 0x77, "VDP reg not restored from slot");
 
   /* Clean up */
   char slotfile[256];
@@ -317,7 +311,7 @@ static void test_large_data_preservation(void) {
 
   /* Fill VRAM with pattern */
   for (int i = 0; i < LEN_VRAM; i++) {
-    vdp_vram[i] = (uint8)(i & 0xFF);
+    vdp.vdp_vram[i] = (uint8)(i & 0xFF);
   }
 
   /* Fill 68K RAM with pattern */
@@ -339,7 +333,7 @@ static void test_large_data_preservation(void) {
   /* Verify VRAM pattern */
   int vram_ok = 1;
   for (int i = 0; i < LEN_VRAM; i++) {
-    if (vdp_vram[i] != (uint8)(i & 0xFF)) {
+    if (vdp.vdp_vram[i] != (uint8)(i & 0xFF)) {
       vram_ok = 0;
       break;
     }

@@ -13,9 +13,6 @@ extern "C" {
 #include "gensoundp.h"
 #include "vdp.h"
 #include "ui.h"
-#include "sn76496.h"
-#include "gen_context.h"
-#include "gen_ui_callbacks.h"
 #include "fm_write_queue.hpp"
 
 #ifdef JFM
@@ -25,6 +22,15 @@ extern "C" {
 #include "fm.h"
 #endif
 }
+
+/* VDP state moved into generator::Vdp (see vdp.hpp) */
+#include "vdp.hpp"
+#include "system.hpp" /* ui_* backend emission */
+
+using generator::vdp;
+
+/* C++ chip core: defines generator::SN76496 plus the transitional C ABI. */
+#include "sn76496.hpp"
 
 /*** variables externed ***/
 
@@ -242,7 +248,7 @@ int sound_init(void)
   int ret;
 
   /* Calculate timing parameters - guard against division by zero */
-  unsigned int framerate = vdp_framerate ? vdp_framerate : 60;
+  unsigned int framerate = vdp.vdp_framerate ? vdp.vdp_framerate : 60;
   sound_sampsperfield = sound_speed / framerate;
   sound_threshold = sound_sampsperfield * sound_minfields;
 
@@ -268,16 +274,16 @@ int sound_init(void)
 
   /* Initialize sound chips at internal (oversampled) rate */
 #ifdef JFM
-  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_internal_rate,
+  if ((sound_ctx = jfm_init(0, 2612, vdp.vdp_clock / 7, sound_internal_rate,
                             nullptr, nullptr)) == nullptr) {
 #else
-  if (YM2612Init(1, vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
+  if (YM2612Init(1, vdp.vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
 #endif
     LOG_VERBOSE("YM2612 failed init");
     sound_stop();
     return 1;
   }
-  if (SN76496Init(0, vdp_clock / 15, 0, sound_internal_rate)) {
+  if (SN76496Init(0, vdp.vdp_clock / 15, 0, sound_internal_rate)) {
     LOG_VERBOSE("SN76496 failed init");
     sound_stop();
 #ifdef JFM
@@ -377,7 +383,7 @@ int sound_reset(void)
 #endif
 
   /* Calculate timing parameters - guard against division by zero */
-  unsigned int framerate = vdp_framerate ? vdp_framerate : 60;
+  unsigned int framerate = vdp.vdp_framerate ? vdp.vdp_framerate : 60;
   sound_sampsperfield = sound_speed / framerate;
   sound_threshold = sound_sampsperfield * sound_minfields;
 
@@ -388,17 +394,17 @@ int sound_reset(void)
   sound_active = 1;
 
 #ifdef JFM
-  if ((sound_ctx = jfm_init(0, 2612, vdp_clock / 7, sound_internal_rate,
+  if ((sound_ctx = jfm_init(0, 2612, vdp.vdp_clock / 7, sound_internal_rate,
                             nullptr, nullptr)) == nullptr) {
 #else
-  if (YM2612Init(1, vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
+  if (YM2612Init(1, vdp.vdp_clock / 7, sound_internal_rate, nullptr, nullptr)) {
 #endif
     LOG_VERBOSE("YM2612 failed init during reset");
     soundp_stop();
     sound_active = 0;
     return 1;
   }
-  if (SN76496Init(0, vdp_clock / 15, 0, sound_internal_rate)) {
+  if (SN76496Init(0, vdp.vdp_clock / 15, 0, sound_internal_rate)) {
     LOG_VERBOSE("SN76496 failed init during reset");
     soundp_stop();
     sound_active = 0;
@@ -424,8 +430,8 @@ void sound_startfield(void)
   sound_logdata_p = 0;
   if (gen_musiclog == musiclog_gnm) {
     sound_writetolog(0);
-    sound_writetolog((vdp_totlines >> 8) & 0xff);
-    sound_writetolog(vdp_totlines & 0xff);
+    sound_writetolog((vdp.vdp_totlines >> 8) & 0xff);
+    sound_writetolog(vdp.vdp_totlines & 0xff);
     sound_fieldhassamples = 0;
   }
 }
@@ -471,7 +477,7 @@ void sound_endfield(void)
         sound_logdata[2] = 0;
       }
     }
-    GEN_UI_CALL(g_ctx, musiclog, sound_logdata, sound_logdata_p);
+    generator::ui_musiclog(sound_logdata, sound_logdata_p);
   }
 
   if (!sound_on) {
@@ -620,8 +626,8 @@ void sound_line(void)
 static void sound_process(void)
 {
   /* Calculate output sample range for this scanline */
-  int s1 = (sound_sampsperfield * vdp_line) / vdp_totlines;
-  int s2 = (sound_sampsperfield * (vdp_line + 1)) / vdp_totlines;
+  int s1 = (sound_sampsperfield * vdp.vdp_line) / vdp.vdp_totlines;
+  int s2 = (sound_sampsperfield * (vdp.vdp_line + 1)) / vdp.vdp_totlines;
   unsigned int output_samples = s2 - s1;
 
   if (output_samples == 0 || s2 <= s1)

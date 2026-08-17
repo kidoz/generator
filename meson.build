@@ -195,6 +195,7 @@ inc = include_directories(
   'src/cpu/68k/codegen',
   'src/audio/ym2612',
   'src/audio/sn76496',
+  'src/video',
   'src/xbrz'
 )
 

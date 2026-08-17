@@ -24,93 +24,26 @@ extern "C" {
 #include "cpu68k.h"
 #include "ui.h"
 #include "event.h"
+#include "state.h"
 }
+
+#include "vdp.hpp"
 
 #undef DEBUG_VDP
 #undef DEBUG_VDPDMA
 #undef DEBUG_VDPDATA
 #undef DEBUG_VDPCRAM
 
-/*** variables externed ***/
+/*** the single transitional VDP instance (state lives in the class) ***/
 
-unsigned int vdp_event;
-unsigned int vdp_vislines;
-unsigned int vdp_visstartline;
-unsigned int vdp_visendline;
-unsigned int vdp_totlines;
-unsigned int vdp_framerate;
-unsigned int vdp_clock;
-unsigned int vdp_68kclock;
-unsigned int vdp_clksperline_68k;
-unsigned int vdp_line = 0; /* current line number */
-uint8 vdp_oddframe = 0;    /* odd/even frame */
-uint8 vdp_vblank = 0;      /* set during vertical blanking */
-uint8 vdp_hblank = 0;      /* set during horizontal blanking */
-uint8 vdp_vsync = 0;       /* a vsync just happened */
-uint8 vdp_dmabusy = 0;     /* dma busy flag */
-uint8 vdp_pal = 0;         /* set for pal mode */
-uint8 vdp_overseas = 1;    /* set for overseas model */
-uint8 vdp_layerB = 1;      /* flag */
-uint8 vdp_layerBp = 1;     /* flag */
-uint8 vdp_layerA = 1;      /* flag */
-uint8 vdp_layerAp = 1;     /* flag */
-uint8 vdp_layerW = 1;      /* flag */
-uint8 vdp_layerWp = 1;     /* flag */
-uint8 vdp_layerH = 1;      /* flag */
-uint8 vdp_layerS = 1;      /* flag */
-uint8 vdp_layerSp = 1;     /* flag */
-uint8 vdp_cram[LEN_CRAM];
-uint8 vdp_vsram[LEN_VSRAM];
-uint8 vdp_vram[LEN_VRAM];
-uint8 vdp_cramf[LEN_CRAM / 2];
-unsigned int vdp_event_start;
-unsigned int vdp_event_vint;
-unsigned int vdp_event_hint;
-unsigned int vdp_event_hdisplay;
-unsigned int vdp_event_end;
-signed int vdp_nextevent = 0;
-sint32 vdp_dmabytes = 0;            /* bytes left in DMA - must be fixed size */
-signed int vdp_hskip_countdown = 0; /* actual countdown */
-uint16 vdp_address;                 /* address for data/dma transfers */
-t_code vdp_code;    /* code number for data/dma transfers CD3-CD0 */
-uint8 vdp_ctrlflag; /* set inbetween ctrl writes */
-uint16 vdp_first;   /* first word of address set */
-uint16 vdp_second;  /* second word of address set */
+namespace generator {
+Vdp vdp;
+} // namespace generator
 
-/*** global variables ***/
+#define VDP_FIFO_SIZE 4
 
-uint8 vdp_reg[25];
-static int vdp_collision;  /* set during a sprite collision */
-static int vdp_overflow;   /* set when too many sprites in one line */
-static int vdp_fifofull;   /* set when write fifo full (4 entries) */
-static int vdp_fifoempty;  /* set when write fifo empty (0 entries) */
-static int vdp_fifo_count; /* number of entries in FIFO (0-4) */
-#define VDP_FIFO_SIZE 4    /* Genesis VDP has 4-entry FIFO */
-static int vdp_complex;    /* set when simple routines can't cope */
-
-/*** forward references ***/
-
-void vdp_ramcopy_vram(int type);
-void vdp_dma_vramcopy(void);
-void vdp_dma_fill(uint8 data);
-void vdp_showregs(void);
-void vdp_describe(void);
-void vdp_eventinit(void);
-void vdp_layer_simple(unsigned int layer, unsigned int priority,
-                      uint8 *fielddata, unsigned int lineoffset);
-/* C17 migration: removed 'inline' to provide external linkage */
-void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags, uint8 *cellloc,
-                  unsigned int lineoffset);
-void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata);
-int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
-                      unsigned int lineoffset, unsigned int number,
-                      uint8 *spritelist, uint8 *sprite);
-void vdp_sprites_simple(unsigned int priority, uint8 *framedata,
-                        unsigned int lineoffset);
-void vdp_shadow_simple(uint8 *framedata, unsigned int lineoffset);
-void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
-                  unsigned int layer);
-void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata);
+namespace generator {
+ /* Genesis VDP has 4-entry FIFO */
 
 #define PRIBIT_LAYERB 0
 #define PRIBIT_LAYERA 1
@@ -118,7 +51,7 @@ void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata);
 
 /*** vdp_fifo_add - add an entry to the FIFO (called on VDP writes) ***/
 
-static void vdp_fifo_add(void)
+void Vdp::vdp_fifo_add(void)
 {
   if (vdp_fifo_count < VDP_FIFO_SIZE) {
     vdp_fifo_count++;
@@ -129,7 +62,7 @@ static void vdp_fifo_add(void)
 
 /*** vdp_fifo_drain - drain FIFO entries (called during display) ***/
 
-void vdp_fifo_drain(int count)
+void Vdp::vdp_fifo_drain(int count)
 {
   vdp_fifo_count -= count;
   if (vdp_fifo_count < 0) {
@@ -141,7 +74,7 @@ void vdp_fifo_drain(int count)
 
 /*** vdp_init - initialise this sub-unit ***/
 
-int vdp_init(void)
+int Vdp::vdp_init(void)
 {
   vdp_reset();
   return 0;
@@ -149,7 +82,7 @@ int vdp_init(void)
 
 /*** vdp_setupvideo - setup parameters dependant on vdp_pal ***/
 
-void vdp_setupvideo(void)
+void Vdp::vdp_setupvideo(void)
 {
   int v30 = (vdp_reg[1] & 1 << 3) ? 1 : 0;
 
@@ -169,7 +102,7 @@ void vdp_setupvideo(void)
 
 /*** vdp_softreset - soft reset ***/
 
-void vdp_softreset(void)
+void Vdp::vdp_softreset(void)
 {
   /* a soft reset involves resetting the cpu so we need to reset the
      vdp event timers */
@@ -178,7 +111,7 @@ void vdp_softreset(void)
 
 /*** vdp_reset - reset vdp sub-unit ***/
 
-void vdp_reset(void)
+void Vdp::vdp_reset(void)
 {
   int i;
 
@@ -221,7 +154,7 @@ void vdp_reset(void)
       "VDP: totlines = %d (%s)", vdp_totlines, vdp_pal ? "PAL" : "NTSC");
 }
 
-uint16 vdp_status(void)
+uint16 Vdp::vdp_status(void)
 {
   uint16 ret;
 
@@ -256,7 +189,7 @@ uint16 vdp_status(void)
   return (ret);
 }
 
-void vdp_storectrl(uint16 data)
+void Vdp::vdp_storectrl(uint16 data)
 {
   uint8 reg;
   uint8 regdata;
@@ -342,7 +275,7 @@ void vdp_storectrl(uint16 data)
   }
 }
 
-void vdp_ramcopy_vram(int type)
+void Vdp::vdp_ramcopy_vram(int type)
 {
   uint16 length = vdp_reg[19] | vdp_reg[20] << 8;
   uint8 srcbank = vdp_reg[23];
@@ -404,7 +337,7 @@ void vdp_ramcopy_vram(int type)
   event_freeze(type == 0 ? length * 2 : length);
 }
 
-void vdp_dma_vramcopy()
+void Vdp::vdp_dma_vramcopy()
 {
   uint32 length = vdp_reg[19] | vdp_reg[20] << 8;
   uint8 increment = vdp_reg[15];
@@ -437,7 +370,7 @@ void vdp_dma_vramcopy()
      that the low byte of the 16 bit word has already been written in the
      non-dma stage ***/
 
-void vdp_dma_fill(uint8 data)
+void Vdp::vdp_dma_fill(uint8 data)
 {
   uint16 length = vdp_reg[19] | vdp_reg[20] << 8;
   uint8 increment = vdp_reg[15];
@@ -455,7 +388,7 @@ void vdp_dma_fill(uint8 data)
   vdp_dmabytes = length + 1; /* extra byte used (see p36) */
 }
 
-void vdp_storedata(uint16 data)
+void Vdp::vdp_storedata(uint16 data)
 {
   uint16 address;
   uint16 sdata;
@@ -514,7 +447,7 @@ void vdp_storedata(uint16 data)
   }
 }
 
-uint16 vdp_fetchdata(void)
+uint16 Vdp::vdp_fetchdata(void)
 {
   uint16 address;
   uint16 data;
@@ -581,7 +514,7 @@ uint16 vdp_fetchdata(void)
   else                                                                  \
     outdata[offset] = 0;
 
-void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
+void Vdp::vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
 {
   uint8 interlace = (vdp_reg[12] >> 1) & 3;
   uint8 *spritelist = vdp_vram + ((vdp_reg[5] & 0x7F) << 9);
@@ -762,7 +695,7 @@ void vdp_sprites(unsigned int line, uint8 *pridata, uint8 *outdata)
 
 /* layer 0 = A (top), layer 1 = B (bottom) */
 
-void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
+void Vdp::vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
                   unsigned int layer)
 {
   int i, j;
@@ -1051,7 +984,7 @@ void vdp_newlayer(unsigned int line, uint8 *pridata, uint8 *outdata,
 /* this function updates outdata/pridata which came from the layerA generation
    routines */
 
-void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata)
+void Vdp::vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata)
 {
   int interlace = (((vdp_reg[12] >> 1) & 3) == 3) ? 1 : 0;
   int realline = line >> interlace;
@@ -1162,7 +1095,7 @@ void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata)
    call with odd=0 at all times when not in interlace mode 2
  */
 
-void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
+void Vdp::vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
 {
   int i;
   uint8 datablock[320 * 4];
@@ -1479,7 +1412,7 @@ void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
   }
 }
 
-void vdp_renderframe(uint8 *framedata, unsigned int lineoffset)
+void Vdp::vdp_renderframe(uint8 *framedata, unsigned int lineoffset)
 {
   unsigned int i, line;
   uint32 background;
@@ -1517,7 +1450,7 @@ void vdp_renderframe(uint8 *framedata, unsigned int lineoffset)
   }
 }
 
-void vdp_showregs(void)
+void Vdp::vdp_showregs(void)
 {
   int i;
 
@@ -1601,7 +1534,7 @@ void vdp_showregs(void)
   printf("Cur line = %02X (NB: could be +1 after h-int)\n", vdp_line);
 }
 
-void vdp_spritelist(void)
+void Vdp::vdp_spritelist(void)
 {
   uint8 *spritelist = vdp_vram + ((vdp_reg[5] & 0x7F) << 9);
   uint8 *sprite;
@@ -1638,7 +1571,7 @@ void vdp_spritelist(void)
   } while (link);
 }
 
-void vdp_describe(void)
+void Vdp::vdp_describe(void)
 {
   int layer;
   unsigned int line;
@@ -1698,7 +1631,7 @@ void vdp_describe(void)
   }
 }
 
-void vdp_eventinit(void)
+void Vdp::vdp_eventinit(void)
 {
   /* Facts from documentation:
      H-Blank is 73.7 clock cycles long.
@@ -1732,7 +1665,7 @@ void vdp_eventinit(void)
   vdp_nextevent = 0;
 }
 
-void vdp_endfield(void)
+void Vdp::vdp_endfield(void)
 {
   vdp_line = 0;
   vdp_eventinit();
@@ -1743,7 +1676,7 @@ void vdp_endfield(void)
 }
 
 /* C17 migration: removed 'inline' to provide external linkage */
-void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags, uint8 *cellloc,
+void Vdp::vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags, uint8 *cellloc,
                   unsigned int lineoffset)
 {
   int y, x;
@@ -1875,7 +1808,7 @@ void vdp_plotcell(uint8 *patloc, uint8 palette, uint8 flags, uint8 *cellloc,
 /* must be 8*lineoffset bytes scrap before and after fielddata and also
    8 bytes before each line and 8 bytes after each line */
 
-void vdp_layer_simple(unsigned int layer, unsigned int priority,
+void Vdp::vdp_layer_simple(unsigned int layer, unsigned int priority,
                       uint8 *framedata, unsigned int lineoffset)
 {
   uint8 hsize = vdp_reg[16] & 3;
@@ -1951,7 +1884,7 @@ void vdp_layer_simple(unsigned int layer, unsigned int priority,
   } /* xcell */
 }
 
-void vdp_shadow_simple(uint8 *framedata, unsigned int lineoffset)
+void Vdp::vdp_shadow_simple(uint8 *framedata, unsigned int lineoffset)
 {
   unsigned int vertcells = vdp_reg[1] & 1 << 3 ? 30 : 28;
   uint8 *linedata;
@@ -1966,7 +1899,7 @@ void vdp_shadow_simple(uint8 *framedata, unsigned int lineoffset)
   }
 }
 
-void vdp_sprites_simple(unsigned int priority, uint8 *framedata,
+void Vdp::vdp_sprites_simple(unsigned int priority, uint8 *framedata,
                         unsigned int lineoffset)
 {
   uint8 *spritelist = vdp_vram + ((vdp_reg[5] & 0x7F) << 9);
@@ -1974,7 +1907,7 @@ void vdp_sprites_simple(unsigned int priority, uint8 *framedata,
   vdp_sprite_simple(priority, framedata, lineoffset, 1, spritelist, spritelist);
 }
 
-int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
+int Vdp::vdp_sprite_simple(unsigned int priority, uint8 *framedata,
                       unsigned int lineoffset, unsigned int number,
                       uint8 *spritelist, uint8 *sprite)
 {
@@ -2102,7 +2035,7 @@ int vdp_sprite_simple(unsigned int priority, uint8 *framedata,
   return plotted;
 }
 
-uint8 vdp_gethpos(void)
+uint8 Vdp::vdp_gethpos(void)
 {
   float percent;
 
@@ -2143,3 +2076,54 @@ uint8 vdp_gethpos(void)
                   : ((uint8)(0xE8 + percent * 24) & 0xff));
   }
 }
+
+
+void Vdp::vdp_save_state()
+{
+  /* Chunk keys are load-bearing: the save-state format (version 2) has used
+   * these exact mod/name/instance/size tuples since the beginning. */
+  state_transfer8("vdp", "vram", 0, vdp_vram, LEN_VRAM);
+  state_transfer8("vdp", "cram", 0, vdp_cram, LEN_CRAM);
+  state_transfer8("vdp", "vsram", 0, vdp_vsram, LEN_VSRAM);
+  state_transfer8("vdp", "regs", 0, vdp_reg, 25);
+  state_transfer8("vdp", "pal", 0, &vdp_pal, 1);
+  state_transfer8("vdp", "overseas", 0, &vdp_overseas, 1);
+  state_transfer8("vdp", "ctrlflag", 0, &vdp_ctrlflag, 1);
+  /* this cast is probably very bad */
+  state_transfer8("vdp", "code", 0, (uint8 *)&vdp_code, 1);
+  state_transfer16("vdp", "first", 0, &vdp_first, 1);
+  state_transfer16("vdp", "second", 0, &vdp_second, 1);
+  state_transfer32("vdp", "dmabytes", 0, (uint32 *)&vdp_dmabytes, 1);
+  state_transfer16("vdp", "address", 0, &vdp_address, 1);
+}
+
+} // namespace generator
+
+/*** Transitional extern "C" API over generator::vdp ***/
+
+extern "C" void vdp_save_state(void)
+{
+  generator::vdp.vdp_save_state();
+}
+
+extern "C" int vdp_init(void) { return generator::vdp.vdp_init(); }
+extern "C" void vdp_setupvideo(void) { generator::vdp.vdp_setupvideo(); }
+extern "C" void vdp_reset(void) { generator::vdp.vdp_reset(); }
+extern "C" uint16 vdp_status(void) { return generator::vdp.vdp_status(); }
+extern "C" void vdp_storectrl(uint16 data) { generator::vdp.vdp_storectrl(data); }
+extern "C" void vdp_storedata(uint16 data) { generator::vdp.vdp_storedata(data); }
+extern "C" uint16 vdp_fetchdata(void) { return generator::vdp.vdp_fetchdata(); }
+extern "C" void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
+{
+  generator::vdp.vdp_renderline(line, linedata, odd);
+}
+extern "C" void vdp_renderframe(uint8 *framedata, unsigned int lineoffset)
+{
+  generator::vdp.vdp_renderframe(framedata, lineoffset);
+}
+extern "C" void vdp_showregs(void) { generator::vdp.vdp_showregs(); }
+extern "C" void vdp_spritelist(void) { generator::vdp.vdp_spritelist(); }
+extern "C" void vdp_describe(void) { generator::vdp.vdp_describe(); }
+extern "C" void vdp_endfield(void) { generator::vdp.vdp_endfield(); }
+extern "C" uint8 vdp_gethpos(void) { return generator::vdp.vdp_gethpos(); }
+extern "C" void vdp_fifo_drain(int count) { generator::vdp.vdp_fifo_drain(count); }

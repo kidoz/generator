@@ -3,9 +3,7 @@
 
 core_sources = files(
   'emulator_core.cpp',
-  'gen_context.cpp',
-  'gen_core.cpp',
-  'gen_ui_callbacks.cpp'
+  'system.cpp'
 )
 
 core_lib = static_library('gen_core',

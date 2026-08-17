@@ -1,11 +1,13 @@
 #include "emulator_thread.hpp"
+
+#include "vdp.hpp"
+
+using generator::vdp;
 #include "ui_bridge.hpp"
 
 #include <glibmm/main.h>
 
 extern "C" {
-#include "gen_context.h"
-#include "gen_core.h"
 #include "gensound.h"
 #include "gensoundp.h"
 }
@@ -76,12 +78,12 @@ void EmulatorThread::thread_loop() {
         m_frame_requested = false;
         lock.unlock();
         
-        if (m_emulation_running.load() && g_emulator_core && g_emulator_core->get_context() != nullptr) {
+        if (m_emulation_running.load() && g_emulator_core) {
             now = g_get_monotonic_time();
             elapsed = now - last_frame_time;
             
             int pending = soundp_samplesbuffered();
-            int threshold = (int)gen_ctx_sound_threshold();
+            int threshold = (int)sound_threshold;
             bool need_frame = false;
             
             if (frame_was_requested) {
@@ -97,7 +99,7 @@ void EmulatorThread::thread_loop() {
             }
             
             if (need_frame) {
-                frame_duration_us = gen_ctx_vdp_pal() ? 20000 : 16667;
+                frame_duration_us = vdp.vdp_pal ? 20000 : 16667;
                 
                 g_emulator_core->run_frame();
                 last_frame_time = now;

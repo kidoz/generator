@@ -4,6 +4,10 @@
 #include "main_window.hpp"
 #include "ui_bridge.hpp"
 
+#include "vdp.hpp"
+
+using generator::vdp;
+
 #include <gdkmm/memorytexture.h>
 #include <glibmm/bytes.h>
 
@@ -13,7 +17,6 @@ extern uint8_t* g_screen1;
 extern std::atomic<int> g_whichbank;
 
 extern "C" {
-#include "gen_context.h"
 }
 
 // HMAXSIZE and VMAXSIZE matching the core scale bounds
@@ -58,12 +61,12 @@ bool EmulatorView::on_tick(const Glib::RefPtr<Gdk::FrameClock>& /* frame_clock *
 }
 
 void EmulatorView::update_texture() {
-    if (!g_screen0 || !g_screen1 || !g_emulator_core || !g_emulator_core->get_context()) return;
+    if (!g_screen0 || !g_screen1 || !g_emulator_core) return;
 
-    unsigned int base_width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
-    unsigned int base_height = gen_ctx_vdp_vislines();
-    unsigned int xoffset = (gen_ctx_vdp_reg()[12] & 1) ? 0 : 32;
-    unsigned int yoffset = (gen_ctx_vdp_reg()[1] & (1 << 3)) ? 0 : 8;
+    unsigned int base_width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
+    unsigned int base_height = vdp.vdp_vislines;
+    unsigned int xoffset = (vdp.vdp_reg[12] & 1) ? 0 : 32;
+    unsigned int yoffset = (vdp.vdp_reg[1] & (1 << 3)) ? 0 : 8;
 
     // Default no-scale for phase 3, xBRZ/scale integrations to come later
     int scale = 1;

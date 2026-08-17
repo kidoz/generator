@@ -13,50 +13,6 @@ typedef enum {
   cd_cram_fetch
 } t_code;
 
-extern unsigned int vdp_event;
-extern unsigned int vdp_vislines;
-extern unsigned int vdp_visstartline;
-extern unsigned int vdp_visendline;
-extern unsigned int vdp_totlines;
-extern unsigned int vdp_framerate;
-extern unsigned int vdp_clock;
-extern unsigned int vdp_68kclock;
-extern unsigned int vdp_clksperline_68k;
-extern unsigned int vdp_line;
-extern uint8 vdp_oddframe;
-extern uint8 vdp_vblank;
-extern uint8 vdp_hblank;
-extern uint8 vdp_vsync;
-extern uint8 vdp_dmabusy;
-extern uint8 vdp_pal;
-extern uint8 vdp_overseas;
-extern uint8 vdp_layerB;
-extern uint8 vdp_layerBp;
-extern uint8 vdp_layerA;
-extern uint8 vdp_layerAp;
-extern uint8 vdp_layerW;
-extern uint8 vdp_layerWp;
-extern uint8 vdp_layerH;
-extern uint8 vdp_layerS;
-extern uint8 vdp_layerSp;
-extern uint8 vdp_cram[];
-extern uint8 vdp_vsram[];
-extern uint8 vdp_vram[];
-extern unsigned int vdp_cramchange;
-extern uint8 vdp_cramf[];
-extern unsigned int vdp_event_start;
-extern unsigned int vdp_event_vint;
-extern unsigned int vdp_event_hint;
-extern unsigned int vdp_event_hdisplay;
-extern unsigned int vdp_event_end;
-extern signed int vdp_nextevent;
-extern signed int vdp_dmabytes;
-extern signed int vdp_hskip_countdown;
-extern uint16 vdp_address;
-extern t_code vdp_code;
-extern uint8 vdp_ctrlflag;
-extern uint16 vdp_first;
-extern uint16 vdp_second;
 
 void vdp_reset(void);
 int vdp_init(void);
@@ -73,6 +29,7 @@ void vdp_endfield(void);
 void vdp_renderframe(uint8 *framedata, unsigned int lineoffset);
 void vdp_setupvideo(void);
 uint8 vdp_gethpos(void);
+
 void vdp_fifo_drain(int count);
 
 #define LEN_CRAM 128
@@ -91,6 +48,5 @@ static_assert(LEN_VRAM == 65536, "Genesis VRAM must be 64KB");
 /* an estimate of the total cell width including HBLANK, for calculations */
 #define TOTAL_CELLWIDTH 64
 
-extern uint8 vdp_reg[];
 
 #endif /* GENERATOR_VDP_H */

@@ -3,13 +3,20 @@
 #include <stdio.h>
 #include <string.h>
 
+extern "C" {
 #include "generator.h"
 #include "cpu68k.h"
 #include "mem68k.h"
-#include "vdp.h"
 #include "cpuz80.h"
 #include "gensound.h"
 #include "ui.h"
+}
+
+/* VDP state class: read chip members directly instead of the transitional
+ * extern "C" accessors (this port removed them). */
+#include "vdp.hpp"
+
+using generator::vdp;
 
 #undef DEBUG_VDP
 #undef DEBUG_BUS
@@ -680,7 +687,7 @@ uint8 mem68k_fetch_io_byte(uint32 addr)
   switch (addr >> 1) {
   case 0: /* 0x1 */
     /* version */
-    return (1 << 5 | vdp_pal << 6 | vdp_overseas << 7);
+    return (1 << 5 | vdp.vdp_pal << 6 | vdp.vdp_overseas << 7);
   case 1: /* 0x3 - Controller 1 data */
     /* 6-button controller support */
     in = mem68k_read_controller(0, (mem68k_cont1output >> 6) & 1);
@@ -928,13 +935,13 @@ uint16 mem68k_fetch_vdp_word(uint32 addr)
       uint16 hvcount;
 
       /* line counter advances at H-int */
-      line8 = (vdp_line - vdp_visstartline + (vdp_event > 2 ? 1 : 0)) & 0xff;
+      line8 = (vdp.vdp_line - vdp.vdp_visstartline + (vdp.vdp_event > 2 ? 1 : 0)) & 0xff;
 
 #ifdef DEBUG_VDP
       LOG_VERBOSE(
           "%08X [VDP] Word fetch from hv counter 0x%X", regs.pc, addr);
 #endif
-      if ((vdp_reg[12] >> 1) & 3) {
+      if ((vdp.vdp_reg[12] >> 1) & 3) {
         /* interlace mode - replace lowest bit with highest bit */
         hvcount = ((line8 & ~1) << 8) | (line8 & 0x100) | vdp_gethpos();
         LOG_DEBUG1("Interlace mode HV read - check this: %04X", hvcount);
@@ -1004,7 +1011,7 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
     /* data port */
 #ifdef DEBUG_VDP
     LOG_VERBOSE("%08X [VDP] Byte store to DATA of %X [%d][%X]", regs.pc, data,
-                 vdp_reg[23] >> 6, vdp_reg[1]);
+                 vdp.vdp_reg[23] >> 6, vdp.vdp_reg[1]);
 #endif
     vdp_storedata(data | (data << 8));
     return;
@@ -1015,7 +1022,7 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
 
 #ifdef DEBUG_VDP
     LOG_VERBOSE("%08X [VDP] Byte store to CONTROL of %X [%d][%X]", regs.pc,
-                 data, vdp_reg[23] >> 6, vdp_reg[1]);
+                 data, vdp.vdp_reg[23] >> 6, vdp.vdp_reg[1]);
 #endif
     /* control port */
     vdp_storectrl(data | (data << 8));
@@ -1050,7 +1057,7 @@ void mem68k_store_vdp_word(uint32 addr, uint16 data)
     /* data port */
 #ifdef DEBUG_VDP
     LOG_CRITICAL("%08X [VDP] Word store to DATA of %X [%d][%X]", regs.pc, data,
-                  vdp_reg[23] >> 6, vdp_reg[1]);
+                  vdp.vdp_reg[23] >> 6, vdp.vdp_reg[1]);
 #endif
     vdp_storedata(data);
     return;
@@ -1058,7 +1065,7 @@ void mem68k_store_vdp_word(uint32 addr, uint16 data)
   case 3:
 #ifdef DEBUG_VDP
     LOG_VERBOSE("%08X [VDP] Word store to CONTROL of %X [%d][%X]", regs.pc,
-                 data, vdp_reg[23] >> 6, vdp_reg[1]);
+                 data, vdp.vdp_reg[23] >> 6, vdp.vdp_reg[1]);
 #endif
     /* control port */
     vdp_storectrl(data);
@@ -1091,7 +1098,7 @@ void mem68k_store_vdp_long(uint32 addr, uint32 data)
     /* data port */
 #ifdef DEBUG_VDP
     LOG_VERBOSE("%08X [VDP] Long store to DATA of %X [%d][%X]", regs.pc, data,
-                 vdp_reg[23] >> 6, vdp_reg[1]);
+                 vdp.vdp_reg[23] >> 6, vdp.vdp_reg[1]);
 #endif
     vdp_storedata((uint16)(data >> 16));
     vdp_storedata((uint16)(data));
@@ -1100,7 +1107,7 @@ void mem68k_store_vdp_long(uint32 addr, uint32 data)
     /* control port */
 #ifdef DEBUG_VDP
     LOG_VERBOSE("%08X [VDP] Long store to CONTROL of %X [%d][%X]", regs.pc,
-                 data, vdp_reg[23] >> 6, vdp_reg[1]);
+                 data, vdp.vdp_reg[23] >> 6, vdp.vdp_reg[1]);
 #endif
     vdp_storectrl((uint16)(data >> 16));
     vdp_storectrl((uint16)(data));

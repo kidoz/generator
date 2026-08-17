@@ -4,7 +4,6 @@
 #include <SDL3/SDL.h>
 
 extern "C" {
-#include "gen_context.h"
 }
 
 #define MAX_GAMEPADS 4

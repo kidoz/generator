@@ -19,9 +19,11 @@
 #include <unistd.h>
 #include <errno.h>
 
+/* Legacy emulator headers are plain C without extern "C" guards; wrap the
+ * block so their declarations keep C linkage. logo.h/font.h/netplay.h are
+ * generated/guarded and self-contained. */
+extern "C" {
 #include "generator.h"
-#include <SDL3/SDL.h>
-
 #include "cpu68k.h"
 #include "cpuz80.h"
 #include "ui.h"
@@ -29,15 +31,26 @@
 #include "event.h"
 #include "gensound.h"
 #include "mem68k.h"
-#include "logo.h"
-#include "font.h"
 #include "uip.h"
-#include "ui_console.h"
 #include "state.h"
 #include "uiplot.h"
-#include "gen_context.h"
-#include "gen_ui_callbacks.h"
-#include "gen_core.h"
+}
+
+/* VDP state moved into generator::Vdp (see vdp.hpp) */
+#include "vdp.hpp"
+
+using generator::vdp;
+
+#include <SDL3/SDL.h>
+
+#include "logo.h"
+#include "font.h"
+#include "ui_console.h"
+
+#include "emulator_core.hpp"
+
+#include <memory>
+#include <string>
 
 #ifdef NETPLAY
 #include "netplay.h"
@@ -86,34 +99,49 @@ int ui_setcontrollers(const char *str);
 
 static void ui_simpleplot(void);
 
-/*** gen_context callback declarations ***/
-static void console_cb_line(gen_context_t *ctx, int line);
-static void console_cb_end_field(gen_context_t *ctx);
-static void console_cb_musiclog(gen_context_t *ctx, const uint8 *data,
-                                unsigned int length);
-[[noreturn]] static void console_cb_fatal_error(gen_context_t *ctx,
-                                                const char *msg);
-
-/*** gen_context callback structure ***/
-static const gen_ui_callbacks_t console_callbacks = {
-    .line = console_cb_line,
-    .end_field = console_cb_end_field,
-    .audio_output = nullptr,
-    .log_debug3 = nullptr,
-    .log_debug2 = nullptr,
-    .log_debug1 = nullptr,
-    .log_user = nullptr,
-    .log_verbose = nullptr,
-    .log_normal = nullptr,
-    .log_critical = nullptr,
-    .log_request = nullptr,
-    .musiclog = console_cb_musiclog,
-    .fatal_error = console_cb_fatal_error};
-
-/*** gen_context for console UI ***/
-static gen_context_t *console_ctx = nullptr;
-
 static void console_log_sink(int level, const char *msg, void *user_data);
+
+/*** EmulatorCore backend adapters ***/
+
+/* SDL audio output is handled by the platform layer (gensoundp_sdl3), same
+ * arrangement as the gtkmm backend - the audio callback path stays no-op. */
+class ConsoleAudio : public generator::IAudioBackend {
+public:
+  void output_samples(std::span<const uint16_t> left,
+                      std::span<const uint16_t> right) override
+  {
+    (void)left;
+    (void)right;
+  }
+};
+
+/* Video callbacks forward into the legacy ui_line/ui_endfield plotting path
+ * exactly like the old C callback vtable did. */
+class ConsoleVideo : public generator::IVideoBackend {
+public:
+  void render_line(int line, std::span<const uint8_t> pixels) override
+  {
+    (void)pixels;
+    ui_line(line);
+  }
+  void present_field() override { ui_endfield(); }
+};
+
+/* LogLevel enumerators carry the same values as the gen_log level ints, so
+ * the mapping is a static_cast into the existing sink. Most core logging
+ * still arrives through gen_log_set_sink() (registered in ui_init); this
+ * covers messages routed via the UI callback bridge instead. */
+class ConsoleLogger : public generator::ILogger {
+public:
+  void log(generator::LogLevel level, std::string_view message) override
+  {
+    console_log_sink(static_cast<int>(level),
+                     std::string(message).c_str(), nullptr);
+  }
+};
+
+/*** EmulatorCore instance for the console UI ***/
+static std::unique_ptr<generator::EmulatorCore> console_core;
 
 /* we store up log lines and dump them right at the end for allegro */
 #ifdef ALLEGRO
@@ -133,7 +161,7 @@ static char *ui_initload = nullptr; /* filename to load on init */
 static uint8 ui_plotfield = 0;      /* flag indicating plotting this field */
 static uint8 ui_plotprevfield = 0;  /* did we plot the previous field? */
 static uint16 *ui_font;             /* unpacked font */
-static uint8 bigbuffer[8192];       /* stupid no-vsnprintf platforms */
+static char bigbuffer[8192];        /* stupid no-vsnprintf platforms */
 static t_uipinfo ui_uipinfo;        /* uipinfo filled in by uip 'sub-system' */
 static uint16 *ui_screen0;          /* pointer to screen block for bank 0 */
 static uint16 *ui_screen1;          /* pointer to screen block for bank 1 */
@@ -227,7 +255,7 @@ int ui_init(int argc, char *argv[])
 
   if (argc < 1 || argc > 3)
     ui_usage();
-  if ((ui_initload = malloc(strlen(argv[0]) + 1)) == nullptr) {
+  if ((ui_initload = (char *)malloc(strlen(argv[0]) + 1)) == nullptr) {
     fprintf(stderr, "Out of memory\n");
     return 1;
   }
@@ -280,22 +308,13 @@ int ui_init(int argc, char *argv[])
   ui_screen1 = ui_screen[1];
   ui_newscreen = ui_screen[2];
 
-  /* Initialize gen_context for console UI */
-  console_ctx = gen_context_create();
-  if (console_ctx == nullptr) {
-    fprintf(stderr, "Failed to create emulator context\n");
-    return 1;
-  }
-  if (gen_context_init(console_ctx) != 0) {
-    fprintf(stderr, "Failed to initialize emulator context\n");
-    gen_context_destroy(console_ctx);
-    return 1;
-  }
-  gen_ui_set_callbacks(console_ctx, &console_callbacks, nullptr);
-  if (gen_core_init(console_ctx) != 0) {
-    fprintf(stderr, "Failed to initialize emulator core\n");
-    gen_context_destroy(console_ctx);
-    console_ctx = nullptr;
+  /* Initialize the emulator core via the C++ DI wrapper */
+  try {
+    console_core = std::make_unique<generator::EmulatorCore>(
+        std::make_unique<ConsoleAudio>(), std::make_unique<ConsoleVideo>(),
+        std::make_shared<ConsoleLogger>());
+  } catch (const std::exception &e) {
+    fprintf(stderr, "Failed to initialize emulator core: %s\n", e.what());
     return 1;
   }
 
@@ -362,6 +381,7 @@ void ui_exithandler(void)
 
 void ui_final(void)
 {
+  console_core.reset();
   if (ui_vga)
     uip_textmode();
   ui_vga = 0;
@@ -468,7 +488,7 @@ int ui_unpackfont(void)
   uint16 *cdata;
 
   /* 128 chars, 6x, 10y, 16bit */
-  if ((ui_font = malloc(128 * 6 * 10 * 2)) == nullptr)
+  if ((ui_font = (uint16 *)malloc(128 * 6 * 10 * 2)) == nullptr)
     return -1;
   for (c = 0; c < 128; c++) { /* 128 characters */
     cdata = ui_font + c * 6 * 10;
@@ -503,7 +523,7 @@ uint16 ui_plotstring(const char *text, uint16 xpos, uint16 ypos)
   unsigned int x, y;
   uint16 *scr;
 
-  for (p = text; *p; p++) {
+  for (p = (const unsigned char *)text; *p; p++) {
     if (*p > 128)
       cdata = ui_font + '.' * 6 * 10;
     else
@@ -616,15 +636,15 @@ void ui_setupscreen(void)
   sprintf(bigbuffer, "%s %X %s", gen_cartinfo.version, gen_cartinfo.checksum,
           gen_cartinfo.country);
   ui_plotstring(bigbuffer, 216, 420);
-  ui_plotstring(gen_cartinfo.name_domestic, 216, 430);
-  ui_plotstring(gen_cartinfo.name_overseas, 216, 440);
+  ui_plotstring((const char *)gen_cartinfo.name_domestic, 216, 430);
+  ui_plotstring((const char *)gen_cartinfo.name_overseas, 216, 440);
 }
 
 void ui_plotsettings(void)
 {
   ui_plotstring(ui_info ? "On " : "Off", 216 + 126, 20);
-  ui_plotstring(vdp_pal ? "Pal " : "NTSC", 216 + 126, 30);
-  ui_plotstring(vdp_overseas ? "USA/Europe" : "Japan     ", 216 + 126, 40);
+  ui_plotstring(vdp.vdp_pal ? "Pal " : "NTSC", 216 + 126, 30);
+  ui_plotstring(vdp.vdp_overseas ? "USA/Europe" : "Japan     ", 216 + 126, 40);
   ui_plotstring(ui_vdpsimple ? "Cell (fast)  " : "Raster (slow)", 216 + 126,
                 50);
   ui_plotstring(ui_vsync ? "On " : "Off", 216 + 342, 20);
@@ -687,12 +707,12 @@ int ui_loop(void)
         ui_clearnext = 2;
       }
       if (ui_fkeys & 1 << 6) {
-        vdp_pal ^= 1;
+        vdp.vdp_pal ^= 1;
         vdp_setupvideo();
         ui_clearnext = 2;
       }
       if (ui_fkeys & 1 << 7) {
-        vdp_overseas ^= 1;
+        vdp.vdp_overseas ^= 1;
         ui_clearnext = 2;
       }
       if (ui_fkeys & 1 << 8) {
@@ -721,7 +741,7 @@ int ui_loop(void)
       }
 #endif
       ui_newframe();
-      event_doframe();
+      console_core->run_frame();
       break;
     }
   }
@@ -743,7 +763,7 @@ void ui_newframe(void)
      for doing weave interlacing - we don't want to weave two distant fields */
   ui_plotprevfield = ui_plotfield;
 
-  if (frameplots_i > vdp_framerate)
+  if (frameplots_i > vdp.vdp_framerate)
     frameplots_i = 0;
 
   /* Check interlace mode from VDP register 12 bits 1-2:
@@ -751,9 +771,9 @@ void ui_newframe(void)
      1 = interlace mode 1 (doubled - even/odd fields identical)
      2 = invalid (treat as doubled)
      3 = interlace mode 2 (double resolution - even/odd fields different) */
-  unsigned int interlace_mode = (vdp_reg[12] >> 1) & 3;
+  unsigned int interlace_mode = (vdp.vdp_reg[12] >> 1) & 3;
 
-  if (interlace_mode && vdp_oddframe) {
+  if (interlace_mode && vdp.vdp_oddframe) {
     /* In interlace mode on odd field */
     if (interlace_mode == 3) {
       /* Mode 3 (double resolution): Keep ui_plotfield from even field
@@ -779,20 +799,20 @@ void ui_newframe(void)
     frameplots[frameplots_i++] = 0;
     return;
   }
-  if (hmode != (vdp_reg[12] & 1))
+  if (hmode != (vdp.vdp_reg[12] & 1))
     ui_clearnext = 2;
   if (ui_clearnext) {
     /* horizontal size has changed, so clear whole screen and setup
        borders etc again */
     ui_clearnext--;
-    hmode = vdp_reg[12] & 1;
+    hmode = vdp.vdp_reg[12] & 1;
     memset(uip_whichbank() ? ui_screen1 : ui_screen0, 0, sizeof(ui_screen[0]));
     uip_clearscreen();
     ui_setupscreen();
   }
-  /* count the frames we've plotted in the last vdp_framerate real frames */
+  /* count the frames we've plotted in the last vdp.vdp_framerate real frames */
   fps = 0;
-  for (i = 0; i < vdp_framerate; i++) {
+  for (i = 0; i < vdp.vdp_framerate; i++) {
     if (frameplots[i])
       fps++;
   }
@@ -826,14 +846,14 @@ void ui_newframe(void)
 void ui_line(int line)
 {
   static uint8 gfx[320];
-  unsigned int width = (vdp_reg[12] & 1) ? 320 : 256;
+  unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
 
   if (!ui_plotfield)
     return;
-  if (line < 0 || line >= (int)vdp_vislines)
+  if (line < 0 || line >= (int)vdp.vdp_vislines)
     return;
   if (ui_vdpsimple) {
-    if (line == (int)(vdp_vislines >> 1))
+    if (line == (int)(vdp.vdp_vislines >> 1))
       /* if we're in simple cell-based mode, plot when half way
        * down screen */
       ui_simpleplot();
@@ -841,14 +861,14 @@ void ui_line(int line)
   }
   /* we are plotting this frame, and we're not doing a simple plot at
      the end of it all */
-  switch ((vdp_reg[12] >> 1) & 3) {
+  switch ((vdp.vdp_reg[12] >> 1) & 3) {
   case 0: /* normal */
   case 1: /* interlace simply doubled up */
   case 2: /* invalid */
     vdp_renderline(line, gfx, 0);
     break;
   case 3: /* interlace with double resolution */
-    vdp_renderline(line, gfx, vdp_oddframe);
+    vdp_renderline(line, gfx, vdp.vdp_oddframe);
     break;
   }
   uiplot_checkpalcache(0);
@@ -858,13 +878,13 @@ void ui_line(int line)
 static void ui_simpleplot(void)
 {
   unsigned int line;
-  unsigned int width = (vdp_reg[12] & 1) ? 320 : 256;
+  unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
   uint8 gfx[(320 + 16) * (240 + 16)];
 
   /* cell mode - entire frame done here */
   uiplot_checkpalcache(0);
   vdp_renderframe(gfx + (8 * (320 + 16)) + 8, 320 + 16); /* plot frame */
-  for (line = 0; line < vdp_vislines; line++) {
+  for (line = 0; line < vdp.vdp_vislines; line++) {
     uiplot_convertdata16(gfx + 8 + (line + 8) * (320 + 16),
                          ui_newscreen + line * 320, width);
   }
@@ -894,9 +914,9 @@ void ui_endfield(void)
       last_frame_time = current_time;
     } else {
       /* Calculate target frame time in milliseconds
-         vdp_framerate is set in vdp.c: 60 for NTSC, 50 for PAL */
+         vdp.vdp_framerate is set in vdp.c: 60 for NTSC, 50 for PAL */
       target_frame_time_ms =
-          1000 / vdp_framerate; /* 16ms for NTSC, 20ms for PAL */
+          1000 / vdp.vdp_framerate; /* 16ms for NTSC, 20ms for PAL */
 
       elapsed_time = current_time - last_frame_time;
 
@@ -932,20 +952,20 @@ void ui_rendertoscreen(void)
   uint16 *scrtmp;
   uint16 *newlinedata, *oldlinedata;
   unsigned int line;
-  unsigned int nominalwidth = (vdp_reg[12] & 1) ? 320 : 256;
-  unsigned int yoffset = (vdp_reg[1] & 1 << 3) ? 0 : 8;
-  unsigned int xoffset = (vdp_reg[12] & 1) ? 0 : 32;
+  unsigned int nominalwidth = (vdp.vdp_reg[12] & 1) ? 320 : 256;
+  unsigned int yoffset = (vdp.vdp_reg[1] & 1 << 3) ? 0 : 8;
+  unsigned int xoffset = (vdp.vdp_reg[12] & 1) ? 0 : 32;
   uint8 *screen;
   uint16 *evenscreen; /* interlace: lines 0,2,etc. */
   uint16 *oddscreen;  /*            lines 1,3,etc. */
 
-  for (line = 0; line < vdp_vislines; line++) {
+  for (line = 0; line < vdp.vdp_vislines; line++) {
     newlinedata = ui_newscreen + line * 320;
     oldlinedata = *oldscreenpp + line * 320;
     if (ui_fullscreen) {
       screen = (ui_uipinfo.screenmem_w + xoffset * 4 +
                 ui_uipinfo.linewidth * 2 * (line + yoffset));
-      switch ((vdp_reg[12] >> 1) & 3) { /* interlace mode */
+      switch ((vdp.vdp_reg[12] >> 1) & 3) { /* interlace mode */
       case 0:
       case 1:
       case 2:
@@ -953,7 +973,7 @@ void ui_rendertoscreen(void)
         break;
       case 3:
         /* work out which buffer contains the odd and even fields */
-        if (vdp_oddframe) {
+        if (vdp.vdp_oddframe) {
           oddscreen = ui_newscreen;
           evenscreen = uip_whichbank() ? ui_screen0 : ui_screen1;
         } else {
@@ -1267,8 +1287,8 @@ int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
   } else if (!strcasecmp(type, "game")) {
     uint16 data;
     uint16 *scr = uip_whichbank() ? ui_screen0 : ui_screen1;
-    *xsize = (vdp_reg[12] & 1) ? 320 : 256;
-    *ysize = vdp_vislines;
+    *xsize = (vdp.vdp_reg[12] & 1) ? 320 : 256;
+    *ysize = vdp.vdp_vislines;
     for (y = 0; y < *ysize; y++) {
       for (i = 0; i < *xsize; i++) {
         data = scr[320 * y + i];
@@ -1373,31 +1393,6 @@ void ui_musiclog(uint8 *data, unsigned int length)
   (void)length;
 }
 
-/*** gen_context callback implementations ***/
-
-static void console_cb_line(gen_context_t *ctx, int line)
-{
-  (void)ctx;
-  ui_line(line);
-}
-
-static void console_cb_end_field(gen_context_t *ctx)
-{
-  (void)ctx;
-  ui_endfield();
-}
-
-static void console_cb_musiclog(gen_context_t *ctx, const uint8 *data,
-                                unsigned int length)
-{
-  (void)ctx;
-  ui_musiclog((uint8 *)data, length);
-}
-
-[[noreturn]] static void console_cb_fatal_error(gen_context_t *ctx,
-                                                const char *msg)
-{
-  (void)ctx;
-  ui_err("%s", msg);
-  exit(1);
-}
+/* The former gen_context C callback implementations were removed: the
+ * ConsoleVideo/ConsoleLogger adapters above replaced the callback vtable,
+ * and fatal errors route through EmulatorCore's quick_exit bridge. */

@@ -16,6 +16,11 @@ extern "C" {
 #include "ui.h"
 }
 
+/* VDP state moved into generator::Vdp (see vdp.hpp) */
+#include "vdp.hpp"
+
+using generator::vdp;
+
 /*** file scoped variables ***/
 
 static SDL_AudioStream *soundp_stream = nullptr;
@@ -159,7 +164,7 @@ int soundp_start(void)
        SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown");
   LOG_VERBOSE("Threshold = %d bytes (%d fields of sound === %dms latency)",
                sound_threshold * 4, sound_minfields,
-               (int)(1000 * (float)sound_minfields / (float)vdp_framerate));
+               (int)(1000 * (float)sound_minfields / (float)vdp.vdp_framerate));
 
   /* Provide helpful information for PulseAudio users */
   if (strstr(backend, "PulseAudio") != nullptr &&

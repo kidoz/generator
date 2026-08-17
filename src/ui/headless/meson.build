@@ -13,7 +13,7 @@ headless_common_sources = [
   # CPU subsystem (without diss68k.c to avoid tab68k dependency)
   files(
     '../../cpu/68k/cpu68k.cpp',
-    '../../cpu/68k/mem68k.c',
+    '../../cpu/68k/mem68k.cpp',
     '../../cpu/68k/reg68k.cpp'
   ),
   cpuz80_sources,

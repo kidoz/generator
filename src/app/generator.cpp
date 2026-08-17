@@ -17,6 +17,11 @@ extern "C" {
 #include "generator.h"
 }
 
+/* VDP state moved into generator::Vdp (see vdp.hpp) */
+#include "vdp.hpp"
+
+using generator::vdp;
+
 /* Signal handler return type (typically void on POSIX systems) */
 #ifndef RETSIGTYPE
 #define RETSIGTYPE void
@@ -360,12 +365,12 @@ char *gen_loadimage(const char *filename)
 
     /* Priority: filename hint > ROM header flags */
     if (pal_from_filename) {
-      vdp_pal = 1;
+      vdp.vdp_pal = 1;
     } else if (ntsc_from_filename) {
-      vdp_pal = 0;
+      vdp.vdp_pal = 0;
     } else {
       /* Fallback to ROM header: PAL only if Europe-only */
-      vdp_pal = (!gen_cartinfo.flag_usa && !gen_cartinfo.flag_japan &&
+      vdp.vdp_pal = (!gen_cartinfo.flag_usa && !gen_cartinfo.flag_japan &&
                  gen_cartinfo.flag_europe)
                     ? 1
                     : 0;

@@ -18,8 +18,15 @@ extern "C" {
 #include "vdp.h"
 #include "gensound.h"
 #include "fm.h"
-#include "sn76496.h"
 }
+
+/* VDP state moved into generator::Vdp (see vdp.hpp) */
+#include "vdp.hpp"
+
+using generator::vdp;
+
+/* C++ chip core: defines generator::SN76496 plus the transitional C ABI. */
+#include "sn76496.hpp"
 
 typedef struct _t_statelist {
   struct _t_statelist *next;
@@ -245,19 +252,7 @@ static void state_dotransfer(unsigned int mode)
   state_transfermode = mode; /* 0 = save, 1 = load */
   state_transfer8("ver", "major", 0, &state_major, 1);
   state_transfer8("ver", "minor", 0, &state_minor, 1);
-  state_transfer8("vdp", "vram", 0, vdp_vram, LEN_VRAM);
-  state_transfer8("vdp", "cram", 0, vdp_cram, LEN_CRAM);
-  state_transfer8("vdp", "vsram", 0, vdp_vsram, LEN_VSRAM);
-  state_transfer8("vdp", "regs", 0, vdp_reg, 25);
-  state_transfer8("vdp", "pal", 0, &vdp_pal, 1);
-  state_transfer8("vdp", "overseas", 0, &vdp_overseas, 1);
-  state_transfer8("vdp", "ctrlflag", 0, &vdp_ctrlflag, 1);
-  /* this cast is probably very bad */
-  state_transfer8("vdp", "code", 0, (uint8 *)&vdp_code, 1);
-  state_transfer16("vdp", "first", 0, &vdp_first, 1);
-  state_transfer16("vdp", "second", 0, &vdp_second, 1);
-  state_transfer32("vdp", "dmabytes", 0, (uint32 *)&vdp_dmabytes, 1);
-  state_transfer16("vdp", "address", 0, &vdp_address, 1);
+  vdp.vdp_save_state(); /* VDP chunks (keys owned by the chip now) */
   state_transfer8("68k", "ram", 0, cpu68k_ram, 0x10000);
   state_transfer32("68k", "regs", 0, regs.regs, 16);
   state_transfer32("68k", "pc", 0, &regs.pc, 1);
@@ -437,7 +432,7 @@ int state_loadfile(const char *filename)
 
   /* reset some other run-time stuff that isn't important enough to save */
   vdp_setupvideo();
-  vdp_dmabusy = vdp_dmabytes > 0 ? 1 : 0;
+  vdp.vdp_dmabusy = vdp.vdp_dmabytes > 0 ? 1 : 0;
   cpuz80_updatecontext();
   return 0;
 OVERRUN:

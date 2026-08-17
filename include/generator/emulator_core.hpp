@@ -1,100 +1,105 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/* EmulatorCore - C++23 DI Wrapper for the Genesis Emulator */
+/* EmulatorCore - C++23 composition root for the emulator */
 
 #pragma once
 
 extern "C" {
-#include "gen_context.h"
-#include "gen_ui_callbacks.h"
-#include "gen_core.h"
+#include "generator.h" /* t_cartinfo */
 }
 
-#include "interfaces/audio_backend.hpp"
-#include "interfaces/video_backend.hpp"
-#include "interfaces/logger.hpp"
+#include "system.hpp"
 
-#include <memory>
 #include <expected>
+#include <memory>
+#include <span>
 #include <string>
 #include <string_view>
-#include <span>
 
 namespace generator {
 
+/* EmulatorCore owns the emulated machine: it initializes the subsystems,
+ * owns the System aggregate (backend injection), and exposes the emulator
+ * API as plain C++ methods. It replaces the former gen_core_* C API and the
+ * gen_context_t handle; subsystem state still lives in the transitional
+ * globals, which later phases fold into System. */
 class EmulatorCore {
 public:
-    // Constructor Injection
     EmulatorCore(std::unique_ptr<IAudioBackend> audio,
                  std::unique_ptr<IVideoBackend> video,
                  std::shared_ptr<ILogger> logger);
 
     ~EmulatorCore();
 
-    // Disable copy/move
     EmulatorCore(const EmulatorCore&) = delete;
     EmulatorCore& operator=(const EmulatorCore&) = delete;
     EmulatorCore(EmulatorCore&&) = delete;
     EmulatorCore& operator=(EmulatorCore&&) = delete;
 
-    // --- Core Operations ---
-    
-    // Load a ROM file from disk
+    // --- ROM handling ---
+
     std::expected<void, std::string> load_rom(std::string_view filename);
-    
-    // Load a ROM from a memory buffer
     std::expected<void, std::string> load_rom_mem(std::span<const uint8_t> rom_data);
-    
-    // Run a single frame
+    void unload_rom();
+    bool rom_loaded() const;
+
+    // --- Emulation ---
+
     void run_frame();
-    
-    // Reset the emulator
     void reset();
-    
-    // Set input state
-    void set_input(int player, unsigned int up, unsigned int down, 
-                   unsigned int left, unsigned int right, unsigned int start, 
+    void soft_reset();
+    void pause(bool paused);
+    bool is_paused() const { return m_paused; }
+
+    // --- Save states ---
+
+    int save_state(const char* filename);
+    int load_state(const char* filename);
+    int save_state_slot(int slot);
+    int load_state_slot(int slot);
+    time_t state_slot_date(int slot) const;
+
+    // --- Input ---
+
+    void set_input(int player, unsigned int up, unsigned int down,
+                   unsigned int left, unsigned int right, unsigned int start,
                    unsigned int a, unsigned int b, unsigned int c);
 
-    // --- Accessors ---
+    // --- Audio platform control ---
 
-    // Get the underlying C context (for incremental migration access)
-    gen_context_t* get_context() const { return m_ctx.get(); }
+    int audio_start();
+    void audio_stop();
+    void audio_pause();
+    void audio_resume();
+    int audio_samples_buffered() const;
 
-    IAudioBackend& get_audio_backend() const { return *m_audio; }
-    IVideoBackend& get_video_backend() const { return *m_video; }
-    ILogger& get_logger() const { return *m_logger; }
+    // --- Video mode ---
+
+    void set_video_mode(int pal, int autodetect);
+    int video_mode() const;
+    unsigned int framerate() const;
+    void screen_size(int* width, int* height) const;
+
+    // --- Information ---
+
+    const t_cartinfo* rom_info() const;
+    const char* rom_name() const;
+    void set_debug(int enabled);
+    void set_loglevel(int level);
+    unsigned int frame_count() const;
+
+    // --- Backends ---
+
+    IAudioBackend& get_audio_backend() const { return m_system.audio(); }
+    IVideoBackend& get_video_backend() const { return m_system.video(); }
+    ILogger& get_logger() const { return m_system.logger(); }
+
+    // The machine aggregate (subsystems migrate into it phase by phase)
+    System& get_system() { return m_system; }
 
 private:
-    void setup_callbacks();
-
-    // C ABI callback bridges
-    static void c_bridge_line(gen_context_t *ctx, int line);
-    static void c_bridge_end_field(gen_context_t *ctx);
-    static void c_bridge_audio_output(gen_context_t *ctx, const uint16_t *left, const uint16_t *right, unsigned int samples);
-    static void c_bridge_log_debug3(gen_context_t *ctx, const char *msg);
-    static void c_bridge_log_debug2(gen_context_t *ctx, const char *msg);
-    static void c_bridge_log_debug1(gen_context_t *ctx, const char *msg);
-    static void c_bridge_log_user(gen_context_t *ctx, const char *msg);
-    static void c_bridge_log_verbose(gen_context_t *ctx, const char *msg);
-    static void c_bridge_log_normal(gen_context_t *ctx, const char *msg);
-    static void c_bridge_log_critical(gen_context_t *ctx, const char *msg);
-    static void c_bridge_log_request(gen_context_t *ctx, const char *msg);
-    [[noreturn]] static void c_bridge_fatal_error(gen_context_t *ctx, const char *msg);
-    static void c_bridge_musiclog(gen_context_t *ctx, const uint8_t *data, unsigned int length);
-
-    struct ContextDeleter {
-        void operator()(gen_context_t* ctx) const {
-            if (ctx) {
-                gen_context_destroy(ctx);
-            }
-        }
-    };
-
-    std::unique_ptr<gen_context_t, ContextDeleter> m_ctx;
-    std::unique_ptr<IAudioBackend> m_audio;
-    std::unique_ptr<IVideoBackend> m_video;
-    std::shared_ptr<ILogger> m_logger;
-    gen_ui_callbacks_t m_c_callbacks{};
+    System m_system;
+    bool m_freerom = false; /* ROM buffer ownership (load_rom_mem copies) */
+    bool m_paused = false;
 };
 
 } // namespace generator

@@ -1,16 +1,16 @@
 // Characterization tests for the SN76496 / SN76489 PSG (Programmable Sound
 // Generator). These pin the *current* behavior of the tone/noise generation
 // math, latch/data writes, and volume tables so that any future migration
-// (e.g. moving the chip state into gen_context_t) or the GEMS-related audio
+// (e.g. moving the chip state into System) or the GEMS-related audio
 // work can be done behind a regression net.
 //
-// The chip is emulated in plain C (src/audio/sn76496/sn76496.c). Its whole
-// state lives in the global `struct SN76496 sn[MAX_76496]` array, every
-// public function takes an `int chip` index, and there is no timing/event
-// coupling — so it is exercisable in isolation. We compile sn76496.c directly
-// into this test (mirroring how src/persist/test/test_state.c pulls in
-// state.cpp) and stub the one external symbol it references (state_transfer32,
-// used only by SN76496_save_state, which these tests never call).
+// The chip is emulated by a C++ class (src/audio/sn76496/sn76496.cpp). Its
+// transitional state lives in the global `generator::SN76496 sn[]` array,
+// every legacy C function takes an `int chip` index, and there is no
+// timing/event coupling — so it is exercisable in isolation. We compile
+// sn76496.cpp directly into this test (mirroring how src/persist/test pulls
+// in state.cpp) and stub the one external symbol it references
+// (state_transfer32, used only by save_state, which these tests never call).
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_approx.hpp>
@@ -19,7 +19,10 @@
 #include <cstdint>
 
 #include "machine.h"  // uint16 typedef
-#include "sn76496.h"  // extern "C" guarded
+#include "sn76496.hpp"
+
+using generator::SN76496;
+using generator::sn;
 
 using Catch::Approx;
 
@@ -34,9 +37,9 @@ extern "C" void state_transfer32(const char * /*mod*/, const char * /*name*/,
 {
 }
 
-// Independent parity helper mirroring sn76496.c's static inline parity().
-// Used to predict LFSR transitions in tests without relying on the chip's
-// private copy.
+// Independent parity helper mirroring sn76496.cpp's private static
+// SN76496::parity(). Used to predict LFSR transitions in tests without
+// relying on the chip's private copy.
 int parity(unsigned int val)
 {
   val ^= val >> 8;
@@ -53,7 +56,7 @@ constexpr int PSG_CLOCK = 3579545;
 constexpr int PSG_SAMPLE_RATE = 44100;
 constexpr int PSG_GAIN = 0;
 
-// MAX_OUTPUT and STEP mirror the private #defines in sn76496.c.
+// MAX_OUTPUT and STEP mirror the private #defines in sn76496.cpp.
 constexpr int MAX_OUTPUT = 0x7fff;
 constexpr int STEP = 0x10000;
 

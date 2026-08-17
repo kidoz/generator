@@ -1,7 +1,7 @@
 # SN76496 Programmable Sound Generator Emulation
 
 sn76496_lib = static_library('sn76496',
-  sources: 'sn76496.c',
+  sources: 'sn76496.cpp',
   include_directories: include_directories('../../../include/generator')
 )
 

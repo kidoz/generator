@@ -11,10 +11,20 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
+#include <unistd.h>
 
 extern "C" {
 #include "ui.h"
+#include "generator.h"
+#include "vdp.h"
+#include "state.h"
 }
+
+/* C++ VDP class (singleton instance) for the capturing video backend. */
+#include "vdp.hpp"
+
+using generator::vdp;
+
 
 /* Version info */
 #ifndef VERSION
@@ -80,6 +90,32 @@ static uint64_t fnv1a64(const uint8_t *data, size_t len)
   }
   return h;
 }
+
+/* Incremental FNV-1a 64-bit for stream-style fingerprinting (video lines,
+ * state blobs) where the data arrives in pieces. */
+struct Fnv1a64 {
+  uint64_t h = 0xcbf29ce484222325ULL;
+
+  void update(const uint8_t *data, size_t len)
+  {
+    for (size_t i = 0; i < len; ++i) {
+      h ^= data[i];
+      h *= 0x100000001b3ULL;
+    }
+  }
+
+  void update_u32(uint32_t v)
+  {
+    uint8_t b[4] = {(uint8_t)(v & 0xff), (uint8_t)((v >> 8) & 0xff),
+                    (uint8_t)((v >> 16) & 0xff), (uint8_t)((v >> 24) & 0xff)};
+    update(b, sizeof(b));
+  }
+
+  uint64_t value() const
+  {
+    return h;
+  }
+};
 
 /* Write the captured samples to a canonical 44-byte-header stereo 16-bit WAV
  * and report the sample count, duration, and a checksum to stdout. Returns 0
@@ -155,6 +191,122 @@ public:
   }
 };
 
+/* CapturingVideo fingerprints the rendered video output. Like the gtkmm
+ * UiBridgeVideo, it pulls each scanline out of the shared VDP state itself
+ * (the pixels span through the DI boundary is intentionally empty until the
+ * line buffer is plumbed through). It hashes the raw 8-bit paletted VDP line
+ * data — before any backend palette conversion — so the fingerprint is
+ * backend-independent. The hashed stream is, in emission order: line index
+ * (u32 LE) + width bytes of pixels per line, then the field index (u32 LE)
+ * per present_field, so a scanline shift also changes the hash. */
+class CapturingVideo : public IVideoBackend {
+public:
+  void render_line(int line, std::span<const uint8_t> pixels) override
+  {
+    if (line < 0 || line >= static_cast<int>(vdp.vdp_vislines))
+      return;
+
+    uint8_t gfx[320];
+    const uint8_t *reg = vdp.vdp_reg;
+
+    switch ((reg[12] >> 1) & 3) {
+    case 0:
+    case 1:
+    case 2:
+      vdp_renderline(static_cast<unsigned int>(line), gfx, 0);
+      break;
+    case 3:
+      vdp_renderline(static_cast<unsigned int>(line), gfx,
+                     vdp.vdp_oddframe);
+      break;
+    }
+
+    const unsigned int width = (reg[12] & 1) ? 320 : 256;
+    m_total.update_u32(static_cast<uint32_t>(line));
+    m_total.update(gfx, width);
+    m_field.update_u32(static_cast<uint32_t>(line));
+    m_field.update(gfx, width);
+    m_lines++;
+  }
+
+  void present_field() override
+  {
+    m_total.update_u32(m_frames);
+    m_last_field = m_field.h;
+    m_field = Fnv1a64{};
+    m_frames++;
+  }
+
+  unsigned int frames() const
+  {
+    return m_frames;
+  }
+  unsigned int lines() const
+  {
+    return m_lines;
+  }
+  uint64_t total_hash() const
+  {
+    return m_total.value();
+  }
+  uint64_t last_field_hash() const
+  {
+    return m_last_field;
+  }
+
+private:
+  Fnv1a64 m_total;
+  Fnv1a64 m_field;
+  uint64_t m_last_field = 0xcbf29ce484222325ULL;
+  unsigned int m_frames = 0;
+  unsigned int m_lines = 0;
+};
+
+/* Hash the emulator's save state after the run: state_savefile() output is
+ * fully deterministic (no timestamps; the only text is the compile-time
+ * VERSION header line), so hashing the serialized blob fingerprints the whole
+ * machine state — CPU regs, RAM, VDP memories, sound chips — at once. Uses a
+ * temporary file because the save path is file-based. */
+static int dump_state_hash_report()
+{
+  char tmpl[] = "/tmp/generator-headless-state-XXXXXX";
+  const int fd = mkstemp(tmpl);
+  if (fd < 0) {
+    std::cerr << "Error: cannot create temporary state file\n";
+    return 1;
+  }
+  close(fd);
+
+  if (state_savefile(tmpl) != 0) {
+    std::cerr << "Error: failed to save state for hashing\n";
+    unlink(tmpl);
+    return 1;
+  }
+
+  std::ifstream in(tmpl, std::ios::binary);
+  if (!in) {
+    std::cerr << "Error: cannot re-open temporary state file: " << tmpl << "\n";
+    unlink(tmpl);
+    return 1;
+  }
+  Fnv1a64 hash;
+  char buf[8192];
+  size_t total = 0;
+  while (in.read(buf, sizeof(buf)) || in.gcount() > 0) {
+    hash.update(reinterpret_cast<const uint8_t *>(buf),
+                static_cast<size_t>(in.gcount()));
+    total += static_cast<size_t>(in.gcount());
+    if (!in)
+      break;
+  }
+  unlink(tmpl);
+
+  printf("State hash:\n");
+  printf("  bytes: %zu\n", total);
+  printf("  fnv1a64: %016llx\n", (unsigned long long)hash.value());
+  return 0;
+}
+
 class HeadlessLogger : public ILogger {
 public:
   void log(LogLevel level, std::string_view message) override
@@ -200,6 +352,12 @@ static void print_usage(const char *progname)
       "  -D, --dump-audio F  Dump rendered audio to a 16-bit stereo WAV and\n");
   printf("                      print a checksum (deterministic; for A/B "
          "diffs)\n");
+  printf("  --dump-video-hash   Fingerprint the rendered video (per-line VDP "
+         "output)\n");
+  printf("                      and print FNV-1a checksums after the run\n");
+  printf("  --dump-state-hash   Save the final machine state to a temporary "
+         "file and\n");
+  printf("                      print an FNV-1a checksum of the blob\n");
   printf("  -V, --verbose       Enable verbose output\n");
   printf("  -q, --quiet         Suppress all output except errors\n");
 }
@@ -217,6 +375,8 @@ int main(int argc, char *argv[])
   const char *load_state_file = nullptr;
   const char *save_state_file = nullptr;
   const char *dump_audio_file = nullptr;
+  int dump_video_hash = 0;
+  int dump_state_hash = 0;
   unsigned int num_frames = DEFAULT_FRAMES;
   int opt;
 
@@ -229,6 +389,8 @@ int main(int argc, char *argv[])
       {"load-state", required_argument, 0, 'l'},
       {"save-state", required_argument, 0, 's'},
       {"dump-audio", required_argument, 0, 'D'},
+      {"dump-video-hash", no_argument, &dump_video_hash, 1},
+      {"dump-state-hash", no_argument, &dump_state_hash, 1},
       {0, 0, 0, 0}};
 
   while ((opt = getopt_long(argc, argv, "hvf:Vql:s:D:", long_options,
@@ -262,6 +424,10 @@ int main(int argc, char *argv[])
     case 'q':
       quiet_mode = 1;
       break;
+    case 0:
+      /* Long option that sets its own flag (--dump-video-hash,
+       * --dump-state-hash); nothing further to do. */
+      break;
     default:
       print_usage(argv[0]);
       return 1;
@@ -283,8 +449,9 @@ int main(int argc, char *argv[])
   try {
     /* Build a capturing audio backend when --dump-audio was requested, so the
      * rendered samples are available for the post-run WAV dump; otherwise the
-     * plain no-op headless backend. */
+     * plain no-op headless backend. Likewise for --dump-video-hash. */
     CapturingAudio *capture = nullptr;
+    CapturingVideo *capture_video = nullptr;
     std::unique_ptr<IAudioBackend> audio;
     if (dump_audio_file != nullptr) {
       auto cap = std::make_unique<CapturingAudio>();
@@ -293,11 +460,17 @@ int main(int argc, char *argv[])
     } else {
       audio = std::make_unique<HeadlessAudio>();
     }
+    std::unique_ptr<IVideoBackend> video;
+    if (dump_video_hash) {
+      auto cap = std::make_unique<CapturingVideo>();
+      capture_video = cap.get();
+      video = std::move(cap);
+    } else {
+      video = std::make_unique<HeadlessVideo>();
+    }
 
     auto core = std::make_unique<EmulatorCore>(
-        std::move(audio), std::make_unique<HeadlessVideo>(),
-        std::make_shared<HeadlessLogger>());
-
+        std::move(audio), std::move(video), std::make_shared<HeadlessLogger>());
     auto res = core->load_rom(rom_file);
     if (!res) {
       std::cerr << "Error: Failed to load ROM: " << res.error() << "\n";
@@ -305,7 +478,7 @@ int main(int argc, char *argv[])
     }
 
     if (!quiet_mode) {
-      const gen_cartinfo_t *info = gen_core_get_rom_info(core->get_context());
+      const t_cartinfo *info = core->rom_info();
       if (info != nullptr) {
         printf("Loaded: %s\n", info->name_overseas[0] ? info->name_overseas
                                                       : info->name_domestic);
@@ -315,7 +488,7 @@ int main(int argc, char *argv[])
     }
 
     if (load_state_file != nullptr) {
-      if (gen_core_load_state(core->get_context(), load_state_file) != 0) {
+      if (core->load_state(load_state_file) != 0) {
         std::cerr << "Error: Failed to load state from: " << load_state_file
                   << "\n";
         return 1;
@@ -333,14 +506,14 @@ int main(int argc, char *argv[])
     for (; frame < num_frames; frame++) {
       core->run_frame();
 
-      if (core->get_context()->quit) {
+      if (gen_quit) { /* signal-safe shutdown flag */
         if (!quiet_mode)
           printf("Quit signal received at frame %u\n", frame);
         break;
       }
 
       if (verbose_mode && !quiet_mode && frame > 0 &&
-          (frame % (gen_core_get_framerate(core->get_context()) * 10)) == 0) {
+          (frame % (core->framerate() * 10)) == 0) {
         printf("Frame %u / %u (%.1f%%)\n", frame, num_frames,
                100.0 * frame / num_frames);
       }
@@ -353,8 +526,7 @@ int main(int argc, char *argv[])
       printf("\nCompleted %u frames in %.2f seconds\n", frame, elapsed);
       printf("Average: %.2f frames/sec (%.2fx realtime at %uhz)\n",
              frame / elapsed,
-             (frame / elapsed) / gen_core_get_framerate(core->get_context()),
-             gen_core_get_framerate(core->get_context()));
+             (frame / elapsed) / core->framerate(), core->framerate());
     }
 
     if (dump_audio_file != nullptr && capture != nullptr) {
@@ -369,8 +541,23 @@ int main(int argc, char *argv[])
       }
     }
 
+    if (capture_video != nullptr) {
+      printf("Video hash:\n");
+      printf("  frames: %u, lines: %u\n", capture_video->frames(),
+             capture_video->lines());
+      printf("  fnv1a64 (all frames): %016llx\n",
+             (unsigned long long)capture_video->total_hash());
+      printf("  fnv1a64 (final frame): %016llx\n",
+             (unsigned long long)capture_video->last_field_hash());
+    }
+
+    if (dump_state_hash) {
+      if (dump_state_hash_report() != 0)
+        return 1;
+    }
+
     if (save_state_file != nullptr) {
-      if (gen_core_save_state(core->get_context(), save_state_file) != 0) {
+      if (core->save_state(save_state_file) != 0) {
         std::cerr << "Error: Failed to save state to: " << save_state_file
                   << "\n";
         return 1;

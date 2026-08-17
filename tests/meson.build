@@ -42,15 +42,15 @@ test('z80f_core_smoke', test_z80f_core,
 )
 
 # SN76496 PSG characterization tests.
-# sn76496.c is compiled directly into the test (mirroring how
-# src/persist/test/test_state.c pulls in state.cpp); the only external symbol
+# sn76496.cpp is compiled directly into the test (mirroring how
+# src/persist/test pulls in state.cpp); the only external symbol
 # it references (state_transfer32) is stubbed in the test source, keeping the
 # link self-contained without dragging in the full audio/core globals.
 sn76496_inc = include_directories('../include/generator', '../src/audio/sn76496')
 
 test_sn76496 = executable('test_sn76496',
   'test_sn76496.cpp',
-  '../src/audio/sn76496/sn76496.c',
+  '../src/audio/sn76496/sn76496.cpp',
   include_directories: [sn76496_inc],
   dependencies: [catch2_dep],
   override_options: ['cpp_std=c++23'],
@@ -115,3 +115,25 @@ test('fm_write_queue', test_fm_write_queue,
   timeout: 30,
   suite: 'catch2'
 )
+
+# VDP characterization tests.
+# vdp.cpp is compiled directly into the test; the emulator globals it
+# references (68K regs/ROM/RAM, event freeze, ui_err, logging) are stubbed in
+# the test source, keeping the link self-contained.
+vdp_inc = include_directories('../include/generator', '../src/video')
+
+test_vdp = executable('test_vdp',
+  'test_vdp.cpp',
+  '../src/video/vdp.cpp',
+  '../src/util/log.cpp',
+  include_directories: [vdp_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('vdp_core', test_vdp,
+  timeout: 30,
+  suite: 'catch2'
+)
+

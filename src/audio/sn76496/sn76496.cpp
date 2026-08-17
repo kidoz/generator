@@ -3,11 +3,11 @@
 
    VI. Reuse of Source Code
    --------------------------
-   This chapter might not apply to specific portions of MAME (e.g. CPU
+   This chapter might not apply to specific portions of MAME (e.g., CPU
    emulators) which bear different copyright notices.
    The source code cannot be used in a commercial product without the written
-   authorization of the authors. Use in non-commercial products is allowed, and
-   indeed encouraged.  If you use portions of the MAME source code in your
+   authorization of the authors. Use in non-commercial products is allowed,
+   and indeed encouraged.  If you use portions of the MAME source code in your
    program, however, you must make the full source code freely available as
    well.
    Usage of the _information_ contained in the source code is free for any use.
@@ -18,11 +18,10 @@
 */
 
 /***************************************************************************
-
-  sn76496.c
+  sn76496.cpp
 
   Routines to emulate the Texas Instruments SN76489 / SN76496 programmable
-  tone /noise generator. Also known as (or at least compatible with) TMS9919.
+  tone/noise generator. Also known as (or at least compatible with) TMS9919.
 
   Noise emulation is not accurate due to lack of documentation. The noise
   generator uses a shift register with a XOR-feedback network, but the exact
@@ -31,11 +30,15 @@
 
 ***************************************************************************/
 
-/* get uint16 definition */
-#include "generator.h"
+#include "sn76496.hpp"
 
-#include "sn76496.h"
+/* state.h has no extern "C" guards; wrap it so the state_transfer*
+ * declarations get C linkage and match state.cpp's definitions. */
+extern "C" {
 #include "state.h"
+}
+
+namespace generator {
 
 #define MAX_OUTPUT 0x7fff
 #define STEP 0x10000
@@ -61,10 +64,10 @@
 /* Noise generator initial state - bit 15 set (standard for SN76489) */
 #define NG_PRESET 0x8000
 
-struct SN76496 sn[MAX_76496];
+SN76496 sn[MAX_76496];
 
 /* Helper: calculate parity of masked bits (for LFSR feedback) */
-static inline int parity(unsigned int val)
+int SN76496::parity(unsigned int val)
 {
   val ^= val >> 8;
   val ^= val >> 4;
@@ -73,9 +76,9 @@ static inline int parity(unsigned int val)
   return val & 1;
 }
 
-void SN76496Write(int chip, int data)
+void SN76496::write(int data)
 {
-  struct SN76496 *R = &sn[chip];
+  SN76496 *R = this;
 
   /* should update buffer before getting here */
 
@@ -90,7 +93,7 @@ void SN76496Write(int chip, int data)
     case 2: /* tone 1 : frequency */
     case 4: /* tone 2 : frequency */
       /* Period 0 and 1 produce DC output (channel held high).
-       * We use Period=0 to signal this special case in SN76496Update. */
+       * We use Period=0 to signal this special case in update(). */
       if (R->Register[r] <= 1) {
         R->Period[c] = 0; /* DC output */
         R->Output[c] = 1; /* held high */
@@ -150,10 +153,10 @@ void SN76496Write(int chip, int data)
   }
 }
 
-void SN76496Update(int chip, uint16 *buffer, int length)
+void SN76496::update(uint16 *buffer, int length)
 {
   int i;
-  struct SN76496 *R = &sn[chip];
+  SN76496 *R = this;
 
   /* If the volume is 0, increase the counter */
   for (i = 0; i < 4; i++) {
@@ -252,9 +255,9 @@ void SN76496Update(int chip, uint16 *buffer, int length)
   }
 }
 
-static void SN76496_set_clock(int chip, int clock)
+void SN76496::set_clock(int clock)
 {
-  struct SN76496 *R = &sn[chip];
+  SN76496 *R = this;
 
   /* the base clock for the tone generators is the chip clock divided by 16; */
   /* for the noise generator, it is clock / 256. */
@@ -265,9 +268,9 @@ static void SN76496_set_clock(int chip, int clock)
   R->UpdateStep = ((double)STEP * R->SampleRate * 16) / clock;
 }
 
-static void SN76496_set_gain(int chip, int gain)
+void SN76496::set_gain(int gain)
 {
-  struct SN76496 *R = &sn[chip];
+  SN76496 *R = this;
   int i;
   double out;
 
@@ -303,13 +306,13 @@ static void SN76496_set_gain(int chip, int gain)
   R->VolTable[15] = 0; /* Volume 15 = silence */
 }
 
-int SN76496Init(int chip, int clock, int gain, int sample_rate)
+int SN76496::init(int clock, int gain, int sample_rate)
 {
   int i;
-  struct SN76496 *R = &sn[chip];
+  SN76496 *R = this;
 
   R->SampleRate = sample_rate;
-  SN76496_set_clock(chip, clock);
+  set_clock(clock);
 
   /* Initialize all volumes to 0 (will use VolTable[0x0f] = 0 = silence) */
   for (i = 0; i < 4; i++)
@@ -323,8 +326,8 @@ int SN76496Init(int chip, int clock, int gain, int sample_rate)
 
   /* Initialize tone channels: Register 0 means DC output (held high) */
   for (i = 0; i < 3; i++) {
-    R->Output[i] = 1;  /* DC high */
-    R->Period[i] = 0;  /* 0 = DC mode */
+    R->Output[i] = 1; /* DC high */
+    R->Period[i] = 0; /* 0 = DC mode */
     R->Count[i] = 0;
   }
 
@@ -335,29 +338,49 @@ int SN76496Init(int chip, int clock, int gain, int sample_rate)
   R->RNG = NG_PRESET;
   R->Output[3] = R->RNG & 1;
 
-  SN76496_set_gain(chip, gain & 0xff);
+  set_gain(gain & 0xff);
 
   return 0;
 }
 
-/*** SN76496_save_state - save/load SN76496 state ***/
+/*** save_state - save/load SN76496 state (per-chip chunks) ***/
 
-void SN76496_save_state(void)
+void SN76496::save_state(int chip_index)
 {
-  int chip;
-  const char statename[] = "SN76496";
+  static constexpr char statename[] = "SN76496";
 
-  for (chip = 0; chip < MAX_76496; chip++) {
-    struct SN76496 *R = &sn[chip];
+  /* Save/load register state */
+  state_transfer32(statename, "Register", chip_index, (uint32 *)Register, 8);
+  state_transfer32(statename, "LastReg", chip_index, (uint32 *)&LastRegister, 1);
+  state_transfer32(statename, "Volume", chip_index, (uint32 *)Volume, 4);
+  state_transfer32(statename, "RNG", chip_index, &RNG, 1);
+  state_transfer32(statename, "NoiseFB", chip_index, (uint32 *)&NoiseFB, 1);
+  state_transfer32(statename, "Period", chip_index, (uint32 *)Period, 4);
+  state_transfer32(statename, "Count", chip_index, (uint32 *)Count, 4);
+  state_transfer32(statename, "Output", chip_index, (uint32 *)Output, 4);
+}
 
-    /* Save/load register state */
-    state_transfer32(statename, "Register", chip, (uint32 *)R->Register, 8);
-    state_transfer32(statename, "LastReg", chip, (uint32 *)&R->LastRegister, 1);
-    state_transfer32(statename, "Volume", chip, (uint32 *)R->Volume, 4);
-    state_transfer32(statename, "RNG", chip, &R->RNG, 1);
-    state_transfer32(statename, "NoiseFB", chip, (uint32 *)&R->NoiseFB, 1);
-    state_transfer32(statename, "Period", chip, (uint32 *)R->Period, 4);
-    state_transfer32(statename, "Count", chip, (uint32 *)R->Count, 4);
-    state_transfer32(statename, "Output", chip, (uint32 *)R->Output, 4);
-  }
+} // namespace generator
+
+/* Transitional C ABI over the global array - see sn76496.hpp. */
+
+extern "C" int SN76496Init(int chip, int clock, int gain, int sample_rate)
+{
+  return generator::sn[chip].init(clock, gain, sample_rate);
+}
+
+extern "C" void SN76496Write(int chip, int data)
+{
+  generator::sn[chip].write(data);
+}
+
+extern "C" void SN76496Update(int chip, uint16 *buffer, int length)
+{
+  generator::sn[chip].update(buffer, length);
+}
+
+extern "C" void SN76496_save_state(void)
+{
+  for (int chip = 0; chip < generator::MAX_76496; chip++)
+    generator::sn[chip].save_state(chip);
 }

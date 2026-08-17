@@ -11,6 +11,11 @@ extern "C" {
 
 #include "uiplot.h"
 }
+
+/* VDP state moved into generator::Vdp (see vdp.hpp) */
+#include "vdp.hpp"
+
+using generator::vdp;
 #include "xbrz_wrapper.h" /* xBRZ high-quality upscaling (self-guarded) */
 
 uint32 uiplot_palcache[192];
@@ -39,7 +44,7 @@ void uiplot_setmasks(uint32 redmask, uint32 greenmask, uint32 bluemask)
 /* uiplot_checkpalcache goes through the CRAM memory in the Genesis and
    converts it to the uiplot_palcache table.  The Genesis has 64 colours,
    but we store three versions of the colour table into uiplot_palcache - a
-   normal, hilighted and dim version.  The vdp_cramf buffer has 64
+   normal, hilighted and dim version.  The vdp.vdp_cramf buffer has 64
    entries and is set to 1 when the game writes to CRAM, this means this
    code skips entries that have not changed, unless 'flag' is set to 1 in
    which case this updates all entries regardless. */
@@ -56,20 +61,20 @@ void uiplot_checkpalcache(int flag)
      when we do a dim or bright colour, i.e. this code works with 12bpp
      upwards */
 
-  /* the flag forces it to do the update despite the vdp_cramf buffer */
+  /* the flag forces it to do the update despite the vdp.vdp_cramf buffer */
 
   for (col = 0; col < 64; col++) { /* the CRAM has 64 colours */
-    if (!flag && !vdp_cramf[col])
+    if (!flag && !vdp.vdp_cramf[col])
       continue;
-    vdp_cramf[col] = 0;
-    p = (uint8 *)vdp_cram + 2 * col; /* point p to the two-byte CRAM entry */
+    vdp.vdp_cramf[col] = 0;
+    p = (uint8 *)vdp.vdp_cram + 2 * col; /* point p to the two-byte CRAM entry */
 
     /* Extract 3-bit Genesis colors (values 0-14)
        Genesis CRAM format (16-bit big-endian word): 0000_BBB0_GGG0_RRR0
        Bit layout: [15-12: 0000] [11-9: Blue] [8: 0] [7-5: Green] [4: 0] [3-1:
        Red] [0: 0]
 
-       IMPORTANT: vdp_cram is stored in NATIVE byte order (not swapped to
+       IMPORTANT: vdp.vdp_cram is stored in NATIVE byte order (not swapped to
        little-endian) So on x86 (little-endian), when we read as bytes: p[0] =
        high byte (bits 15-8) = 0000_BBB0  ← Blue is here! p[1] = low byte  (bits
        7-0)  = GGG0_RRR0  ← Red & Green are here!

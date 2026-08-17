@@ -1,6 +1,9 @@
 #include "ui_bridge.hpp"
 #include "generator_app.hpp"
 #include "emulator_core.hpp"
+#include "vdp.hpp"
+
+using generator::vdp;
 
 #include <vector>
 #include <string>
@@ -54,23 +57,21 @@ public:
     void render_line(int line, std::span<const uint8_t> pixels) override {
         if (!g_plotfield) return;
         
-        // Use emulator core context directly
-        gen_context_t* ctx = g_emulator_core ? g_emulator_core->get_context() : nullptr;
-        if (!ctx) return;
-        
-        if (line < 0 || line >= static_cast<int>(gen_ctx_vdp_vislines())) return;
+        if (!g_emulator_core) return;
+
+        if (line < 0 || line >= static_cast<int>(vdp.vdp_vislines)) return;
 
         static uint8_t gfx[320];
-        unsigned int width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
+        unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
 
-        switch ((gen_ctx_vdp_reg()[12] >> 1) & 3) {
+        switch ((vdp.vdp_reg[12] >> 1) & 3) {
         case 0:
         case 1:
         case 2:
             vdp_renderline(static_cast<unsigned int>(line), gfx, 0);
             break;
         case 3:
-            vdp_renderline(static_cast<unsigned int>(line), gfx, gen_ctx_vdp_oddframe());
+            vdp_renderline(static_cast<unsigned int>(line), gfx, vdp.vdp_oddframe);
             break;
         }
 
@@ -193,8 +194,8 @@ extern "C" void ui_line(int line)
     if (line < 0 || line >= 240) return;
     
     // Read from VDP line
-    uint8_t* gfx = (uint8_t*)gen_ctx_vdp_reg() + 0; // Fake for now, actually uiplot reads from vdp structures
-    unsigned int width = (gen_ctx_vdp_reg()[12] & 1) ? 320 : 256;
+    uint8_t* gfx = (uint8_t*)vdp.vdp_reg + 0; // Fake for now, actually uiplot reads from vdp structures
+    unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
     
     uiplot_checkpalcache(0);
     uiplot_convertdata32(gfx, (uint32_t*)(g_newscreen + line * HMAXSIZE * 4), width);

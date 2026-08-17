@@ -4,9 +4,9 @@
 extern "C" {
 #include "machine.h"
 #include "gensoundp.h"
-#include "gen_context.h"      /* g_ctx */
-#include "gen_ui_callbacks.h" /* GEN_UI_CALL */
 }
+
+#include "system.hpp" /* ui_audio_output */
 
 /*** soundp_start - start sound hardware (no-op) ***/
 
@@ -54,7 +54,7 @@ int soundp_samplesbuffered(void)
  * Previously this discarded samples, leaving the audio_output seam dead. */
 void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
 {
-  GEN_UI_CALL(g_ctx, audio_output, left, right, samples);
+  generator::ui_audio_output(left, right, samples);
 }
 
 /*** soundp_reset - reset audio subsystem (no-op) ***/
