@@ -20,6 +20,9 @@ build_deps = [
 # Add Z80 backend (z80f core + generator adapter)
 build_deps += z80_dep
 
+# Embedded data blobs (initcart for gtk4 splash; logo/font for console UI)
+build_deps += data_dep
+
 # Add network library (if enabled)
 if enable_netplay
   build_deps += network_dep
@@ -41,8 +44,6 @@ if ui_backend == 'gtk4'
     files('../platform/sdl3/gensoundp_sdl3.cpp'),
     # Persistence
     persist_sources,
-    # Data
-    files('../data/initcart.c'),
     # Utilities
     util_sources,
     # UI
@@ -66,8 +67,6 @@ elif ui_backend == 'console'
     platform_sdl3_sources,
     # Persistence (needed for state functions)
     persist_sources,
-    # Data (logo and font for console UI)
-    files('../data/logo.c', '../data/font.c'),
     # Utilities
     util_sources,
     # UI
