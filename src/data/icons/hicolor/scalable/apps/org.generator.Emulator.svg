@@ -1,44 +1,68 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Generator">
   <defs>
-    <linearGradient id="tile" x1="34" y1="24" x2="220" y2="234" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#2b2d31"/>
-      <stop offset="0.58" stop-color="#17191d"/>
-      <stop offset="1" stop-color="#0d0f12"/>
+    <linearGradient id="console" x1="57" y1="65" x2="187" y2="192" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4b4c50"/>
+      <stop offset="0.52" stop-color="#29292d"/>
+      <stop offset="1" stop-color="#161619"/>
     </linearGradient>
-    <linearGradient id="cart" x1="91" y1="29" x2="165" y2="96" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f4d36f"/>
-      <stop offset="1" stop-color="#d6613d"/>
+    <linearGradient id="console-edge" x1="128" y1="143" x2="128" y2="202" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#303035"/>
+      <stop offset="1" stop-color="#121215"/>
     </linearGradient>
-    <linearGradient id="screen" x1="78" y1="91" x2="175" y2="159" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8df0d3"/>
-      <stop offset="1" stop-color="#35bcc8"/>
+    <radialGradient id="deck" cx="0" cy="0" r="1" gradientTransform="translate(104 91) rotate(51) scale(89)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#505156"/>
+      <stop offset="0.63" stop-color="#303035"/>
+      <stop offset="1" stop-color="#202024"/>
+    </radialGradient>
+    <linearGradient id="controller" x1="88" y1="169" x2="164" y2="233" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4a4b50"/>
+      <stop offset="1" stop-color="#202024"/>
     </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
-      <feDropShadow dx="0" dy="11" stdDeviation="12" flood-color="#030405" flood-opacity="0.42"/>
+    <linearGradient id="controller-edge" x1="128" y1="197" x2="128" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#292a2e"/>
+      <stop offset="1" stop-color="#17171a"/>
+    </linearGradient>
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="170%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="controller-shadow" x="-25%" y="-30%" width="150%" height="180%">
+      <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#000" flood-opacity="0.42"/>
     </filter>
   </defs>
 
-  <rect width="256" height="256" rx="46" fill="url(#tile)"/>
-  <path d="M44 204c27 18 72 25 117 15 21-5 39-13 52-23 7-6 17 1 14 10-5 16-26 29-57 36-52 12-108 2-140-23-8-7-1-23 14-15z" fill="#000" opacity="0.28"/>
+  <ellipse cx="128" cy="218" rx="91" ry="17" fill="#000" opacity="0.18" transform="translate(0 -13)"/>
 
-  <g filter="url(#shadow)">
-    <path d="M92 40c0-9 7-16 16-16h56c9 0 16 7 16 16v72H92z" fill="url(#cart)"/>
-    <path d="M106 45h60v52h-60z" fill="#22252b" opacity="0.34"/>
-    <path d="M116 56h40v8h-40z" fill="#fff1a7" opacity="0.86"/>
-    <path d="M116 73h28v7h-28z" fill="#fff1a7" opacity="0.58"/>
-
-    <path d="M45 98c0-18 15-33 33-33h100c18 0 33 15 33 33v67c0 18-15 33-33 33H78c-18 0-33-15-33-33z" fill="#202329"/>
-    <path d="M60 105c0-12 10-22 22-22h96c12 0 22 10 22 22v54c0 12-10 22-22 22H82c-12 0-22-10-22-22z" fill="#333841"/>
-    <rect x="78" y="96" width="96" height="64" rx="9" fill="url(#screen)"/>
-    <path d="M91 111h25v8H91zm35 0h48v8h-48zm-35 19h63v8H91zm0 19h42v8H91z" fill="#e7fff7" opacity="0.76"/>
-
-    <circle cx="86" cy="185" r="14" fill="#e4434f"/>
-    <circle cx="86" cy="185" r="5" fill="#ffd1d6"/>
-    <path d="M130 185h52" stroke="#f0f2f5" stroke-width="10" stroke-linecap="round"/>
-    <path d="M130 185h25" stroke="#58d5df" stroke-width="5" stroke-linecap="round"/>
+  <g filter="url(#shadow)" transform="translate(0 -13)">
+    <path d="M40 94c5-23 25-39 49-39h78c24 0 44 16 49 39l14 67c5 23-13 45-37 45H63c-24 0-42-22-37-45z" fill="url(#console-edge)"/>
+    <path d="M42 91c7-21 26-36 49-36h74c23 0 42 15 49 36l11 48c3 15-8 29-23 29H54c-15 0-26-14-23-29z" fill="url(#console)"/>
+    <ellipse cx="128" cy="111" rx="70" ry="57" fill="#1a1a1e"/>
+    <ellipse cx="128" cy="108" rx="62" ry="51" fill="url(#deck)"/>
+    <ellipse cx="128" cy="108" rx="49" ry="39" fill="none" stroke="#67686d" stroke-width="3" opacity="0.72"/>
+    <path d="M91 88c5-11 16-18 29-18h16c13 0 24 7 29 18" fill="none" stroke="#111114" stroke-width="8" stroke-linecap="round"/>
+    <path d="M96 91h64" fill="none" stroke="#77787d" stroke-width="3" stroke-linecap="round"/>
+    <path d="M54 118c0-3.3 2.7-6 6-6h11c3.3 0 6 2.7 6 6v19c0 3.3-2.7 6-6 6H60c-3.3 0-6-2.7-6-6z" fill="#17171a"/>
+    <rect x="60" y="117" width="11" height="21" rx="3" fill="#3d3e42"/>
+    <circle cx="196" cy="126" r="10" fill="#17171a"/>
+    <circle cx="196" cy="123" r="6" fill="#e01b24"/>
+    <circle cx="196" cy="121" r="2" fill="#ff7b82"/>
+    <path d="M92 151h72" fill="none" stroke="#77787d" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+    <path d="M108 158h40" fill="none" stroke="#1a1a1e" stroke-width="4" stroke-linecap="round"/>
   </g>
 
-  <path d="M208 35c12 10 20 24 22 40" stroke="#58d5df" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
-  <path d="M215 66c4 6 6 13 6 21" stroke="#58d5df" stroke-width="5" stroke-linecap="round" opacity="0.65"/>
+  <path d="M128 157c-2 8 1 15 8 21" fill="none" stroke="#17171a" stroke-width="5" stroke-linecap="round" transform="translate(0 -13)"/>
+
+  <g filter="url(#controller-shadow)" transform="translate(0 -13)">
+    <path d="M57 173c8-11 21-17 35-17h72c14 0 27 6 35 17l17 24c7 10 5 24-5 32-10 7-24 5-31-5l-9-13H85l-9 13c-7 10-21 12-31 5-10-8-12-22-5-32z" fill="url(#controller-edge)"/>
+    <path d="M58 168c8-9 20-14 33-14h74c13 0 25 5 33 14l15 22c6 8 4 20-4 26-9 6-20 4-26-4l-11-16H84l-11 16c-6 8-17 10-26 4-8-6-10-18-4-26z" fill="url(#controller)"/>
+    <path d="M68 171v12H56v12h12v12h12v-12h12v-12H80v-12z" fill="#17171a"/>
+    <path d="M72 174v29M58 189h29" fill="none" stroke="#5e5f64" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+    <circle cx="158" cy="190" r="8" fill="#c01c28"/>
+    <circle cx="178" cy="183" r="8" fill="#e01b24"/>
+    <circle cx="194" cy="196" r="8" fill="#ed333b"/>
+    <path d="M155 187l3-2 3 2" fill="none" stroke="#ff9298" stroke-width="2" stroke-linecap="round" opacity="0.75"/>
+    <path d="M175 180l3-2 3 2" fill="none" stroke="#ff9298" stroke-width="2" stroke-linecap="round" opacity="0.75"/>
+    <path d="M191 193l3-2 3 2" fill="none" stroke="#ff9298" stroke-width="2" stroke-linecap="round" opacity="0.75"/>
+    <rect x="121.5" y="181" width="13" height="5" rx="2.5" fill="#111114"/>
+  </g>
 </svg>
