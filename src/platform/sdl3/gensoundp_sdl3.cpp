@@ -99,10 +99,15 @@ int soundp_start(void)
   }
 
   LOG_VERBOSE("Found %d audio playback device(s)", num_devices);
-
-  /* Use first available device */
-  dev_id = devices[0];
   SDL_free(devices);
+
+  /* Play to the system default rather than whichever device the platform
+     happens to enumerate first. On macOS devices[0] is commonly an external
+     interface (a USB audio box, a capture device) while the user is
+     listening to the built-in speakers, so picking it means silence with no
+     error anywhere. The default id also follows the user switching outputs
+     while the emulator runs. */
+  dev_id = SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
 
   /* Configure audio format */
   src_spec.freq = sound_speed;
@@ -124,8 +129,12 @@ int soundp_start(void)
     return 1;
   }
 
-  LOG_VERBOSE("Audio device opened: %d Hz, %d channels, format 0x%x",
-               dst_spec.freq, dst_spec.channels, dst_spec.format);
+  {
+    const char *dev_name = SDL_GetAudioDeviceName(soundp_dev);
+    LOG_VERBOSE("Audio device opened: %s (%d Hz, %d channels, format 0x%x)",
+                dev_name ? dev_name : "system default", dst_spec.freq,
+                dst_spec.channels, dst_spec.format);
+  }
 
   /* Create an audio stream to convert from our format to device format */
   soundp_stream = SDL_CreateAudioStream(&src_spec, &dst_spec);
