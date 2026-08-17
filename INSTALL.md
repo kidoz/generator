@@ -33,6 +33,13 @@ sudo meson install -C build
 - **GTK4** >= 4.10.0
 - **libadwaita** >= 1.4.0
 
+### NodalKit Backend
+
+Only requires SDL3. [NodalKit](https://github.com/kidoz/nodalkit) itself is
+fetched and built as a Meson subproject (`subprojects/nodalkit.wrap`), so
+nothing needs to be installed for it. This is the backend used on macOS,
+where it renders through Metal.
+
 ### Console Backend (minimal)
 
 Only requires SDL3.
@@ -48,7 +55,8 @@ Only requires SDL3.
 
 | Option | Description |
 |--------|-------------|
-| `gtk4` | Modern GTK4/libadwaita interface (recommended) |
+| `gtk4` | Modern GTK4/libadwaita interface (recommended on Linux) |
+| `nodalkit` | NodalKit interface built from a Meson subproject; the macOS backend |
 | `console` | Lightweight SDL3-only interface |
 
 ### Z80 Emulators
@@ -118,6 +126,7 @@ sudo apt-get install just  # Debian/Ubuntu
 
 # Build and run
 just run-gtk4 /path/to/rom.bin
+just run-nodalkit /path/to/rom.bin
 just run-console /path/to/rom.bin
 
 # List all commands
@@ -134,11 +143,14 @@ sudo ninja -C build uninstall
 
 ### "gtk4 not found"
 
-Install GTK4 development files, or use console backend:
+Install GTK4 development files, or use a backend that does not need it:
 
 ```bash
-meson setup build -Dui-backend=console -Dz80-backend=cmz80
+meson setup build -Dui-backend=nodalkit
+meson setup build -Dui-backend=console
 ```
+
+GTK4 is not a practical dependency on macOS; use `-Dui-backend=nodalkit` there.
 
 ### "nasm not found" (when using raze)
 

@@ -15,6 +15,11 @@ build-gtk4:
     meson setup --wipe build -Dui-backend=gtk4
     meson compile -C build
 
+# Build NodalKit version (the macOS-capable GUI backend)
+build-nodalkit:
+    meson setup --wipe build -Dui-backend=nodalkit
+    meson compile -C build
+
 # Build console version (release mode, optimized)
 build-console-release:
     meson setup --wipe build --buildtype=release -Dui-backend=console
@@ -25,6 +30,11 @@ build-gtk4-release:
     meson setup --wipe build --buildtype=release -Dui-backend=gtk4
     meson compile -C build
 
+# Build NodalKit version (release mode, optimized)
+build-nodalkit-release:
+    meson setup --wipe build --buildtype=release -Dui-backend=nodalkit
+    meson compile -C build
+
 # Run console version with custom ROM
 run-console ROM: build-console
     ./build/src/app/generator-console "{{ROM}}"
@@ -33,6 +43,10 @@ run-console ROM: build-console
 run-gtk4 ROM: build-gtk4
     ./build/src/app/generator-gtk4 "{{ROM}}"
 
+# Run NodalKit version with custom ROM
+run-nodalkit ROM: build-nodalkit
+    ./build/src/app/generator-nodalkit "{{ROM}}"
+
 # Run console version (release) with custom ROM
 run-console-release ROM: build-console-release
     ./build/src/app/generator-console "{{ROM}}"
@@ -40,6 +54,10 @@ run-console-release ROM: build-console-release
 # Run GTK4 version (release) with custom ROM
 run-gtk4-release ROM: build-gtk4-release
     ./build/src/app/generator-gtk4 "{{ROM}}"
+
+# Run NodalKit version (release) with custom ROM
+run-nodalkit-release ROM: build-nodalkit-release
+    ./build/src/app/generator-nodalkit "{{ROM}}"
 
 # Clean build artifacts
 clean:
@@ -51,6 +69,9 @@ reconfigure-console:
 
 reconfigure-gtk4:
     meson setup --reconfigure build -Dui-backend=gtk4
+
+reconfigure-nodalkit:
+    meson setup --reconfigure build -Dui-backend=nodalkit
 
 # Quick compile without reconfigure (fast iteration)
 compile:
@@ -69,12 +90,16 @@ run-console-quick ROM: compile
 run-gtk4-quick ROM: compile
     ./build/src/app/generator-gtk4 "{{ROM}}"
 
+# Quick rebuild and run with custom ROM (NodalKit)
+run-nodalkit-quick ROM: compile
+    ./build/src/app/generator-nodalkit "{{ROM}}"
+
 # Show build configuration
 show-config:
     @if [ -d build ]; then \
         meson configure build | grep -E "(ui-backend|buildtype)"; \
     else \
-        echo "No build directory found. Run 'just build-console' or 'just build-gtk4' first."; \
+        echo "No build directory found. Run 'just build-console', 'just build-gtk4' or 'just build-nodalkit' first."; \
     fi
 
 # Run with debug verbosity
@@ -83,6 +108,9 @@ run-console-verbose ROM: build-console
 
 run-gtk4-verbose ROM: build-gtk4
     ./build/src/app/generator-gtk4 -v 3 "{{ROM}}"
+
+run-nodalkit-verbose ROM: build-nodalkit
+    ./build/src/app/generator-nodalkit -v 3 "{{ROM}}"
 
 # Build and run with memory debugging (valgrind)
 run-console-valgrind ROM: build-console

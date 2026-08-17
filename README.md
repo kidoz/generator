@@ -23,6 +23,27 @@ meson compile -C build
 ./build/src/app/generator-gtk4 [rom-file.bin]
 ```
 
+### NodalKit UI (macOS, or Linux without GTK)
+
+[NodalKit](https://github.com/kidoz/nodalkit) is a C++23 GUI toolkit pulled in
+automatically as a Meson subproject (`subprojects/nodalkit.wrap`), so the only
+system dependency is SDL3 (audio output and gamepads). This is the backend to
+use on macOS, where it renders through Metal.
+
+```bash
+# macOS
+brew install meson ninja sdl3
+
+# Linux
+sudo pacman -S meson ninja sdl3                     # Arch
+sudo apt-get install meson ninja-build libsdl3-dev  # Debian/Ubuntu
+
+meson setup build -Dui-backend=nodalkit
+meson compile -C build
+
+./build/src/app/generator-nodalkit [rom-file.bin]
+```
+
 ### Console UI (no GTK required)
 
 ```bash
@@ -38,14 +59,15 @@ meson compile -C build
 ./build/src/app/generator-console [rom-file.bin]
 ```
 
-A `generator-headless` binary is built alongside either UI backend and is used
+A `generator-headless` binary is built alongside any UI backend and is used
 by the test/regression harness.
 
 ## Build Options
 
 ### UI Backends
 
-- `gtk4` - Modern GTK4/libadwaita interface (recommended, default)
+- `gtk4` - Modern GTK4/libadwaita interface (recommended on Linux, default)
+- `nodalkit` - NodalKit interface, built from a Meson subproject; the macOS backend
 - `console` - SDL3-based lightweight interface
 
 ### Z80 Emulator
@@ -58,8 +80,11 @@ nothing to install.
 ### Build Examples
 
 ```bash
-# GTK4 (recommended)
+# GTK4 (recommended on Linux)
 meson setup build -Dui-backend=gtk4
+
+# NodalKit (macOS, or Linux without GTK)
+meson setup build -Dui-backend=nodalkit
 
 # Console (lightweight)
 meson setup build -Dui-backend=console
