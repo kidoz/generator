@@ -5,10 +5,9 @@
 
 # Stage 1: Build def68k tool and generate headers
 def68k_exe = executable('def68k',
-  sources: ['def68k.c', 'tab68k.c'],
+  sources: ['def68k.cpp', 'tab68k.cpp'],
   include_directories: include_directories('../../../../include/generator', '.'),
-  c_args: ['-DGENERATOR_BUILD_TOOL=1'],
-  override_options: ['c_std=c23'],
+  cpp_args: ['-DGENERATOR_BUILD_TOOL=1'],
   native: true
 )
 
@@ -25,21 +24,20 @@ def68k_headers = custom_target('def68k_headers',
 
 # Stage 2: Build gen68k tool
 gen68k_exe = executable('gen68k',
-  sources: ['gen68k.c', 'tab68k.c'],
+  sources: ['gen68k.cpp', 'tab68k.cpp'],
   include_directories: include_directories('../../../../include/generator', '.'),
   dependencies: declare_dependency(sources: def68k_headers),
-  c_args: ['-DGENERATOR_BUILD_TOOL=1'],
-  override_options: ['c_std=c23'],
+  cpp_args: ['-DGENERATOR_BUILD_TOOL=1'],
   native: true
 )
 
 # Generate 16 CPU C files (cpu68k-0.c through cpu68k-f.c)
 gen68k_sources = custom_target('gen68k_sources',
   output: [
-    'cpu68k-0.c', 'cpu68k-1.c', 'cpu68k-2.c', 'cpu68k-3.c',
-    'cpu68k-4.c', 'cpu68k-5.c', 'cpu68k-6.c', 'cpu68k-7.c',
-    'cpu68k-8.c', 'cpu68k-9.c', 'cpu68k-a.c', 'cpu68k-b.c',
-    'cpu68k-c.c', 'cpu68k-d.c', 'cpu68k-e.c', 'cpu68k-f.c'
+    'cpu68k-0.cpp', 'cpu68k-1.cpp', 'cpu68k-2.cpp', 'cpu68k-3.cpp',
+    'cpu68k-4.cpp', 'cpu68k-5.cpp', 'cpu68k-6.cpp', 'cpu68k-7.cpp',
+    'cpu68k-8.cpp', 'cpu68k-9.cpp', 'cpu68k-a.cpp', 'cpu68k-b.cpp',
+    'cpu68k-c.cpp', 'cpu68k-d.cpp', 'cpu68k-e.cpp', 'cpu68k-f.cpp'
   ],
   command: ['sh', '-c', 'cd "$1" && "$2"', 'sh', '@OUTDIR@', gen68k_exe],
   depends: gen68k_exe
@@ -61,7 +59,7 @@ cpu68k_dep = declare_dependency(
 
 # Also export tab68k.o for programs that need it (tcltk, etc)
 tab68k_lib = static_library('tab68k',
-  sources: 'tab68k.c',
+  sources: 'tab68k.cpp',
   include_directories: include_directories('../../../../include/generator', '.'),
   dependencies: declare_dependency(sources: def68k_headers)
 )

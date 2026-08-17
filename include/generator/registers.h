@@ -1,31 +1,14 @@
 #ifndef GENERATOR_REGISTERS_H
 #define GENERATOR_REGISTERS_H
 
-/* These registers must be registers that are preserved over function calls
-   in C.  What I mean by this is that if we're using these registers and we
-   call a C function, then when that C function returns these registers are
-   still what they were before we made the call. */
+/* Working copies of the 68K program counter, register block and status
+ * register used while executing instruction blocks. Historically these were
+ * pinned into physical CPU registers via asm() qualifiers on 32-bit x86,
+ * ARM and SPARC; that pinning is dead (it cannot even compile on x86-64)
+ * and has been removed - these are plain globals now. */
 
-#ifdef PROCESSOR_ARM
-register uint32 reg68k_pc asm("r7");
-register uint32 *reg68k_regs asm("r8");
-register t_sr reg68k_sr asm("r9");
-#else
-#ifdef PROCESSOR_SPARC
-register uint32 reg68k_pc asm("5");
-register uint32 *reg68k_regs asm("6");
-register t_sr reg68k_sr asm("7");
-#else
-#ifdef PROCESSOR_INTEL
-register uint32 reg68k_pc asm("%ebx");
-register uint32 *reg68k_regs asm("%edi");
-register t_sr reg68k_sr asm("%esi");
-#else
 extern uint32 reg68k_pc;
 extern uint32 *reg68k_regs;
 extern t_sr reg68k_sr;
-#endif
-#endif
-#endif
 
 #endif /* GENERATOR_REGISTERS_H */

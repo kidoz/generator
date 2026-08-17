@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 
-#include "generator.h"
-#include "registers.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <setjmp.h>
 
+extern "C" {
+#include "generator.h"
+#include "registers.h"
 #include "reg68k.h"
 #include "cpu68k.h"
 #include "mem68k.h"
@@ -15,17 +15,15 @@
 #include "cpuz80.h"
 #include "vdp.h"
 #include "ui.h"
-#include "compile.h"
 #include "gensound.h"
+}
+
 
 /*** global variables ***/
 
-#if (!(defined(PROCESSOR_ARM) || defined(PROCESSOR_SPARC) || \
-       defined(PROCESSOR_INTEL)))
 uint32 reg68k_pc;
 uint32 *reg68k_regs;
 t_sr reg68k_sr;
-#endif
 
 /*** forward references ***/
 
@@ -35,34 +33,34 @@ unsigned int reg68k_external_step(void)
 {
   static t_ipc ipc;
   static t_iib *piib;
-  jmp_buf jb;
   static unsigned int clks;
 
-  /* !!! entering global register usage area !!! */
+  /* The former setjmp/longjmp pair here was only a goto to the epilogue:
+   * the work is straight-line with no non-local exits (ui_err is
+   * [[noreturn]]), and with the asm register pinning gone there is no
+   * register state for setjmp to protect. */
 
-  if (!setjmp(jb)) {
-    /* move PC and register block into global processor register variables */
-    reg68k_pc = regs.pc;
-    reg68k_regs = regs.regs;
-    reg68k_sr = regs.sr;
+  /* move PC and register block into global processor register variables */
+  reg68k_pc = regs.pc;
+  reg68k_regs = regs.regs;
+  reg68k_sr = regs.sr;
 
-    if (regs.pending && ((reg68k_sr.sr_int >> 8) & 7) < regs.pending)
-      reg68k_internal_autovector(regs.pending);
+  if (regs.pending && ((reg68k_sr.sr_int >> 8) & 7) < regs.pending)
+    reg68k_internal_autovector(regs.pending);
 
-    if (!(piib = cpu68k_iibtable[fetchword(reg68k_pc)]))
-      ui_err("Invalid instruction @ %08X [%04X]\n", reg68k_pc,
-             fetchword(reg68k_pc));
+  if (!(piib = cpu68k_iibtable[fetchword(reg68k_pc)]))
+    ui_err("Invalid instruction @ %08X [%04X]\n", reg68k_pc,
+           fetchword(reg68k_pc));
 
-    cpu68k_ipc(reg68k_pc,
-               mem68k_memptr[(reg68k_pc >> 12) & 0xfff](reg68k_pc & 0xFFFFFF),
-               piib, &ipc);
-    cpu68k_functable[fetchword(reg68k_pc) * 2 + 1](&ipc);
-    clks = piib->clocks;
-    /* restore global registers back to permanent storage */
-    regs.pc = reg68k_pc;
-    regs.sr = reg68k_sr;
-    longjmp(jb, 1);
-  }
+  cpu68k_ipc(reg68k_pc,
+             mem68k_memptr[(reg68k_pc >> 12) & 0xfff](reg68k_pc & 0xFFFFFF),
+             piib, &ipc);
+  cpu68k_functable[fetchword(reg68k_pc) * 2 + 1](&ipc);
+  clks = piib->clocks;
+  /* restore global registers back to permanent storage */
+  regs.pc = reg68k_pc;
+  regs.sr = reg68k_sr;
+
   cpu68k_clocks += clks;
   return clks; /* number of clocks done */
 }
@@ -76,77 +74,64 @@ unsigned int reg68k_external_execute(unsigned int clocks)
   t_ipclist *list;
   t_ipc *ipc;
   uint32 pc24;
-  jmp_buf jb;
   static t_ipc step_ipc;
   static t_iib *step_piib;
   static int clks;
 
   clks = clocks;
 
-  if (!setjmp(jb)) {
-    /* move PC and register block into global variables */
-    reg68k_pc = regs.pc;
-    reg68k_regs = regs.regs;
-    reg68k_sr = regs.sr;
+  /* move PC and register block into global variables */
+  reg68k_pc = regs.pc;
+  reg68k_regs = regs.regs;
+  reg68k_sr = regs.sr;
 
-    if (regs.pending && ((reg68k_sr.sr_int >> 8) & 7) < regs.pending)
-      reg68k_internal_autovector(regs.pending);
+  if (regs.pending && ((reg68k_sr.sr_int >> 8) & 7) < regs.pending)
+    reg68k_internal_autovector(regs.pending);
 
-    do {
-      pc24 = reg68k_pc & 0xffffff;
-      if ((pc24 & 0xff0000) == 0xff0000) {
-        /* executing code from RAM, do not use compiled information */
-        do {
-          step_piib = cpu68k_iibtable[fetchword(reg68k_pc)];
-          if (!step_piib)
-            ui_err("Invalid instruction (iib assert) @ %08X\n", reg68k_pc);
-          cpu68k_ipc(
-              reg68k_pc,
-              mem68k_memptr[(reg68k_pc >> 12) & 0xfff](reg68k_pc & 0xFFFFFF),
-              step_piib, &step_ipc);
-          cpu68k_functable[fetchword(reg68k_pc) * 2 + 1](&step_ipc);
-          clks -= step_piib->clocks;
-          cpu68k_clocks += step_piib->clocks;
-        } while (!step_piib->flags.endblk);
-        list = nullptr; /* stop compiler warning ;(  */
-      } else {
-        index = (pc24 >> 1) & (LEN_IPCLISTTABLE - 1);
-        list = ipclist[index];
-        while (list && (list->pc != pc24)) {
-          list = list->next;
-        }
-#ifdef PROCESSOR_ARM
-        if (!list) {
-          list = cpu68k_makeipclist(pc24);
-          list->next = ipclist[index];
-          ipclist[index] = list;
-          list->compiled = compile_make(list);
-        }
-        list->compiled((t_ipc *)(list + 1));
-#else
-        if (!list) {
-          /* LOG_USER("Making IPC list @ %08x", pc24); */
-          list = cpu68k_makeipclist(pc24);
-          list->next = ipclist[index];
-          ipclist[index] = list;
-        }
-        ipc = (t_ipc *)(list + 1);
-        do {
-          ipc->function(ipc);
-          ipc++;
-        } while (*(int *)ipc);
-#endif
-        do {
-          clks -= list->clocks;
-          cpu68k_clocks += list->clocks;
-        } while (list->norepeat && clks > 0);
+  do {
+    pc24 = reg68k_pc & 0xffffff;
+    if ((pc24 & 0xff0000) == 0xff0000) {
+      /* executing code from RAM, do not use compiled information */
+      do {
+        step_piib = cpu68k_iibtable[fetchword(reg68k_pc)];
+        if (!step_piib)
+          ui_err("Invalid instruction (iib assert) @ %08X\n", reg68k_pc);
+        cpu68k_ipc(
+            reg68k_pc,
+            mem68k_memptr[(reg68k_pc >> 12) & 0xfff](reg68k_pc & 0xFFFFFF),
+            step_piib, &step_ipc);
+        cpu68k_functable[fetchword(reg68k_pc) * 2 + 1](&step_ipc);
+        clks -= step_piib->clocks;
+        cpu68k_clocks += step_piib->clocks;
+      } while (!step_piib->flags.endblk);
+      list = nullptr; /* stop compiler warning ;(  */
+    } else {
+      index = (pc24 >> 1) & (LEN_IPCLISTTABLE - 1);
+      list = ipclist[index];
+      while (list && (list->pc != pc24)) {
+        list = list->next;
       }
-    } while (clks > 0);
-    /* restore global registers back to permanent storage */
-    regs.pc = reg68k_pc;
-    regs.sr = reg68k_sr;
-    longjmp(jb, 1);
-  }
+      if (!list) {
+        /* LOG_USER("Making IPC list @ %08x", pc24); */
+        list = cpu68k_makeipclist(pc24);
+        list->next = ipclist[index];
+        ipclist[index] = list;
+      }
+      ipc = (t_ipc *)(list + 1);
+      do {
+        ipc->function(ipc);
+        ipc++;
+      } while (*(int *)ipc);
+      do {
+        clks -= list->clocks;
+        cpu68k_clocks += list->clocks;
+      } while (list->norepeat && clks > 0);
+    }
+  } while (clks > 0);
+  /* restore global registers back to permanent storage */
+  regs.pc = reg68k_pc;
+  regs.sr = reg68k_sr;
+
   return -clks; /* i.e. number of clocks done too much */
 }
 
@@ -154,21 +139,16 @@ unsigned int reg68k_external_execute(unsigned int clocks)
 
 void reg68k_external_autovector(int avno)
 {
-  jmp_buf jb;
+  /* move PC and register block into global processor register variables */
+  reg68k_pc = regs.pc;
+  reg68k_regs = regs.regs;
+  reg68k_sr = regs.sr;
 
-  if (!setjmp(jb)) {
-    /* move PC and register block into global processor register variables */
-    reg68k_pc = regs.pc;
-    reg68k_regs = regs.regs;
-    reg68k_sr = regs.sr;
+  reg68k_internal_autovector(avno);
 
-    reg68k_internal_autovector(avno);
-
-    /* restore global registers back to permanent storage */
-    regs.pc = reg68k_pc;
-    regs.sr = reg68k_sr;
-    longjmp(jb, 1);
-  }
+  /* restore global registers back to permanent storage */
+  regs.pc = reg68k_pc;
+  regs.sr = reg68k_sr;
 }
 
 /*** reg68k_internal_autovector - go to autovector - this call assumes global

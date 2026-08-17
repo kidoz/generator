@@ -19,7 +19,6 @@ typedef struct _t_ipclist {
   uint8 norepeat;
   uint32 pc;
   uint32 clocks;
-  void (*compiled)(struct _t_ipc *ipc);
 } t_ipclist;
 
 extern uint8 *cpu68k_rom;

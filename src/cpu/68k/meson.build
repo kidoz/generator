@@ -6,10 +6,10 @@ subdir('codegen')
 
 # 68k CPU source files (runtime)
 cpu68k_runtime_sources = files(
-  'cpu68k.c',
+  'cpu68k.cpp',
   'mem68k.c',
-  'reg68k.c',
-  'diss68k.c'
+  'reg68k.cpp',
+  'diss68k.cpp'
 )
 
 # Export sources for main executable

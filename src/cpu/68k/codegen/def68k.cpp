@@ -32,7 +32,15 @@ typedef enum {
 /* file-scope global variables */
 
 static int total = 0;
-static int clocks_movetable[]; /* pre-declaration */
+/* clocks_movetable defined below (C++ has no tentative definitions) */
+
+static int clocks_movetable[] = {
+    4,  4,  8,  8,  8,  12, 14, 12, 16, 4,  4,  8,  8,  8,  12, 14, 12, 16,
+    8,  8,  12, 12, 12, 16, 18, 16, 20, 8,  8,  12, 12, 12, 16, 18, 16, 20,
+    10, 10, 14, 14, 14, 18, 20, 18, 22, 12, 12, 16, 16, 16, 20, 22, 20, 24,
+    14, 14, 18, 18, 18, 22, 24, 22, 26, 12, 12, 16, 16, 16, 20, 22, 20, 24,
+    16, 16, 20, 20, 20, 24, 26, 24, 28, 12, 12, 16, 16, 16, 20, 22, 20, 24,
+    14, 14, 18, 18, 18, 22, 24, 22, 26, 8,  8,  12, 12, 12, 16, 18, 16, 20};
 
 /* private functions for forward references */
 
@@ -132,8 +140,9 @@ int main(int argc, char *argv[])
 
   /* output footer */
 
-  fprintf(outiibs, "  { 0, 0, 0, { 0, 0, 0, 0, 0 }, "
-                   "0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }\n");
+  fprintf(outiibs, "  { 0, 0, (t_mnemonic)0, { 0, 0, 0, 0, 0 }, "
+                   "(t_size)0, (t_datatype)0, (t_datatype)0, 0, 0, 0, "
+                   "0, 0, 0, 0 }\n");
   fprintf(outiibs, "};\n");
   fprintf(outiibs, "int iibs_num = %d;\n", total);
 
@@ -926,15 +935,17 @@ void procline(char *line, int lineno, FILE *outiibs, FILE *outfuncs,
     /* loop through 3 different sizes or just once if no size to loop on */
 
     for (size = isize; (size == isize) || (num[bitz] && (size <= sz_long));
-         size++) {
+         size = (t_size)(size + 1)) {
       /* loop through 'e' EA or just once if no EA 'e' to loop on */
 
-      for (ea_e = ea_Dreg; (ea_e == ea_Dreg) || (num[bite] && (ea_e <= ea_Imm));
-           ea_e++) {
+      for (ea_e = (t_datatype)ea_Dreg;
+           (ea_e == (t_datatype)ea_Dreg) || (num[bite] && (ea_e <= ea_Imm));
+           ea_e = (t_datatype)(ea_e + 1)) {
         /* loop through 'f' EA or just once if no EA 'e' to loop on */
 
-        for (ea_f = ea_Dreg;
-             (ea_f == ea_Dreg) || (num[bitf] && (ea_f <= ea_Imm)); ea_f++) {
+        for (ea_f = (t_datatype)ea_Dreg;
+             (ea_f == (t_datatype)ea_Dreg) || (num[bitf] && (ea_f <= ea_Imm));
+             ea_f = (t_datatype)(ea_f + 1)) {
           for (cc = 0; (cc == 0) || (num[bitc] && (cc < 16)); cc++) {
             if (cc == 1)
               continue;
@@ -1682,13 +1693,17 @@ void procline(char *line, int lineno, FILE *outiibs, FILE *outfuncs,
               exit(1);
             }
 
-            /* write output lines */
+            /* write output lines (enum fields carry casts so the table is
+             * valid C++ as well as C; the values are unchanged) */
 
-            fprintf(outiibs, "  { 0x%x, 0x%x, %d, { %d, %d, %d, %d, %d }, ",
+            fprintf(outiibs,
+                    "  { 0x%x, 0x%x, (t_mnemonic)%d, { %d, %d, %d, %d, %d }, ",
                     mask, bits, mnemonic_num, priv, endblk, imm_notzero, used,
                     set);
-            fprintf(outiibs, "%d, %d, %d, %d, %d, %d, %d, %d, %d, %d},\n", size,
-                    stype, dtype, sbitpos, dbitpos, immvalue, cc, total,
+            fprintf(outiibs,
+                    "(t_size)%d, (t_datatype)%d, (t_datatype)%d, %d, %d, %d, "
+                    "%d, %d, %d, %d},\n",
+                    size, stype, dtype, sbitpos, dbitpos, immvalue, cc, total,
                     wordlen, clocks);
             fprintf(outiibs, "%60s/* %s */\n", "", mnemonic);
             if (set == 0) {
@@ -1722,13 +1737,6 @@ void procline(char *line, int lineno, FILE *outiibs, FILE *outfuncs,
   } /* block */
 }
 
-static int clocks_movetable[] = {
-    4,  4,  8,  8,  8,  12, 14, 12, 16, 4,  4,  8,  8,  8,  12, 14, 12, 16,
-    8,  8,  12, 12, 12, 16, 18, 16, 20, 8,  8,  12, 12, 12, 16, 18, 16, 20,
-    10, 10, 14, 14, 14, 18, 20, 18, 22, 12, 12, 16, 16, 16, 20, 22, 20, 24,
-    14, 14, 18, 18, 18, 22, 24, 22, 26, 12, 12, 16, 16, 16, 20, 22, 20, 24,
-    16, 16, 20, 20, 20, 24, 26, 24, 28, 12, 12, 16, 16, 16, 20, 22, 20, 24,
-    14, 14, 18, 18, 18, 22, 24, 22, 26, 8,  8,  12, 12, 12, 16, 18, 16, 20};
 
 int clocks_typetoindex(t_datatype type)
 {

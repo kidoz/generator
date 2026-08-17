@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 
+extern "C" {
 #include "generator.h"
+}
+
 
 char *condition_table[] = {"T",  "F",  "HI", "LS", "CC", "CS", "NE", "EQ",
                            "VC", "VS", "PL", "MI", "GE", "LT", "GT", "LE"};

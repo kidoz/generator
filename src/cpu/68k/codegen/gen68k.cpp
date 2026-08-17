@@ -45,7 +45,7 @@ void generate_bits(FILE *o, t_iib *iib);
   "#include <stdlib.h>\n\n"
 
 #define OUT(x) fputs(x, output);
-#define FNAME_GEN68K_CPU_OUT "cpu68k-%x.c"
+#define FNAME_GEN68K_CPU_OUT "cpu68k-%x.cpp"
 
 /* program entry routine */
 
@@ -76,7 +76,10 @@ int main(int argc, char *argv[])
 
     /* output header */
     fprintf(output, HEADER, i);
-    fprintf(output, "#include \"cpu68k_inline.h\"\n\n");
+    fprintf(output,
+            "extern \"C\" {\n" /* legacy C header chain */
+            "#include \"cpu68k_inline.h\"\n"
+            "}\n\n");
 
     generate(output, i);
 
@@ -120,8 +123,11 @@ void generate(FILE *output, int topnibble)
         continue;
       }
 
-      fprintf(output, "void cpu_op_%i%s(t_ipc *ipc) /* %s */ {\n", i,
-              flags ? "b" : "a", mnemonic_table[iib->mnemonic].name);
+      /* extern "C": the dispatch tables in the still-C runtime (cpu68k.c)
+       * reference these by their C symbol names. */
+      fprintf(output, "extern \"C\" void cpu_op_%i%s(t_ipc *ipc) /* %s */ {\n",
+              i, flags ? "b" : "a",
+              mnemonic_table[iib->mnemonic].name);
       fprintf(output, "  /* mask %04x, bits %04x, mnemonic %d, priv %d, ",
               iib->mask, iib->bits, iib->mnemonic, iib->flags.priv);
       fprintf(output, "endblk %d, imm_notzero %d, used %d", iib->flags.endblk,

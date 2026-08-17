@@ -12,9 +12,9 @@ headless_common_sources = [
   files('../../app/generator.cpp', '../../app/event.cpp'),
   # CPU subsystem (without diss68k.c to avoid tab68k dependency)
   files(
-    '../../cpu/68k/cpu68k.c',
+    '../../cpu/68k/cpu68k.cpp',
     '../../cpu/68k/mem68k.c',
-    '../../cpu/68k/reg68k.c'
+    '../../cpu/68k/reg68k.cpp'
   ),
   cpuz80_sources,
   # Audio subsystem

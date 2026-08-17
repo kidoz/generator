@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 
-#include "cpu68k.h"
 
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 
+extern "C" {
+#include "cpu68k.h"
 #include "generator.h"
 #include "mem68k.h"
 #include "vdp.h"
@@ -13,6 +14,8 @@
 #include "def68k_iibs.h"
 #include "def68k_proto.h"
 #include "def68k_funcs.h"
+}
+
 
 /*** externed variables ***/
 
@@ -225,7 +228,7 @@ void cpu68k_ipc(uint32 addr68k, uint8 *addr, t_iib *iib, t_ipc *ipc)
   addr += 2;
   addr68k += 2;
 
-  for (type = 0; type < 2; type++) {
+  for (type = (t_type)0; type < 2; type = (t_type)(type + 1)) {
     if (type == tp_src)
       p = &(ipc->src);
     else
@@ -325,7 +328,7 @@ void cpu68k_ipc(uint32 addr68k, uint8 *addr, t_iib *iib, t_ipc *ipc)
 t_ipclist *cpu68k_makeipclist(uint32 pc)
 {
   int size = 16;
-  t_ipclist *list = malloc(sizeof(t_ipclist) + 16 * sizeof(t_ipc) + 8);
+  t_ipclist *list = (t_ipclist *)malloc(sizeof(t_ipclist) + 16 * sizeof(t_ipc) + 8);
   t_ipc *ipc = (t_ipc *)(list + 1);
   t_iib *iib;
   int instrs = 0;
@@ -345,7 +348,7 @@ t_ipclist *cpu68k_makeipclist(uint32 pc)
       if (size > 10000)
         ui_err("Something has gone seriously wrong @ %08X", pc);
       size += 16;
-      list = realloc(list, sizeof(t_ipclist) + size * sizeof(t_ipc) + 8);
+      list = (t_ipclist *)realloc(list, sizeof(t_ipclist) + size * sizeof(t_ipc) + 8);
       if (list == nullptr)
         ui_err("Out of memory whilst making ipc list @ %08X", pc);
       ipc = ((t_ipc *)(list + 1)) + instrs - 1;
@@ -411,7 +414,7 @@ void cpu68k_reset(void)
 
   if (!cpu68k_ram) {
     /* +4 due to bug in DIRECTRAM hdr/mem68k.h code over-run of buffer */
-    if ((cpu68k_ram = malloc(0x10000 + 4)) == nullptr)
+    if ((cpu68k_ram = (uint8 *)malloc(0x10000 + 4)) == nullptr)
       ui_err("Out of memory");
   }
   memset(cpu68k_ram, 0, 0x10000);
