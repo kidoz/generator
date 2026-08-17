@@ -371,6 +371,18 @@ char *gen_loadimage(const char *filename)
                     ? 1
                     : 0;
     }
+
+    /* Console region, reported to the game by the version register at
+     * $A10001. A domestic cart that reads back an overseas machine refuses
+     * to run: Contra: The Hard Corps (Japan) boots into its region-mismatch
+     * state and parks on the Konami logo forever. The VDP defaults to
+     * overseas, so a Japan-only cart has to flip it back. Carts that list
+     * any overseas region run on an overseas machine, which keeps the PAL
+     * choice above consistent. */
+    vdp.vdp_overseas = (gen_cartinfo.flag_japan && !gen_cartinfo.flag_usa &&
+                        !gen_cartinfo.flag_europe)
+                           ? 0
+                           : 1;
   }
 
   /* reset system */
