@@ -12,12 +12,14 @@ xbrz_headers = files(
   'xbrz_wrapper.h'
 )
 
-# Build xBRZ as a static library
+# Build xBRZ as a static library. The historical '-std=c++17' override is
+# gone: the library compiles under the project-wide cpp_std=c++23, so only
+# the vendored-code optimization hint remains.
 xbrz_lib = static_library(
   'xbrz',
   xbrz_sources,
   include_directories: include_directories('.'),
-  cpp_args: ['-std=c++17', '-O3'],  # C++17 required for std::clamp
+  cpp_args: ['-O3'],
   install: false
 )
 

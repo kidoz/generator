@@ -2,19 +2,20 @@
 # Sega Genesis/Mega Drive Emulator
 # See AUTHORS.md for copyright attribution
 
-project('generator', 'c', 'cpp',
+# Pure C++ project: the C-to-C++ rewrite is complete, no C translation
+# units remain.
+project('generator', 'cpp',
   version: '0.50',
   license: 'GPL-2.0-or-later',
   default_options: [
-    'c_std=c23',  # Use C23 standard (ISO/IEC 9899:2024) - latest C standard
-    'cpp_std=c++23',  # Use C++23 standard for xBRZ library
+    'cpp_std=c++23',
     'warning_level=1',
   ],
   meson_version: '>=0.60.0'
 )
 
 # Build configuration
-cc = meson.get_compiler('c')
+cc = meson.get_compiler('cpp')
 host_cpu = host_machine.cpu_family()
 
 # Get options
@@ -24,35 +25,12 @@ enable_logging = get_option('logging')
 gcc_opt_version = get_option('gcc-version')
 
 # Version info
-add_project_arguments('-DVERSION="@0@"'.format(meson.project_version()), language: ['c', 'cpp'])
-add_project_arguments('-DPACKAGE="generator"', language: ['c', 'cpp'])
+add_project_arguments('-DVERSION="@0@"'.format(meson.project_version()), language: 'cpp')
+add_project_arguments('-DPACKAGE="generator"', language: 'cpp')
 
-# Enable GNU extensions for POSIX functions like strcasecmp
-add_project_arguments('-D_GNU_SOURCE', language: 'c')
-
-# Strictness lock-in for C23/C++23.
-# Treat already-warning conversions and missing prototypes as hard errors
-# so future regressions cannot land silently. We deliberately do NOT bump
-# warning_level to 2 globally — the legacy 68k codegen still emits hundreds
-# of unused-variable warnings under -Wextra.
 cpp = meson.get_compiler('cpp')
-strict_c_flags = [
-  '-Werror=int-conversion',
-  '-Werror=incompatible-pointer-types',
-  '-Werror=implicit-function-declaration',
-  '-Werror=implicit-int',
-  '-Wstrict-prototypes',
-  '-Wold-style-definition',
-  '-Wmissing-prototypes',
-  '-Wformat=2',
-  '-Wno-format-nonliteral',
-]
-foreach flag : strict_c_flags
-  if cc.has_argument(flag)
-    add_project_arguments(flag, language: 'c')
-  endif
-endforeach
-
+# Strictness lock-in for C++23. Treat narrowing conversions and printf
+# format mismatches as hard errors so regressions cannot land silently.
 strict_cpp_flags = [
   '-Werror=narrowing',
   '-Wformat=2',
@@ -69,20 +47,13 @@ optimum = true
 if host_cpu == 'x86' or host_cpu == 'x86_64'
   message('Turning on x86 processor optimizations')
   alignlongs = 1
-  if not enable_debug and gcc_opt_version != 'no'
-    if host_cpu == 'x86'
-      add_project_arguments(['-march=pentium', '-malign-loops=5',
-                             '-malign-jumps=5', '-malign-functions=5'],
-                            language: 'c')
-    endif
-  endif
 elif host_cpu == 'sparc'
   message('Turning on SPARC processor optimizations')
-  add_project_arguments('-DPROCESSOR_SPARC=1', language: 'c')
+  add_project_arguments('-DPROCESSOR_SPARC=1', language: 'cpp')
   alignlongs = 0
 elif host_cpu.startswith('arm') or host_cpu == 'aarch64'
   message('Turning on ARM processor optimizations')
-  add_project_arguments('-DPROCESSOR_ARM=1', language: 'c')
+  add_project_arguments('-DPROCESSOR_ARM=1', language: 'cpp')
   alignlongs = 1
 else
   warning('Processor type not known - processor optimizations off!')
@@ -90,7 +61,7 @@ else
   optimum = false
 endif
 
-add_project_arguments('-DALIGNLONGS=@0@'.format(alignlongs), language: 'c')
+add_project_arguments('-DALIGNLONGS=@0@'.format(alignlongs), language: 'cpp')
 
 # GCC optimization flags
 if enable_debug
@@ -99,15 +70,15 @@ if enable_debug
 else
   if gcc_opt_version != 'no'
     message('Turning on GCC optimizations')
-    add_project_arguments(['-O3', '-ffast-math', '-fomit-frame-pointer'], language: 'c')
+    add_project_arguments(['-O3', '-ffast-math', '-fomit-frame-pointer'], language: 'cpp')
 
     if gcc_opt_version == '3'
       message('Turning on GCC 3 optimizations')
       if cc.has_argument('-minline-all-stringops')
-        add_project_arguments('-minline-all-stringops', language: 'c')
+        add_project_arguments('-minline-all-stringops', language: 'cpp')
       endif
       if cc.has_argument('-fno-math-errno')
-        add_project_arguments('-fno-math-errno', language: 'c')
+        add_project_arguments('-fno-math-errno', language: 'cpp')
       endif
     endif
   else
@@ -117,16 +88,16 @@ else
 endif
 
 # Direct RAM writes (faster)
-add_project_arguments('-DDIRECTRAM=1', language: 'c')
+add_project_arguments('-DDIRECTRAM=1', language: 'cpp')
 
 # Logging
 if not enable_logging
-  add_project_arguments('-DNOLOGGING=1', language: 'c')
+  add_project_arguments('-DNOLOGGING=1', language: 'cpp')
 endif
 
 # Endianness check
 if host_machine.endian() == 'big'
-  add_project_arguments('-DWORDS_BIGENDIAN=1', language: 'c')
+  add_project_arguments('-DWORDS_BIGENDIAN=1', language: 'cpp')
 endif
 
 # Common dependencies
@@ -139,7 +110,7 @@ endif
 # Optional JPEG support
 jpeg_dep = dependency('libjpeg', required: false)
 if jpeg_dep.found()
-  add_project_arguments('-DJPEG=1', language: 'c')
+  add_project_arguments('-DJPEG=1', language: 'cpp')
   common_deps += jpeg_dep
 endif
 
@@ -172,7 +143,7 @@ endif
 # Netplay configuration
 enable_netplay = get_option('netplay')
 if enable_netplay
-  add_project_arguments('-DNETPLAY=1', language: 'c')
+  add_project_arguments('-DNETPLAY=1', language: 'cpp')
 endif
 
 # Audio quality configuration
@@ -180,12 +151,12 @@ audio_rate = get_option('audio-rate')
 audio_oversampling = get_option('audio-oversampling')
 audio_hq_filter = get_option('audio-hq-filter')
 
-add_project_arguments('-DSOUND_SAMPLERATE=@0@'.format(audio_rate), language: 'c')
-add_project_arguments('-DSOUND_OVERSAMPLING=@0@'.format(audio_oversampling), language: 'c')
+add_project_arguments('-DSOUND_SAMPLERATE=@0@'.format(audio_rate), language: 'cpp')
+add_project_arguments('-DSOUND_OVERSAMPLING=@0@'.format(audio_oversampling), language: 'cpp')
 if audio_hq_filter
-  add_project_arguments('-DSOUND_HQ_FILTER=1', language: 'c')
+  add_project_arguments('-DSOUND_HQ_FILTER=1', language: 'cpp')
 else
-  add_project_arguments('-DSOUND_HQ_FILTER=0', language: 'c')
+  add_project_arguments('-DSOUND_HQ_FILTER=0', language: 'cpp')
 endif
 
 # Include directories - organized by domain
