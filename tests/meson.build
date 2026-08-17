@@ -137,3 +137,24 @@ test('vdp_core', test_vdp,
   suite: 'catch2'
 )
 
+# YM2612 whole-chip characterization tests. fm.cpp plus the extracted
+# fm_eg/fm_lfo units are compiled directly into the test; state_transfer*
+# is stubbed in the test source (the splash-cart audio fingerprint never
+# exercises FM, so this is the FM regression net).
+fm_inc = include_directories('../include/generator', '../src/audio/ym2612')
+
+test_fm_chip = executable('test_fm_chip',
+  'test_fm_chip.cpp',
+  '../src/audio/ym2612/fm.cpp',
+  '../src/audio/ym2612/fm_eg.cpp',
+  '../src/audio/ym2612/fm_lfo.cpp',
+  include_directories: [fm_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('fm_chip', test_fm_chip,
+  timeout: 30,
+  suite: 'catch2'
+)
