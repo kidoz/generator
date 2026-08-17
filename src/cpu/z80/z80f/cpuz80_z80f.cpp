@@ -5,13 +5,11 @@
 #include <cstring>
 #include <cstdint>
 
-extern "C" {
 #include "generator.h"
 #include "cpuz80.h"
 #include "cpu68k.h"
 #include "memz80.h"
 #include "ui.h"
-}
 
 #include <z80f/z80.hpp>
 #include <z80f/bus.hpp>
@@ -108,8 +106,6 @@ void load_from_legacy_context()
 }
 
 }  // namespace
-
-extern "C" {
 
 uint8 *cpuz80_ram = nullptr;
 uint32 cpuz80_bank = 0;
@@ -257,5 +253,3 @@ void cpuz80_portwrite(uint8 port, uint8 value)
 {
   LOG_VERBOSE("[Z80] Port write to %X of %X", port, value);
 }
-
-}  // extern "C"

@@ -18,14 +18,12 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" {
 #include "generator.h"
 #include "vdp.h"
 #include "cpu68k.h"
 #include "ui.h"
 #include "event.h"
 #include "state.h"
-}
 
 #include "vdp.hpp"
 
@@ -2099,31 +2097,31 @@ void Vdp::vdp_save_state()
 
 } // namespace generator
 
-/*** Transitional extern "C" API over generator::vdp ***/
+/*** Transitional free-function API over generator::vdp ***/
 
-extern "C" void vdp_save_state(void)
+void vdp_save_state(void)
 {
   generator::vdp.vdp_save_state();
 }
 
-extern "C" int vdp_init(void) { return generator::vdp.vdp_init(); }
-extern "C" void vdp_setupvideo(void) { generator::vdp.vdp_setupvideo(); }
-extern "C" void vdp_reset(void) { generator::vdp.vdp_reset(); }
-extern "C" uint16 vdp_status(void) { return generator::vdp.vdp_status(); }
-extern "C" void vdp_storectrl(uint16 data) { generator::vdp.vdp_storectrl(data); }
-extern "C" void vdp_storedata(uint16 data) { generator::vdp.vdp_storedata(data); }
-extern "C" uint16 vdp_fetchdata(void) { return generator::vdp.vdp_fetchdata(); }
-extern "C" void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
+int vdp_init(void) { return generator::vdp.vdp_init(); }
+void vdp_setupvideo(void) { generator::vdp.vdp_setupvideo(); }
+void vdp_reset(void) { generator::vdp.vdp_reset(); }
+uint16 vdp_status(void) { return generator::vdp.vdp_status(); }
+void vdp_storectrl(uint16 data) { generator::vdp.vdp_storectrl(data); }
+void vdp_storedata(uint16 data) { generator::vdp.vdp_storedata(data); }
+uint16 vdp_fetchdata(void) { return generator::vdp.vdp_fetchdata(); }
+void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
 {
   generator::vdp.vdp_renderline(line, linedata, odd);
 }
-extern "C" void vdp_renderframe(uint8 *framedata, unsigned int lineoffset)
+void vdp_renderframe(uint8 *framedata, unsigned int lineoffset)
 {
   generator::vdp.vdp_renderframe(framedata, lineoffset);
 }
-extern "C" void vdp_showregs(void) { generator::vdp.vdp_showregs(); }
-extern "C" void vdp_spritelist(void) { generator::vdp.vdp_spritelist(); }
-extern "C" void vdp_describe(void) { generator::vdp.vdp_describe(); }
-extern "C" void vdp_endfield(void) { generator::vdp.vdp_endfield(); }
-extern "C" uint8 vdp_gethpos(void) { return generator::vdp.vdp_gethpos(); }
-extern "C" void vdp_fifo_drain(int count) { generator::vdp.vdp_fifo_drain(count); }
+void vdp_showregs(void) { generator::vdp.vdp_showregs(); }
+void vdp_spritelist(void) { generator::vdp.vdp_spritelist(); }
+void vdp_describe(void) { generator::vdp.vdp_describe(); }
+void vdp_endfield(void) { generator::vdp.vdp_endfield(); }
+uint8 vdp_gethpos(void) { return generator::vdp.vdp_gethpos(); }
+void vdp_fifo_drain(int count) { generator::vdp.vdp_fifo_drain(count); }

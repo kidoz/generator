@@ -9,13 +9,11 @@
 #include "kaillera_protocol.h"
 #include "socket.h"
 
-/* Emulator headers for input access - unguarded C headers, so wrap them to
- * keep C linkage for the mem68k symbols this unit references. */
-extern "C" {
+/* Emulator headers for input access - the mem68k symbols this unit
+ * references. */
 #include "generator.h"
 #include "cpu68k.h"
 #include "mem68k.h"
-}
 
 /* Emulator name sent to Kaillera servers */
 #define NETPLAY_EMULATOR_NAME "Generator " VERSION

@@ -5,14 +5,12 @@
 #include <cerrno>
 #include <cstring>
 
-extern "C" {
 #include "generator.h"
 
 #include "vdp.h"
 #include "ui.h"
 #include "dib.h"
 #include "avi.h"
-}
 
 #ifdef JPEG
 #include "jpeglib.h" /* self-guarded for C++ */

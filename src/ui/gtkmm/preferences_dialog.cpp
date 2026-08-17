@@ -2,10 +2,8 @@
 
 #include <iostream>
 
-extern "C" {
 #include "gtkopts.h"
 #include <SDL3/SDL.h>
-}
 
 PreferencesDialog::PreferencesDialog(Gtk::Window& parent) : m_parent(parent) {
     setup_ui();

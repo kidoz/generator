@@ -8,13 +8,11 @@
 #include <stdatomic.h>
 #include <SDL3/SDL.h>
 
-extern "C" {
 #include "generator.h"
 #include "gensound.h"
 #include "gensoundp.h"
 #include "vdp.h"
 #include "ui.h"
-}
 
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"

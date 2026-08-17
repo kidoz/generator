@@ -19,10 +19,8 @@
 #include <unistd.h>
 #include <errno.h>
 
-/* Legacy emulator headers are plain C without extern "C" guards; wrap the
- * block so their declarations keep C linkage. logo.h/font.h/netplay.h are
- * generated/guarded and self-contained. */
-extern "C" {
+/* Legacy emulator headers. logo.h/font.h/netplay.h are generated/guarded and
+ * self-contained. */
 #include "generator.h"
 #include "cpu68k.h"
 #include "cpuz80.h"
@@ -34,7 +32,6 @@ extern "C" {
 #include "uip.h"
 #include "state.h"
 #include "uiplot.h"
-}
 
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"

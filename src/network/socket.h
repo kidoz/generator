@@ -7,10 +7,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Opaque socket type */
 typedef struct netplay_socket netplay_socket_t;
 
@@ -97,9 +93,5 @@ uint16_t socket_get_local_port(netplay_socket_t *sock);
  * Get the last socket error message.
  */
 const char *socket_get_error(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* NETPLAY_SOCKET_H */

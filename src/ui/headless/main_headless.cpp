@@ -13,12 +13,10 @@
 #include <vector>
 #include <unistd.h>
 
-extern "C" {
 #include "ui.h"
 #include "generator.h"
 #include "vdp.h"
 #include "state.h"
-}
 
 /* C++ VDP class (singleton instance) for the capturing video backend. */
 #include "vdp.hpp"

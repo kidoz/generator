@@ -3,14 +3,12 @@
 #include <stdio.h>
 #include <string.h>
 
-extern "C" {
 #include "generator.h"
 #include "cpu68k.h"
 #include "mem68k.h"
 #include "cpuz80.h"
 #include "gensound.h"
 #include "ui.h"
-}
 
 /* VDP state class: read chip members directly instead of the transitional
  * extern "C" accessors (this port removed them). */

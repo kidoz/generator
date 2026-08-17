@@ -3,9 +3,6 @@
 #include <gtkmm.h>
 #include <SDL3/SDL.h>
 
-extern "C" {
-}
-
 #define MAX_GAMEPADS 4
 
 struct GamepadSlot {

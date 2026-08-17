@@ -103,17 +103,14 @@ DELTAN register = 0) !!!!!!
 #include <stdarg.h>
 #include <math.h>
 
-/* Generator - the legacy headers (and the extracted testable units, which
- * keep extern "C" linkage so the same headers work for fm.cpp and the Catch2
- * tests) are plain C declarations; wrap them so this C++ translation unit
- * emits C-linkage definitions for the YM2612* API. */
-extern "C" {
+/* Generator - legacy headers plus the extracted testable units, which the
+ * Catch2 tests include directly. */
 #include "support.h"
 #include "fm.h"
 #include "genstate.h"
 #include "fm_eg.hpp" /* FM_SLOT struct + calc_eg/CALC_FCSLOT (extracted, tested) */
 #include "fm_lfo.hpp" /* opn_lfo_step (extracted, tested) */
-}
+
 #define _STATE_H
 
 #ifndef PI

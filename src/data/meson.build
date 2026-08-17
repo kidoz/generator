@@ -7,8 +7,7 @@ bin2c_prog = files('../../scripts/bin2c_source.py')
 # One custom_target per blob emitting a .cpp/.h pair. The .h files carry the
 # same symbol names and include-basename as the deleted C literals, so
 # consumers keep `#include "initcart.h"` etc.; the generated definitions are
-# const with extern "C" linkage and remain linkable from C translation units
-# (ui_console.c) until it is ported.
+# const and have ordinary C++ linkage.
 initcart_ct = custom_target('initcart_data',
   input: 'initcart.bin',
   output: ['initcart.cpp', 'initcart.h'],

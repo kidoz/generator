@@ -8,7 +8,6 @@
 #include <ctime>
 #include <cstring>
 
-extern "C" {
 #include "generator.h"
 
 #include "state.h"
@@ -18,7 +17,6 @@ extern "C" {
 #include "vdp.h"
 #include "gensound.h"
 #include "fm.h"
-}
 
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"

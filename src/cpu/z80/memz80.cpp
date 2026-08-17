@@ -2,7 +2,6 @@
 
 #include <cstdio>
 
-extern "C" {
 #include "generator.h"
 #include "cpu68k.h"
 #include "mem68k.h"
@@ -11,7 +10,6 @@ extern "C" {
 #include "gensound.h"
 #include "fm_write_queue.hpp"
 #include "ui.h"
-}
 
 /* The Z80 burst-position scale must match the FM write queue's fraction
  * scale, or timestamps would silently land at wrong sample offsets. */

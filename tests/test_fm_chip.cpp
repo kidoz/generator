@@ -17,7 +17,6 @@
 #include <cstring>
 #include <vector>
 
-extern "C" {
 #include "support.h" /* HAS_YM2612: gates the API declarations in fm.h */
 #include "fm.h"
 #include "state.h"
@@ -32,7 +31,6 @@ static int g_timer_calls = 0;
 static int g_irq_calls = 0;
 static void dummy_timer_handler(int, int, int, double) { g_timer_calls++; }
 static void dummy_irq_handler(int, int) { g_irq_calls++; }
-}
 
 namespace {
 

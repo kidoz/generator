@@ -13,9 +13,7 @@
 #include <csignal>
 #include <cerrno>
 
-extern "C" {
 #include "generator.h"
-}
 
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"
@@ -27,7 +25,6 @@ using generator::vdp;
 #define RETSIGTYPE void
 #endif
 
-extern "C" {
 #include "ui.h"
 #include "memz80.h"
 #include "cpu68k.h"
@@ -35,7 +32,6 @@ extern "C" {
 #include "cpuz80.h"
 #include "vdp.h"
 #include "gensound.h"
-}
 
 #ifdef ALLEGRO
 #include "allegro.h"
@@ -513,4 +509,3 @@ uint16 gen_checksum(uint8 *start, unsigned int length)
   }
   return checksum;
 }
-

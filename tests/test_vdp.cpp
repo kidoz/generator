@@ -14,12 +14,10 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" {
 #include "generator.h"
 #include "cpu68k.h"
 #include "event.h"
 #include "ui.h"
-}
 
 #include "vdp.hpp"
 
@@ -34,13 +32,11 @@ static uint8 ram_storage[0x10000];
 static uint8 rom_storage[0x200000];
 
 // Save-state plumbing stubs (vdp_save_state is not exercised here).
-extern "C" {
+
 void state_transfer8(const char *, const char *, uint8, uint8 *, uint32) {}
 void state_transfer16(const char *, const char *, uint8, uint16 *, uint32) {}
 void state_transfer32(const char *, const char *, uint8, uint32 *, uint32) {}
-}
 
-extern "C" {
 uint8 *cpu68k_ram = ram_storage;
 uint8 *cpu68k_rom = rom_storage;
 unsigned int cpu68k_clocks = 0;
@@ -52,7 +48,6 @@ void event_freeze_clocks(unsigned int clocks) { (void)clocks; }
 void ui_err(const char *msg, ...) {
   fprintf(stderr, "ui_err: %s\n", msg);
   exit(1);
-}
 }
 
 namespace {

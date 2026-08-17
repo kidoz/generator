@@ -26,17 +26,16 @@ using generator::sn;
 
 using Catch::Approx;
 
-namespace {
-
 // Stub for save-state plumbing; SN76496_save_state() is intentionally not
 // exercised by these tests. Providing it here keeps the link self-contained
 // without dragging in the full state.cpp + emulator globals.
-extern "C" void state_transfer32(const char * /*mod*/, const char * /*name*/,
+void state_transfer32(const char * /*mod*/, const char * /*name*/,
                                  uint8 /*instance*/, uint32 * /*data*/,
-                                 int /*count*/)
+                                 uint32 /*size*/)
 {
 }
 
+namespace {
 // Independent parity helper mirroring sn76496.cpp's private static
 // SN76496::parity(). Used to predict LFSR transitions in tests without
 // relying on the chip's private copy.

@@ -7,10 +7,8 @@ using generator::vdp;
 
 #include <glibmm/main.h>
 
-extern "C" {
 #include "gensound.h"
 #include "gensoundp.h"
-}
 
 EmulatorThread::EmulatorThread() = default;
 

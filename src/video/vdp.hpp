@@ -10,18 +10,14 @@
  * The module-level globals that vdp.cpp used to export (vdp_vram, vdp_reg,
  * ...) are now members of generator::Vdp, with a single transitional
  * instance `vdp`. C++ consumers reach state as vdp.<field>; the public
- * function API keeps its C names as extern "C" wrappers. Field and method
+ * function API keeps its C names as free-function wrappers. Field and method
  * names intentionally keep their historical vdp_ prefix so the port stays a
  * pure rename+translation; a later cleanup pass may drop the prefix.
  * Members stay public: the save-state layer and tests access them directly
  * until serialization moves into the class. */
 
-/* vdp.h has no extern "C" guards of its own; wrap it so every TU including
- * this header sees C-linkage declarations for the wrapper API. */
-extern "C" {
 #include "machine.h"
 #include "vdp.h"
-}
 
 #include <cstdint>
 
@@ -98,7 +94,7 @@ public:
    * always written (format stability). */
   void vdp_save_state();
 
-  /* public API (mirrors the extern "C" wrappers in vdp.h) */
+  /* public API (mirrors the free-function wrappers in vdp.h) */
   void vdp_fifo_drain(int count);
   int vdp_init(void);
   void vdp_setupvideo(void);

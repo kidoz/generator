@@ -21,10 +21,6 @@
 
 #include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #define FMQ_FRAC_ONE 4096u /* pos_frac units per scanline (12-bit fraction) */
 #define FMQ_CAPACITY                                      \
   256u /* entries; a scanline is ~228 Z80 cycles, so this \
@@ -53,9 +49,5 @@ uint16_t fmq_peek_pos(void);
 
 /* Sticky overflow flag (see fmq_push). */
 int fmq_overflowed(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* FM_WRITE_QUEUE_HPP */

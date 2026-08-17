@@ -7,10 +7,6 @@
 #include <stddef.h>
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Kaillera protocol version */
 #define KAILLERA_VERSION "0.83"
 
@@ -204,9 +200,5 @@ int kaillera_write_string(uint8_t *buf, size_t buflen, const char *str);
  */
 const uint8_t *kaillera_read_string(const uint8_t *data, const uint8_t *end,
                                     char *str, size_t maxlen);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* KAILLERA_PROTOCOL_H */

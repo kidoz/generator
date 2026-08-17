@@ -6,10 +6,6 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Netplay connection state */
 typedef enum {
   NETPLAY_DISCONNECTED = 0,
@@ -205,9 +201,5 @@ uint16_t netplay_serialize_input(const void *keys);
  * @param keys Pointer to t_keys structure (from mem68k.h)
  */
 void netplay_deserialize_input(uint16_t data, void *keys);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* NETPLAY_H */

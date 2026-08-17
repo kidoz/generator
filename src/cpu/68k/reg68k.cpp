@@ -5,7 +5,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-extern "C" {
 #include "generator.h"
 #include "registers.h"
 #include "reg68k.h"
@@ -16,7 +15,7 @@ extern "C" {
 #include "vdp.h"
 #include "ui.h"
 #include "gensound.h"
-}
+
 
 
 /*** global variables ***/

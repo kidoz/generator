@@ -2,11 +2,9 @@
 
 #include <iostream>
 
-extern "C" {
 #include "generator.h"
 #include "cpu68k.h" /* mem68k.h's DIRECTRAM fast paths need these first */
 #include "mem68k.h" // For mem68k_cont
-}
 
 // Default keyboard mappings for two players (6-button mode)
 // Player 1: Arrow keys + Z/X/C/Enter + A/S/D/Tab

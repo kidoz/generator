@@ -5,13 +5,11 @@
 #include <cstdlib>
 #include <cerrno>
 
-extern "C" {
 #include "generator.h"
 
 #include "ui.h"
 #include "cpu68k.h"
 #include "patch.h"
-}
 
 /* Merlyn LeRoy's lamp.c comment: */
 

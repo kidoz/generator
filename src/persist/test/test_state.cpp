@@ -10,12 +10,10 @@
 #include <time.h>
 
 /* Include project headers for proper type definitions */
-extern "C" {
 #include "generator.h"
 #include "state.h"
 #include "cpu68k.h"
 #include "cpuz80.h"
-}
 
 /* VDP state now lives in the class; this test provides the instance the
  * state.cpp serialization (compiled in below) references. */
@@ -59,7 +57,7 @@ t_musiclog gen_musiclog = musiclog_off;
 volatile sig_atomic_t gen_quit = 0;
 
 /* Mock functions */
-extern "C" void gen_reset(void) {
+void gen_reset(void) {
   memset(vdp.vdp_vram, 0, sizeof(vdp.vdp_vram));
   memset(vdp.vdp_cram, 0, sizeof(vdp.vdp_cram));
   memset(vdp.vdp_vsram, 0, sizeof(vdp.vdp_vsram));
@@ -81,21 +79,21 @@ extern "C" void gen_reset(void) {
   cpuz80_bank = 0;
 }
 
-extern "C" void event_freeze(unsigned int bytes) { (void)bytes; }
-extern "C" void event_freeze_clocks(unsigned int clocks) { (void)clocks; }
-extern "C" void cpuz80_updatecontext(void) {
+void event_freeze(unsigned int bytes) { (void)bytes; }
+void event_freeze_clocks(unsigned int clocks) { (void)clocks; }
+void cpuz80_updatecontext(void) {
   /* Mock - no-op */
 }
 
-extern "C" void YM2612_save_state(void) {
+void YM2612_save_state(void) {
   /* Mock - no-op for testing */
 }
 
-extern "C" void SN76496_save_state(void) {
+void SN76496_save_state(void) {
   /* Mock - no-op for testing */
 }
 
-extern "C" void ui_err(const char *msg, ...) {
+void ui_err(const char *msg, ...) {
   fprintf(stderr, "ERROR: %s\n", msg);
   exit(1);
 }

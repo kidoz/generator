@@ -21,10 +21,6 @@
 
 #include "fm.h" /* INT32, UINT32, UINT8 typedefs */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* ---- Envelope / LFO constants (canonical copy for standalone use) ----
  * fm.c defines these same macros itself before including this header, so each
  * is guarded to avoid redefinition; the values are identical. */
@@ -138,9 +134,5 @@ void CALC_FCSLOT(FM_SLOT *SLOT, int fc, int kc);
  * Extracted from fm.c's FM_KEYOFF (which now calls this) so the SSG-EG
  * key-off behavior is unit-testable. Operates purely on FM_SLOT fields. */
 void fm_slot_keyoff(FM_SLOT *SLOT);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* FM_EG_HPP */

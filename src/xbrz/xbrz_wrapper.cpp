@@ -3,8 +3,6 @@
 #include "xbrz_wrapper.h"
 #include "xbrz.h"
 
-extern "C" {
-
 void xbrz_scale(int factor, const uint32_t *src, uint32_t *trg, int src_width,
                 int src_height)
 {
@@ -34,5 +32,3 @@ void xbrz_scale_custom(int factor, const uint32_t *src, uint32_t *trg,
   xbrz::scale(static_cast<size_t>(factor), src, trg, src_width, src_height,
               xbrz::ColorFormat::RGB, cfg);
 }
-
-}  // extern "C"

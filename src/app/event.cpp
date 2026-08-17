@@ -2,7 +2,6 @@
 
 #include <cstdio>
 
-extern "C" {
 #include "generator.h"
 #include "event.h"
 #include "vdp.h"
@@ -12,7 +11,6 @@ extern "C" {
 #include "ui.h"
 #include "gensound.h"
 #include "mem68k.h"
-}
 
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"

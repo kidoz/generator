@@ -3,9 +3,7 @@
 
 #pragma once
 
-extern "C" {
 #include "generator.h" /* t_cartinfo */
-}
 
 #include "system.hpp"
 

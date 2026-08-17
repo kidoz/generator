@@ -5,12 +5,10 @@
 #include <cstdio>
 #include <cstdlib>
 
-extern "C" {
 #include "generator.h"
 #include "vdp.h"
 
 #include "uiplot.h"
-}
 
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"

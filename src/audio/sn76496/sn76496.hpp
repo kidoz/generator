@@ -32,7 +32,7 @@ inline constexpr int MAX_76496 = 1;
  *
  * C++ port of the MAME-derived C core: the chip state that used to live in
  * the global `struct SN76496 sn[]` array is owned by the class. The
- * transitional global array and the extern "C" free functions below keep the
+ * transitional global array and the free functions below keep the
  * existing mixer/save-state call sites working until those subsystems are
  * repointed onto System-owned instances; they are the compatibility ABI, not
  * the API. Data members stay public because the save-state layer and the
@@ -68,18 +68,10 @@ extern SN76496 sn[MAX_76496];
 
 } // namespace generator
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-/* Transitional C ABI over the array above - see class comment. */
+/* Transitional flat API over the array above - see class comment. */
 int SN76496Init(int chip, int clock, int gain, int sample_rate);
 void SN76496Write(int chip, int data);
 void SN76496Update(int chip, uint16 *buffer, int length);
 void SN76496_save_state(void);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* SN76496_HPP */

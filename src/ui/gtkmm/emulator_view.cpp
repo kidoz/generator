@@ -16,9 +16,6 @@ extern uint8_t* g_screen0;
 extern uint8_t* g_screen1;
 extern std::atomic<int> g_whichbank;
 
-extern "C" {
-}
-
 // HMAXSIZE and VMAXSIZE matching the core scale bounds
 #define MAX_SCALE_FACTOR 4
 #define HBORDER_MAX 32

@@ -7,10 +7,6 @@
 #include <stdbool.h>
 #include "kaillera_protocol.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Client state */
 typedef enum {
   KAILLERA_STATE_DISCONNECTED = 0,
@@ -167,9 +163,5 @@ int kaillera_client_get_player_number(kaillera_client_t *client);
  * Returns 0 if not in a game.
  */
 int kaillera_client_get_num_players(kaillera_client_t *client);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* KAILLERA_CLIENT_H */

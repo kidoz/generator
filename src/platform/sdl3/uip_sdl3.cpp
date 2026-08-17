@@ -9,7 +9,6 @@
 
 #include <SDL3/SDL.h>
 
-extern "C" {
 #include "generator.h"
 
 #include "uip.h"
@@ -19,7 +18,6 @@ extern "C" {
 #include "cpu68k.h"
 #include "mem68k.h"
 #include "gensoundp.h"
-}
 
 #define SCREEN_WIDTH 640
 #define SCREEN_HEIGHT 480

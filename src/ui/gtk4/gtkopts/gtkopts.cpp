@@ -11,10 +11,8 @@
 #include <cerrno>
 #include <cstdlib>
 
-extern "C" {
 #include "generator.h"
 #include "gtkopts.h"
-}
 
 t_conf *gtkopts_conf = nullptr;
 

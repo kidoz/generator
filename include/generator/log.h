@@ -21,10 +21,6 @@
 #define GEN_LOG_PRINTF(fmt_index, first_arg)
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Verbosity threshold owned by the application. Defined in src/app/generator.c
    (and in standalone test executables). The LOG_* macros gate on this before
    formatting, so messages below threshold cost only a comparison. */
@@ -49,10 +45,6 @@ void gen_log_verbose(const char *fmt, ...) GEN_LOG_PRINTF(1, 2);
 void gen_log_normal(const char *fmt, ...) GEN_LOG_PRINTF(1, 2);
 void gen_log_critical(const char *fmt, ...) GEN_LOG_PRINTF(1, 2);
 void gen_log_request(const char *fmt, ...) GEN_LOG_PRINTF(1, 2);
-
-#ifdef __cplusplus
-}
-#endif
 
 /* LOG_X(...) — standard variadic macro. Defining NOLOGGING removes them entirely. */
 #ifdef NOLOGGING

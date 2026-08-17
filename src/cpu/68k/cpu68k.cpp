@@ -5,7 +5,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-extern "C" {
 #include "cpu68k.h"
 #include "generator.h"
 #include "mem68k.h"
@@ -14,7 +13,7 @@ extern "C" {
 #include "def68k_iibs.h"
 #include "def68k_proto.h"
 #include "def68k_funcs.h"
-}
+
 
 
 /*** externed variables ***/

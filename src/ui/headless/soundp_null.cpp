@@ -1,10 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* Null sound platform - no audio output for headless mode */
 
-extern "C" {
 #include "machine.h"
 #include "gensoundp.h"
-}
 
 #include "system.hpp" /* ui_audio_output */
 

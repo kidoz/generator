@@ -16,10 +16,6 @@
 
 #include "fm.h" /* INT32, UINT32 typedefs */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* LFO fixed-point scale (canonical copy for standalone use; fm.c defines the
  * same macros itself, so each is guarded to avoid redefinition). */
 #ifndef LFO_SH
@@ -44,9 +40,5 @@ extern "C" {
  */
 UINT32 opn_lfo_step(UINT32 lfo_cnt, UINT32 lfo_incr, const INT32 *lfo_wave,
                     int invert_am, UINT32 *out_amd, INT32 *out_pmd);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* FM_LFO_HPP */

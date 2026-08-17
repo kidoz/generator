@@ -6,10 +6,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* C-compatible wrapper functions for xBRZ scaling */
 
 /**
@@ -41,9 +37,5 @@ void xbrz_scale(int factor, const uint32_t *src, uint32_t *trg, int src_width,
 void xbrz_scale_custom(int factor, const uint32_t *src, uint32_t *trg,
                        int src_width, int src_height, double luminance_weight,
                        double equal_color_tolerance);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif /* XBRZ_WRAPPER_H */

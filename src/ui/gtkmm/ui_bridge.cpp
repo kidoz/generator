@@ -11,13 +11,11 @@ using generator::vdp;
 #include <iostream>
 #include <span>
 
-extern "C" {
 #include "generator.h"
 #include "ui.h"
 #include "uiplot.h"
 #include "initcart.h"
 #include "vdp.h"
-}
 
 using namespace generator;
 
@@ -120,7 +118,7 @@ public:
 };
 
 /*** ui_init - called by main() in generator.c ***/
-extern "C" int ui_init(int argc, char *argv[])
+int ui_init(int argc, char *argv[])
 {
     g_argc = argc;
     g_argv = argv;
@@ -140,7 +138,7 @@ extern "C" int ui_init(int argc, char *argv[])
 }
 
 /*** ui_loop - enters the main application loop ***/
-extern "C" int ui_loop(void)
+int ui_loop(void)
 {
     try {
         g_emulator_core = std::make_unique<EmulatorCore>(
@@ -164,7 +162,7 @@ extern "C" int ui_loop(void)
 }
 
 /*** ui_err - fatal error exit ***/
-extern "C" void ui_err(const char *text, ...)
+void ui_err(const char *text, ...)
 {
     va_list ap;
     va_start(ap, text);
@@ -176,7 +174,7 @@ extern "C" void ui_err(const char *text, ...)
 }
 
 /*** ui_final - graceful shutdown ***/
-extern "C" void ui_final(void)
+void ui_final(void)
 {
     g_emulator_core.reset();
 
@@ -189,7 +187,7 @@ extern "C" void ui_final(void)
 /*** Legacy C callbacks mapped to C++ logic ***/
 
 // Legacy UI line drawing adapter (still used by uiplot.c)
-extern "C" void ui_line(int line)
+void ui_line(int line)
 {
     if (line < 0 || line >= 240) return;
     
@@ -201,10 +199,10 @@ extern "C" void ui_line(int line)
     uiplot_convertdata32(gfx, (uint32_t*)(g_newscreen + line * HMAXSIZE * 4), width);
 }
 
-extern "C" void ui_endfield(void)
+void ui_endfield(void)
 {
 }
 
-extern "C" void ui_musiclog(uint8_t *data, unsigned int length)
+void ui_musiclog(uint8_t *data, unsigned int length)
 {
 }

@@ -9,9 +9,7 @@
 
 #include <cstdint>
 
-extern "C" {
 #include "fm_write_queue.hpp"
-}
 
 namespace {
 

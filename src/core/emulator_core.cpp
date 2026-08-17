@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <utility>
 
-extern "C" {
 #include "cpu68k.h"
 #include "cpuz80.h"
 #include "gensound.h"
@@ -22,7 +21,6 @@ extern "C" {
 /* External subsystem entry points */
 extern void event_doframe(void);
 extern int memz80_init(void);
-}
 
 #include "vdp.hpp"
 

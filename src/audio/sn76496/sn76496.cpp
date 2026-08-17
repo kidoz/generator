@@ -32,11 +32,7 @@
 
 #include "sn76496.hpp"
 
-/* state.h has no extern "C" guards; wrap it so the state_transfer*
- * declarations get C linkage and match state.cpp's definitions. */
-extern "C" {
 #include "state.h"
-}
 
 namespace generator {
 
@@ -362,24 +358,24 @@ void SN76496::save_state(int chip_index)
 
 } // namespace generator
 
-/* Transitional C ABI over the global array - see sn76496.hpp. */
+/* Transitional flat API over the global array - see sn76496.hpp. */
 
-extern "C" int SN76496Init(int chip, int clock, int gain, int sample_rate)
+int SN76496Init(int chip, int clock, int gain, int sample_rate)
 {
   return generator::sn[chip].init(clock, gain, sample_rate);
 }
 
-extern "C" void SN76496Write(int chip, int data)
+void SN76496Write(int chip, int data)
 {
   generator::sn[chip].write(data);
 }
 
-extern "C" void SN76496Update(int chip, uint16 *buffer, int length)
+void SN76496Update(int chip, uint16 *buffer, int length)
 {
   generator::sn[chip].update(buffer, length);
 }
 
-extern "C" void SN76496_save_state(void)
+void SN76496_save_state(void)
 {
   for (int chip = 0; chip < generator::MAX_76496; chip++)
     generator::sn[chip].save_state(chip);

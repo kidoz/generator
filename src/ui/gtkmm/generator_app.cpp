@@ -4,9 +4,7 @@
 #include "ui_bridge.hpp"
 #include <iostream>
 
-extern "C" {
 #include "generator.h"
-}
 
 GeneratorApp::GeneratorApp()
     : Gtk::Application("org.generator.Emulator", Gio::Application::Flags::HANDLES_OPEN | Gio::Application::Flags::NON_UNIQUE) {

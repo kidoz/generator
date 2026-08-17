@@ -3,11 +3,9 @@
 #include <cassert>
 #include <cstdlib>
 
-extern "C" {
 #include "generator.h"
 
 #include "dib.h"
-}
 
 /* From http://www.jmcgowan.com/avitech.html */
 

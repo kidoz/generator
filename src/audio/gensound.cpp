@@ -7,7 +7,6 @@
 #include <cmath>
 #include <cstdint>
 
-extern "C" {
 #include "generator.h"
 #include "gensound.h"
 #include "gensoundp.h"
@@ -21,7 +20,6 @@ extern "C" {
 #include "support.h"
 #include "fm.h"
 #endif
-}
 
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"

@@ -4,10 +4,9 @@
 #include <string.h>
 #include <ctype.h>
 
-extern "C" {
 #include "generator.h"
 #include "cpu68k.h"
-}
+
 
 
 /* forward references */
