@@ -122,6 +122,7 @@ std::vector<nk::Menu> build_menus()
 
 std::string describe_video_mode()
 {
+  auto &vdp = generator::vdp();
   const unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
   return std::string(vdp.vdp_pal ? "PAL " : "NTSC ") + std::to_string(width) +
          "x" + std::to_string(vdp.vdp_vislines);

@@ -16,9 +16,6 @@
 #include "vdp.hpp"
 #include "system.hpp" /* ui_* backend emission */
 
-using generator::vdp;
-
-
 /* due to DMA transfers, event_nextevent can be called during an instruction
    cycle (reg68k_external_execute -> instruction -> vdp write -> dma ->
    event_freeze -> event_nextevent).  Be careful */
@@ -49,6 +46,8 @@ using generator::vdp;
 
 void event_nextevent(void)
 {
+  auto &vdp = generator::vdp();
+
   /* Execute the next VDP event based on current state (vdp.vdp_event).
    * vdp.vdp_event++ advances the state machine through each scanline event. */
 
@@ -258,6 +257,7 @@ void event_nextevent(void)
 
 void event_doframe(void)
 {
+  auto &vdp = generator::vdp();
   unsigned int startframe = cpu68k_frames;
 
   do {
@@ -271,6 +271,8 @@ void event_doframe(void)
 
 void event_dostep(void)
 {
+  auto &vdp = generator::vdp();
+
   /* execute one instruction and subtract from vdp.vdp_nextevent those cycles */
   vdp.vdp_nextevent -= reg68k_external_step();
   /* if negative or 0, i.e. we have done all the cycles we need to this event,
@@ -290,6 +292,7 @@ void event_dostep(void)
 
 void event_freeze_clocks(unsigned int clocks)
 {
+  auto &vdp = generator::vdp();
   int missed = 0;
 
   /* first - fix vdp.vdp_nextevent to be correct for right now, due to block
@@ -344,6 +347,7 @@ void event_freeze_clocks(unsigned int clocks)
 
 void event_freeze(unsigned int bytes)
 {
+  auto &vdp = generator::vdp();
   int wide = vdp.vdp_reg[12] & 1;
   int clocks, possible;
   double percent_possible;

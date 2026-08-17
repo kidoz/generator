@@ -14,8 +14,6 @@
  * extern "C" accessors (this port removed them). */
 #include "vdp.hpp"
 
-using generator::vdp;
-
 #undef DEBUG_VDP
 #undef DEBUG_BUS
 #undef DEBUG_SRAM
@@ -675,6 +673,7 @@ static uint8 mem68k_read_controller(int player, int th_high)
 
 uint8 mem68k_fetch_io_byte(uint32 addr)
 {
+  auto &vdp = generator::vdp();
   uint8 in;
 
   addr -= 0xA10000;
@@ -902,6 +901,8 @@ uint8 mem68k_fetch_vdp_byte(uint32 addr)
 
 uint16 mem68k_fetch_vdp_word(uint32 addr)
 {
+  auto &vdp = generator::vdp();
+
 #ifdef DEBUG_BUS
   if (addr & 1) {
     LOG_CRITICAL("%08X [VDP] Bus error 0x%X", regs.pc, addr);
@@ -1000,6 +1001,10 @@ uint32 mem68k_fetch_vdp_long(uint32 addr)
 
 void mem68k_store_vdp_byte(uint32 addr, uint8 data)
 {
+#ifdef DEBUG_VDP
+  auto &vdp = generator::vdp();
+#endif
+
   addr -= 0xC00000;
   switch (addr) {
   case 0:
@@ -1042,6 +1047,10 @@ void mem68k_store_vdp_byte(uint32 addr, uint8 data)
 
 void mem68k_store_vdp_word(uint32 addr, uint16 data)
 {
+#ifdef DEBUG_VDP
+  auto &vdp = generator::vdp();
+#endif
+
 #ifdef DEBUG_BUS
   if (addr & 1) {
     LOG_CRITICAL("%08X [VDP] Bus error 0x%X", regs.pc, addr);
@@ -1084,6 +1093,10 @@ void mem68k_store_vdp_word(uint32 addr, uint16 data)
 
 void mem68k_store_vdp_long(uint32 addr, uint32 data)
 {
+#ifdef DEBUG_VDP
+  auto &vdp = generator::vdp();
+#endif
+
 #ifdef DEBUG_BUS
   if (addr & 1) {
     LOG_CRITICAL("%08X [VDP] Bus error 0x%X", regs.pc, addr);

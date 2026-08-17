@@ -15,12 +15,25 @@
 #include "cpu68k.h"
 #include "cpuz80.h"
 
-/* VDP state now lives in the class; this test provides the instance the
- * state.cpp serialization (compiled in below) references. */
+/* VDP state now lives in the class; this test provides the instance and
+ * active accessor that state.cpp serialization references. */
 #include "vdp.hpp"
 
-/* the Vdp instance and vdp_setupvideo now come from vdp.cpp, linked below */
-using generator::vdp;
+generator::Vdp vdp;
+
+namespace generator {
+
+Vdp &vdp()
+{
+  return ::vdp;
+}
+
+}  // namespace generator
+
+void vdp_setupvideo()
+{
+  vdp.vdp_setupvideo();
+}
 
 /* Provide mock implementations for dependencies not needed in tests */
 

@@ -21,10 +21,9 @@
 
 #include "vdp.hpp"
 
-using generator::vdp;
-
-// The single Vdp instance is defined by vdp.cpp, which this test compiles
-// directly (see tests/meson.build).
+// Characterization uses a test-local chip; the runtime instance belongs to
+// System and is not linked into this focused unit test.
+generator::Vdp vdp;
 
 // --- storage and stubs referenced by vdp.cpp ---
 

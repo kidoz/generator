@@ -6,8 +6,6 @@
 
 #include "vdp.hpp"
 
-using generator::vdp;
-
 #include <gdkmm/memorytexture.h>
 #include <glibmm/bytes.h>
 
@@ -58,6 +56,7 @@ bool EmulatorView::on_tick(const Glib::RefPtr<Gdk::FrameClock>& /* frame_clock *
 }
 
 void EmulatorView::update_texture() {
+    auto &vdp = generator::vdp();
     if (!g_screen0 || !g_screen1 || !g_emulator_core) return;
 
     unsigned int base_width = (vdp.vdp_reg[12] & 1) ? 320 : 256;

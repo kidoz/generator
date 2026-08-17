@@ -4,7 +4,9 @@
 #include "system.hpp"
 
 #include "sn76496.hpp"
+#include "vdp.hpp"
 
+#include <stdexcept>
 #include <utility>
 
 namespace generator {
@@ -20,6 +22,14 @@ System *system()
 void set_system(System *sys)
 {
   g_system = sys;
+}
+
+Vdp &vdp()
+{
+  if (g_system == nullptr) {
+    throw std::logic_error("VDP access requires an active System");
+  }
+  return g_system->vdp();
 }
 
 void ui_line(int line)
@@ -79,7 +89,8 @@ System::System(std::unique_ptr<IAudioBackend> audio,
                std::unique_ptr<IVideoBackend> video,
                std::shared_ptr<ILogger> logger)
     : m_audio(std::move(audio)), m_video(std::move(video)),
-      m_logger(std::move(logger)), m_psg(std::make_unique<SN76496>())
+      m_logger(std::move(logger)), m_psg(std::make_unique<SN76496>()),
+      m_vdp(std::make_unique<Vdp>())
 {
 }
 

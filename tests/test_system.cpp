@@ -1,13 +1,15 @@
-// System ownership and transitional SN76496 compatibility tests.
+// System subsystem ownership and transitional compatibility tests.
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
 #include <memory>
+#include <stdexcept>
 
 #include "machine.h"
 #include "sn76496.hpp"
 #include "system.hpp"
+#include "vdp.hpp"
 
 namespace {
 
@@ -59,6 +61,30 @@ TEST_CASE("System owns independent SN76496 instances", "[system][psg]")
   first.psg().write(0x90);
   REQUIRE(first.psg().Volume[0] == first.psg().VolTable[0]);
   REQUIRE(second.psg().Volume[0] == 0);
+}
+
+TEST_CASE("System owns independent VDP instances", "[system][vdp]")
+{
+  generator::System first = make_system();
+  generator::System second = make_system();
+
+  REQUIRE(&first.vdp() != &second.vdp());
+  first.vdp().vdp_pal = 1;
+  REQUIRE(second.vdp().vdp_pal == 0);
+}
+
+TEST_CASE("Active VDP access routes to the registered System", "[system][vdp]")
+{
+  generator::System system = make_system();
+  ActiveSystem active{system};
+
+  REQUIRE(&generator::vdp() == &system.vdp());
+}
+
+TEST_CASE("Active VDP access rejects a missing System", "[system][vdp]")
+{
+  generator::set_system(nullptr);
+  REQUIRE_THROWS_AS(generator::vdp(), std::logic_error);
 }
 
 TEST_CASE("Legacy PSG API routes to the active System", "[system][psg]")

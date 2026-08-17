@@ -36,8 +36,6 @@
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"
 
-using generator::vdp;
-
 #include <SDL3/SDL.h>
 
 #include "logo.h"
@@ -639,6 +637,7 @@ void ui_setupscreen(void)
 
 void ui_plotsettings(void)
 {
+  auto &vdp = generator::vdp();
   ui_plotstring(ui_info ? "On " : "Off", 216 + 126, 20);
   ui_plotstring(vdp.vdp_pal ? "Pal " : "NTSC", 216 + 126, 30);
   ui_plotstring(vdp.vdp_overseas ? "USA/Europe" : "Japan     ", 216 + 126, 40);
@@ -651,6 +650,7 @@ void ui_plotsettings(void)
 
 int ui_loop(void)
 {
+  auto &vdp = generator::vdp();
   char *p;
   int f;
 
@@ -747,6 +747,7 @@ int ui_loop(void)
 
 void ui_newframe(void)
 {
+  auto &vdp = generator::vdp();
   static int hmode = 0;
   static int skipcount = 0;
   static char frameplots[60]; /* 60 for NTSC, 50 for PAL */
@@ -842,6 +843,7 @@ void ui_newframe(void)
 
 void ui_line(int line)
 {
+  auto &vdp = generator::vdp();
   static uint8 gfx[320];
   unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
 
@@ -874,6 +876,7 @@ void ui_line(int line)
 
 static void ui_simpleplot(void)
 {
+  auto &vdp = generator::vdp();
   unsigned int line;
   unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
   uint8 gfx[(320 + 16) * (240 + 16)];
@@ -891,6 +894,7 @@ static void ui_simpleplot(void)
 
 void ui_endfield(void)
 {
+  auto &vdp = generator::vdp();
   static int counter = 0;
   static uint64_t last_frame_time = 0;
   static uint64_t frame_count = 0;
@@ -945,6 +949,7 @@ void ui_endfield(void)
 
 void ui_rendertoscreen(void)
 {
+  auto &vdp = generator::vdp();
   uint16 **oldscreenpp = uip_whichbank() ? &ui_screen1 : &ui_screen0;
   uint16 *scrtmp;
   uint16 *newlinedata, *oldlinedata;
@@ -1238,6 +1243,7 @@ void ui_imagescreen_main(void)
 int ui_saveimage(const char *type, char *filename, int buflen, int *xsize,
                  int *ysize)
 {
+  auto &vdp = generator::vdp();
   int i, y;
   int fd = 0;
   char out[3];

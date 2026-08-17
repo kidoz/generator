@@ -17,8 +17,6 @@
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"
 
-using generator::vdp;
-
 /*** file scoped variables ***/
 
 static SDL_AudioStream *soundp_stream = nullptr;
@@ -72,6 +70,7 @@ static const char *soundp_detect_audio_backend(void)
 
 int soundp_start(void)
 {
+  auto &vdp = generator::vdp();
   SDL_AudioSpec src_spec, dst_spec;
   int num_devices;
   SDL_AudioDeviceID *devices;

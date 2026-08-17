@@ -21,8 +21,6 @@
 /* C++ VDP class (singleton instance) for the capturing video backend. */
 #include "vdp.hpp"
 
-using generator::vdp;
-
 
 /* Version info */
 #ifndef VERSION
@@ -201,6 +199,8 @@ class CapturingVideo : public IVideoBackend {
 public:
   void render_line(int line, std::span<const uint8_t> pixels) override
   {
+    auto &vdp = generator::vdp();
+
     if (line < 0 || line >= static_cast<int>(vdp.vdp_vislines))
       return;
 

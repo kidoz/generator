@@ -13,7 +13,6 @@
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"
 
-using generator::vdp;
 #include "xbrz_wrapper.h" /* xBRZ high-quality upscaling (self-guarded) */
 
 uint32 uiplot_palcache[192];
@@ -49,6 +48,7 @@ void uiplot_setmasks(uint32 redmask, uint32 greenmask, uint32 bluemask)
 
 void uiplot_checkpalcache(int flag)
 {
+  auto &vdp = generator::vdp();
   unsigned int col;
   uint8 *p;
   uint8 r, g, b;

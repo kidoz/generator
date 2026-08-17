@@ -21,8 +21,6 @@
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"
 
-using generator::vdp;
-
 /* C++ chip core: defines generator::SN76496 plus the transitional C ABI. */
 #include "sn76496.hpp"
 
@@ -245,6 +243,7 @@ void state_transfer32(const char *mod, const char *name, uint8 instance,
 
 static void state_dotransfer(unsigned int mode)
 {
+  auto &vdp = generator::vdp();
   uint8 i8;
 
   state_transfermode = mode; /* 0 = save, 1 = load */
@@ -326,6 +325,7 @@ int state_savefile(const char *filename)
 
 int state_loadfile(const char *filename)
 {
+  auto &vdp = generator::vdp();
   char *blk;
   uint8 *p, *e;
   struct stat statbuf;

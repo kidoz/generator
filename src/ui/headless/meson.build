@@ -20,7 +20,7 @@ headless_common_sources = [
   # Audio subsystem
   audio_sources,
   # Video subsystem (VDP only, no rendering needed)
-  files('../../video/vdp.cpp'),
+  files('../../video/vdp.cpp', '../../video/vdp_compat.cpp'),
   # Persistence (needed for state_* functions)
   files('../../persist/state.cpp'),
   # Utilities

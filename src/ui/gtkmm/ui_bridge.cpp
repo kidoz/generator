@@ -3,8 +3,6 @@
 #include "emulator_core.hpp"
 #include "vdp.hpp"
 
-using generator::vdp;
-
 #include <vector>
 #include <string>
 #include <atomic>
@@ -53,6 +51,7 @@ public:
 class UiBridgeVideo : public IVideoBackend {
 public:
     void render_line(int line, std::span<const uint8_t> pixels) override {
+        auto &vdp = generator::vdp();
         if (!g_plotfield) return;
         
         if (!g_emulator_core) return;
@@ -189,6 +188,7 @@ void ui_final(void)
 // Legacy UI line drawing adapter (still used by uiplot.c)
 void ui_line(int line)
 {
+    auto &vdp = generator::vdp();
     if (line < 0 || line >= 240) return;
     
     // Read from VDP line

@@ -72,6 +72,7 @@ void EmulatorThread::set_emulation_running(bool running)
 
 void EmulatorThread::thread_loop()
 {
+  auto &vdp = generator::vdp();
   auto field_duration = kFieldNtsc;
   auto last_field = Clock::now();
 

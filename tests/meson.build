@@ -47,6 +47,7 @@ test('z80f_core_smoke', test_z80f_core,
 # it references (state_transfer32) is stubbed in the test source, keeping the
 # link self-contained without dragging in the full audio/core globals.
 sn76496_inc = include_directories('../include/generator', '../src/audio/sn76496')
+vdp_inc = include_directories('../include/generator', '../src/video')
 
 test_sn76496 = executable('test_sn76496',
   'test_sn76496.cpp',
@@ -62,17 +63,17 @@ test('sn76496_psg', test_sn76496,
   suite: 'catch2'
 )
 
-# System ownership and transitional PSG compatibility routing.
+# System subsystem ownership and transitional compatibility routing.
 test_system = executable('test_system',
   'test_system.cpp',
   '../src/core/system.cpp',
-  include_directories: [sn76496_inc],
+  include_directories: [sn76496_inc, vdp_inc],
   dependencies: [catch2_dep, sn76496_dep],
   override_options: ['cpp_std=c++23'],
   build_by_default: false
 )
 
-test('system_psg_ownership', test_system,
+test('system_subsystem_ownership', test_system,
   timeout: 30,
   suite: 'catch2'
 )
@@ -135,8 +136,6 @@ test('fm_write_queue', test_fm_write_queue,
 # vdp.cpp is compiled directly into the test; the emulator globals it
 # references (68K regs/ROM/RAM, event freeze, ui_err, logging) are stubbed in
 # the test source, keeping the link self-contained.
-vdp_inc = include_directories('../include/generator', '../src/video')
-
 test_vdp = executable('test_vdp',
   'test_vdp.cpp',
   '../src/video/vdp.cpp',

@@ -25,8 +25,6 @@
 #include "vdp.hpp"
 #include "system.hpp" /* ui_* backend emission */
 
-using generator::vdp;
-
 /* C++ chip core: defines generator::SN76496 plus the transitional C ABI. */
 #include "sn76496.hpp"
 
@@ -243,6 +241,7 @@ static inline int16_t apply_dither(float sample, float *state)
 
 int sound_init(void)
 {
+  auto &vdp = generator::vdp();
   int ret;
 
   /* Calculate timing parameters - guard against division by zero */
@@ -366,6 +365,8 @@ void sound_stop(void)
 
 int sound_reset(void)
 {
+  auto &vdp = generator::vdp();
+
   LOG_VERBOSE("Resetting sound (full subsystem restart)...");
 
   fmq_reset(); /* discard any timestamped writes pending across the reset */
@@ -425,6 +426,8 @@ int sound_reset(void)
 
 void sound_startfield(void)
 {
+  auto &vdp = generator::vdp();
+
   sound_logdata_p = 0;
   if (gen_musiclog == musiclog_gnm) {
     sound_writetolog(0);
@@ -623,6 +626,8 @@ void sound_line(void)
 
 static void sound_process(void)
 {
+  auto &vdp = generator::vdp();
+
   /* Calculate output sample range for this scanline */
   int s1 = (sound_sampsperfield * vdp.vdp_line) / vdp.vdp_totlines;
   int s2 = (sound_sampsperfield * (vdp.vdp_line + 1)) / vdp.vdp_totlines;

@@ -18,8 +18,6 @@
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"
 
-using generator::vdp;
-
 /* Signal handler return type (typically void on POSIX systems) */
 #ifndef RETSIGTYPE
 #define RETSIGTYPE void
@@ -146,6 +144,7 @@ void gen_softreset(void)
 
 char *gen_loadimage(const char *filename)
 {
+  auto &vdp = generator::vdp();
   int file, imagetype, bytes, bytesleft;
   struct stat statbuf;
   const char *extension;

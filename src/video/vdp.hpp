@@ -8,13 +8,13 @@
  * still-C 68K memory subsystem), while this header owns the chip state.
  *
  * The module-level globals that vdp.cpp used to export (vdp_vram, vdp_reg,
- * ...) are now members of generator::Vdp, with a single transitional
- * instance `vdp`. C++ consumers reach state as vdp.<field>; the public
+ * ...) are now members of generator::Vdp. System owns the runtime instance;
+ * transitional C++ consumers reach it through vdp(), while the public
  * function API keeps its C names as free-function wrappers. Field and method
  * names intentionally keep their historical vdp_ prefix so the port stays a
- * pure rename+translation; a later cleanup pass may drop the prefix.
- * Members stay public: the save-state layer and tests access them directly
- * until serialization moves into the class. */
+ * pure rename+translation; a later cleanup pass may drop the prefix. Members
+ * stay public: the save-state layer and tests access them directly until
+ * serialization moves into the class. */
 
 #include "machine.h"
 #include "vdp.h"
@@ -134,6 +134,6 @@ public:
   void vdp_newwindow(unsigned int line, uint8 *pridata, uint8 *outdata);
 };
 
-extern Vdp vdp;
+Vdp &vdp();
 
-} // namespace generator
+}  // namespace generator

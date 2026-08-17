@@ -2,7 +2,6 @@
 
 #include "vdp.hpp"
 
-using generator::vdp;
 #include "ui_bridge.hpp"
 
 #include <glibmm/main.h>
@@ -51,6 +50,7 @@ void EmulatorThread::set_emulation_running(bool running) {
 }
 
 void EmulatorThread::thread_loop() {
+    auto &vdp = generator::vdp();
     gint64 last_frame_time = g_get_monotonic_time();
     gint64 frame_duration_us = 16667; // Default NTSC
     

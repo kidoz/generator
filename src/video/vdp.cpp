@@ -32,12 +32,6 @@
 #undef DEBUG_VDPDATA
 #undef DEBUG_VDPCRAM
 
-/*** the single transitional VDP instance (state lives in the class) ***/
-
-namespace generator {
-Vdp vdp;
-} // namespace generator
-
 #define VDP_FIFO_SIZE 4
 
 namespace generator {
@@ -2095,33 +2089,4 @@ void Vdp::vdp_save_state()
   state_transfer16("vdp", "address", 0, &vdp_address, 1);
 }
 
-} // namespace generator
-
-/*** Transitional free-function API over generator::vdp ***/
-
-void vdp_save_state(void)
-{
-  generator::vdp.vdp_save_state();
-}
-
-int vdp_init(void) { return generator::vdp.vdp_init(); }
-void vdp_setupvideo(void) { generator::vdp.vdp_setupvideo(); }
-void vdp_reset(void) { generator::vdp.vdp_reset(); }
-uint16 vdp_status(void) { return generator::vdp.vdp_status(); }
-void vdp_storectrl(uint16 data) { generator::vdp.vdp_storectrl(data); }
-void vdp_storedata(uint16 data) { generator::vdp.vdp_storedata(data); }
-uint16 vdp_fetchdata(void) { return generator::vdp.vdp_fetchdata(); }
-void vdp_renderline(unsigned int line, uint8 *linedata, unsigned int odd)
-{
-  generator::vdp.vdp_renderline(line, linedata, odd);
-}
-void vdp_renderframe(uint8 *framedata, unsigned int lineoffset)
-{
-  generator::vdp.vdp_renderframe(framedata, lineoffset);
-}
-void vdp_showregs(void) { generator::vdp.vdp_showregs(); }
-void vdp_spritelist(void) { generator::vdp.vdp_spritelist(); }
-void vdp_describe(void) { generator::vdp.vdp_describe(); }
-void vdp_endfield(void) { generator::vdp.vdp_endfield(); }
-uint8 vdp_gethpos(void) { return generator::vdp.vdp_gethpos(); }
-void vdp_fifo_drain(int count) { generator::vdp.vdp_fifo_drain(count); }
+}  // namespace generator

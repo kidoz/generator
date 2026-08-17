@@ -247,29 +247,29 @@ void EmulatorCore::set_video_mode(int pal, int autodetect)
 {
   gen_autodetect = autodetect;
   if (!autodetect) {
-    vdp.vdp_pal = pal;
+    m_system.vdp().vdp_pal = pal;
     vdp_setupvideo();
   }
 }
 
 int EmulatorCore::video_mode() const
 {
-  return vdp.vdp_pal;
+  return m_system.vdp().vdp_pal;
 }
 
 unsigned int EmulatorCore::framerate() const
 {
-  return vdp.vdp_framerate;
+  return m_system.vdp().vdp_framerate;
 }
 
 void EmulatorCore::screen_size(int *width, int *height) const
 {
   if (width != nullptr) {
-    /* Check H40 mode (vdp.vdp_reg[12] bit 0) */
-    *width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
+    /* Check H40 mode (m_system.vdp().vdp_reg[12] bit 0) */
+    *width = (m_system.vdp().vdp_reg[12] & 1) ? 320 : 256;
   }
   if (height != nullptr) {
-    *height = vdp.vdp_vislines;
+    *height = m_system.vdp().vdp_vislines;
   }
 }
 

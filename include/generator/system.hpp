@@ -12,6 +12,7 @@
 namespace generator {
 
 class SN76496;
+class Vdp;
 
 /* System owns the emulated machine's subsystems and the I/O backends they
  * communicate with. It is the explicit replacement for cross-module globals
@@ -66,6 +67,10 @@ public:
   {
     return *m_psg;
   }
+  Vdp &vdp() const
+  {
+    return *m_vdp;
+  }
 
   /* Null-safe event emission toward the installed backends. These replace
    * the former gen_ui_callbacks_t vtable: the frame driver and sound
@@ -84,6 +89,7 @@ private:
   std::unique_ptr<IVideoBackend> m_video;
   std::shared_ptr<ILogger> m_logger;
   std::unique_ptr<SN76496> m_psg;
+  std::unique_ptr<Vdp> m_vdp;
 };
 
 /* Global System access. EmulatorCore registers the active System for the
