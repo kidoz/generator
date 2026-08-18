@@ -162,7 +162,7 @@ test('fm_write_queue', test_fm_write_queue,
 # the test source, keeping the link self-contained.
 test_vdp = executable('test_vdp',
   'test_vdp.cpp',
-  '../src/video/vdp.cpp',
+  vdp_sources,
   '../src/util/log.cpp',
   include_directories: [vdp_inc],
   dependencies: [catch2_dep],

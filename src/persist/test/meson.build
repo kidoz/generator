@@ -3,7 +3,7 @@
 test_state = executable('test_state',
   'test_state.cpp',
   '../state.cpp',  # Include state.cpp directly
-  '../../video/vdp.cpp',  # VDP serialization (Vdp::vdp_save_state)
+  vdp_sources,  # VDP serialization (Vdp::vdp_save_state)
   '../../util/log.cpp',  # Centralized logger
   include_directories: [inc],
   dependencies: common_deps,
