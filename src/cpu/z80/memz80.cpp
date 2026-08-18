@@ -6,6 +6,7 @@
 #include "cpu68k.h"
 #include "mem68k.h"
 #include "cpuz80.h"
+#include "cpuz80.hpp"
 #include "memz80.h"
 #include "gensound.h"
 #include "fm_write_queue.hpp"
@@ -83,12 +84,12 @@ void memz80_store_bad_byte(uint16 addr, uint8 data)
 
 uint8 memz80_fetch_sram_byte(uint16 addr)
 {
-  return (*(uint8 *)(cpuz80_ram + (addr & 0x1fff)));
+  return (*(uint8 *)(generator::z80().ram + (addr & 0x1fff)));
 }
 
 void memz80_store_sram_byte(uint16 addr, uint8 data)
 {
-  *(uint8 *)(cpuz80_ram + (addr & 0x1fff)) = data;
+  *(uint8 *)(generator::z80().ram + (addr & 0x1fff)) = data;
   return;
 }
 
@@ -135,14 +136,14 @@ void memz80_store_bank_byte(uint16 addr, uint8 data)
 
 uint8 memz80_fetch_mem_byte(uint16 addr)
 {
-  return (fetchbyte(cpuz80_bank | (addr - 0x8000)));
+  return (fetchbyte(generator::z80().bank | (addr - 0x8000)));
 }
 
 void memz80_store_mem_byte(uint16 addr, uint8 data)
 {
-  /* LOG_USER("WRITE whilst bank = %08X (%08X)", cpuz80_bank,
+  /* LOG_USER("WRITE whilst bank = %08X (%08X)", generator::z80().bank,
      addr-0x8000); */
-  storebyte(cpuz80_bank | (addr - 0x8000), data);
+  storebyte(generator::z80().bank | (addr - 0x8000), data);
 }
 
 /*** PSG fetch/store ***/

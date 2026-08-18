@@ -15,17 +15,26 @@
 #include "cpu68k.h"
 #include "cpuz80.h"
 
-/* VDP state now lives in the class; this test provides the instance and
- * active accessor that state.cpp serialization references. */
+/* VDP and Z80 state now live in classes; this test provides the instances
+ * and the active accessors that state.cpp serialization references. The
+ * Cpuz80 here is never reset() or sync()ed, so it holds no emulation core
+ * and the z80f subproject stays out of this test's link. */
+#include "cpuz80.hpp"
 #include "vdp.hpp"
 
 generator::Vdp vdp;
+generator::Cpuz80 z80;
 
 namespace generator {
 
 Vdp &vdp()
 {
   return ::vdp;
+}
+
+Cpuz80 &z80()
+{
+  return ::z80;
 }
 
 }  // namespace generator
@@ -54,13 +63,7 @@ uint8 *cpu68k_rom = rom_storage;
 unsigned int cpu68k_clocks = 0;
 t_regs regs;
 
-/* Z80 CPU state (cmz80 backend) - pointers to match header declarations */
-uint8 cpuz80_ram_storage[LEN_SRAM];
-uint8 *cpuz80_ram = cpuz80_ram_storage;
-uint8 cpuz80_active;
-uint8 cpuz80_resetting;
-uint32 cpuz80_bank;
-CONTEXTMZ80 cpuz80_z80;
+/* Z80 CPU state lives in the ::z80 instance declared above. */
 
 /* Mock other globals */
 unsigned int gen_debugmode = 0;
@@ -76,9 +79,9 @@ void gen_reset(void) {
   memset(vdp.vdp_vsram, 0, sizeof(vdp.vdp_vsram));
   memset(vdp.vdp_reg, 0, sizeof(vdp.vdp_reg));
   memset(cpu68k_ram_storage, 0, sizeof(cpu68k_ram_storage));
-  memset(cpuz80_ram_storage, 0, sizeof(cpuz80_ram_storage));
+  memset(z80.ram, 0, LEN_SRAM);
   memset(&regs, 0, sizeof(regs));
-  memset(&cpuz80_z80, 0, sizeof(cpuz80_z80));
+  memset(&z80.context, 0, sizeof(z80.context));
   vdp.vdp_pal = 0;
   vdp.vdp_overseas = 0;
   vdp.vdp_ctrlflag = 0;
@@ -87,9 +90,9 @@ void gen_reset(void) {
   vdp.vdp_second = 0;
   vdp.vdp_dmabytes = 0;
   vdp.vdp_address = 0;
-  cpuz80_active = 0;
-  cpuz80_resetting = 0;
-  cpuz80_bank = 0;
+  z80.active = 0;
+  z80.resetting = 0;
+  z80.bank = 0;
 }
 
 void event_freeze(unsigned int bytes) { (void)bytes; }
@@ -145,8 +148,8 @@ static void test_save_load_cycle(void) {
   regs.regs[0] = 0xDEADBEEF;
   cpu68k_ram[0] = 0xAB;
   cpu68k_ram[1] = 0xCD;
-  cpuz80_z80.z80af = 0x1234;
-  cpuz80_z80.z80pc = 0x0000;
+  z80.context.z80af = 0x1234;
+  z80.context.z80pc = 0x0000;
 
   /* Save state */
   int save_result = state_savefile(filename);
@@ -170,7 +173,7 @@ static void test_save_load_cycle(void) {
   TEST_ASSERT(regs.regs[0] == 0xDEADBEEF, "68K D0 not restored");
   TEST_ASSERT(cpu68k_ram[0] == 0xAB, "68K RAM[0] not restored");
   TEST_ASSERT(cpu68k_ram[1] == 0xCD, "68K RAM[1] not restored");
-  TEST_ASSERT(cpuz80_z80.z80af == 0x1234, "Z80 AF not restored");
+  TEST_ASSERT(z80.context.z80af == 0x1234, "Z80 AF not restored");
 
   unlink(filename);
 }
@@ -369,22 +372,22 @@ static void test_z80_registers(void) {
   char *filename = get_temp_file("_z80.gt0");
 
   /* Set up Z80 state */
-  cpuz80_z80.z80af = 0xABCD;
-  cpuz80_z80.z80bc = 0x1234;
-  cpuz80_z80.z80de = 0x5678;
-  cpuz80_z80.z80hl = 0x9ABC;
-  cpuz80_z80.z80afprime = 0xDEF0;
-  cpuz80_z80.z80bcprime = 0x1111;
-  cpuz80_z80.z80deprime = 0x2222;
-  cpuz80_z80.z80hlprime = 0x3333;
-  cpuz80_z80.z80ix = 0x4444;
-  cpuz80_z80.z80iy = 0x5555;
-  cpuz80_z80.z80sp = 0xFFFE;
-  cpuz80_z80.z80pc = 0x0100;
-  cpuz80_z80.z80i = 0x00;
-  cpuz80_z80.z80r = 0x7F;
-  cpuz80_active = 1;
-  cpuz80_bank = 0x80000;
+  z80.context.z80af = 0xABCD;
+  z80.context.z80bc = 0x1234;
+  z80.context.z80de = 0x5678;
+  z80.context.z80hl = 0x9ABC;
+  z80.context.z80afprime = 0xDEF0;
+  z80.context.z80bcprime = 0x1111;
+  z80.context.z80deprime = 0x2222;
+  z80.context.z80hlprime = 0x3333;
+  z80.context.z80ix = 0x4444;
+  z80.context.z80iy = 0x5555;
+  z80.context.z80sp = 0xFFFE;
+  z80.context.z80pc = 0x0100;
+  z80.context.z80i = 0x00;
+  z80.context.z80r = 0x7F;
+  z80.active = 1;
+  z80.bank = 0x80000;
 
   /* Save state */
   int save_result = state_savefile(filename);
@@ -398,17 +401,17 @@ static void test_z80_registers(void) {
   TEST_ASSERT(load_result == 0, "state_loadfile failed for Z80");
 
   /* Verify Z80 state */
-  TEST_ASSERT(cpuz80_z80.z80af == 0xABCD, "Z80 AF not restored");
-  TEST_ASSERT(cpuz80_z80.z80bc == 0x1234, "Z80 BC not restored");
-  TEST_ASSERT(cpuz80_z80.z80de == 0x5678, "Z80 DE not restored");
-  TEST_ASSERT(cpuz80_z80.z80hl == 0x9ABC, "Z80 HL not restored");
-  TEST_ASSERT(cpuz80_z80.z80afprime == 0xDEF0, "Z80 AF' not restored");
-  TEST_ASSERT(cpuz80_z80.z80ix == 0x4444, "Z80 IX not restored");
-  TEST_ASSERT(cpuz80_z80.z80iy == 0x5555, "Z80 IY not restored");
-  TEST_ASSERT(cpuz80_z80.z80sp == 0xFFFE, "Z80 SP not restored");
-  TEST_ASSERT(cpuz80_z80.z80pc == 0x0100, "Z80 PC not restored");
-  TEST_ASSERT(cpuz80_active == 1, "Z80 active flag not restored");
-  TEST_ASSERT(cpuz80_bank == 0x80000, "Z80 bank not restored");
+  TEST_ASSERT(z80.context.z80af == 0xABCD, "Z80 AF not restored");
+  TEST_ASSERT(z80.context.z80bc == 0x1234, "Z80 BC not restored");
+  TEST_ASSERT(z80.context.z80de == 0x5678, "Z80 DE not restored");
+  TEST_ASSERT(z80.context.z80hl == 0x9ABC, "Z80 HL not restored");
+  TEST_ASSERT(z80.context.z80afprime == 0xDEF0, "Z80 AF' not restored");
+  TEST_ASSERT(z80.context.z80ix == 0x4444, "Z80 IX not restored");
+  TEST_ASSERT(z80.context.z80iy == 0x5555, "Z80 IY not restored");
+  TEST_ASSERT(z80.context.z80sp == 0xFFFE, "Z80 SP not restored");
+  TEST_ASSERT(z80.context.z80pc == 0x0100, "Z80 PC not restored");
+  TEST_ASSERT(z80.active == 1, "Z80 active flag not restored");
+  TEST_ASSERT(z80.bank == 0x80000, "Z80 bank not restored");
 
   unlink(filename);
 }

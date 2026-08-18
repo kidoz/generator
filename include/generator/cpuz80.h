@@ -1,6 +1,8 @@
 #ifndef GENERATOR_CPUZ80_H
 #define GENERATOR_CPUZ80_H
 
+#include <cstdint>
+
 /* Legacy struct maintained for save state backward compatibility */
 struct mz80context {
   uint8_t *z80Base;
@@ -32,15 +34,15 @@ struct mz80context {
 };
 
 typedef struct mz80context CONTEXTMZ80;
-extern CONTEXTMZ80 cpuz80_z80; /* extern'd for save state code */
 
 #define LEN_SRAM 0x2000
 
-extern uint8_t *cpuz80_ram;
-extern uint32_t cpuz80_bank;
-extern uint8_t cpuz80_active;
-extern uint8_t cpuz80_resetting;
-extern unsigned int cpuz80_on;
+/* The Z80's state now lives in generator::Cpuz80, owned by System
+ * (src/cpu/z80/cpuz80.hpp). The globals that used to sit here -- cpuz80_z80,
+ * cpuz80_ram, cpuz80_bank, cpuz80_active, cpuz80_resetting, cpuz80_on --
+ * are members of that class; reach them through generator::z80(). The
+ * function declarations below remain as the transitional flat API,
+ * implemented by cpuz80_compat.cpp. */
 
 void cpuz80_reset(void);
 void cpuz80_resetcpu(void);

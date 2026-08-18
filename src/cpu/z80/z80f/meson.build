@@ -9,7 +9,8 @@ z80f_adapter_sources = files(
 z80f_adapter_lib = static_library('z80f-adapter',
   sources: z80f_adapter_sources,
   include_directories: [
-    include_directories('../../../../include/generator')
+    include_directories('../../../../include/generator'),
+    include_directories('..')  # cpuz80.hpp
   ],
   dependencies: [z80f_dep],
   override_options: ['cpp_std=c++23']

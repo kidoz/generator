@@ -9,6 +9,7 @@
 
 #include "controller_ports.hpp"
 #include "cpuz80.h"
+#include "cpuz80.hpp"
 #include "gensound.h"
 #include "ui.h"
 
@@ -320,7 +321,7 @@ uint8 mem68k_fetch_sram_byte(uint32 addr)
   LOG_VERBOSE("%08X [SRAM] Fetch byte from %X", regs.pc, addr);
 #endif
   addr &= 0x1fff;
-  return (*(uint8 *)(cpuz80_ram + addr));
+  return (*(uint8 *)(generator::z80().ram + addr));
 }
 
 uint16 mem68k_fetch_sram_word(uint32 addr)
@@ -337,7 +338,7 @@ uint16 mem68k_fetch_sram_word(uint32 addr)
 #endif
   addr &= 0x1fff;
   /* sram word fetches are fetched with duplicated low byte data */
-  data = *(uint8 *)(cpuz80_ram + addr);
+  data = *(uint8 *)(generator::z80().ram + addr);
   return data | (data << 8);
 }
 
@@ -354,10 +355,10 @@ uint32 mem68k_fetch_sram_long(uint32 addr)
 #endif
   addr &= 0x1fff;
 #ifdef ALIGNLONGS
-  return (LOCENDIAN16(*(uint16 *)(cpuz80_ram + addr)) << 16) |
-         LOCENDIAN16(*(uint16 *)(cpuz80_ram + addr + 2));
+  return (LOCENDIAN16(*(uint16 *)(generator::z80().ram + addr)) << 16) |
+         LOCENDIAN16(*(uint16 *)(generator::z80().ram + addr + 2));
 #else
-  return LOCENDIAN32(*(uint32 *)(cpuz80_ram + addr));
+  return LOCENDIAN32(*(uint32 *)(generator::z80().ram + addr));
 #endif
 }
 
@@ -367,7 +368,7 @@ void mem68k_store_sram_byte(uint32 addr, uint8 data)
   LOG_VERBOSE("%08X [SRAM] Store byte to %X", regs.pc, addr);
 #endif
   addr &= 0x1fff;
-  *(uint8 *)(cpuz80_ram + addr) = data;
+  *(uint8 *)(generator::z80().ram + addr) = data;
   return;
 }
 
@@ -384,7 +385,7 @@ void mem68k_store_sram_word(uint32 addr, uint16 data)
 #endif
   addr &= 0x1fff;
   /* word writes are stored with low byte cleared */
-  *(uint8 *)(cpuz80_ram + addr) = data >> 8;
+  *(uint8 *)(generator::z80().ram + addr) = data >> 8;
   return;
 }
 
@@ -401,10 +402,10 @@ void mem68k_store_sram_long(uint32 addr, uint32 data)
 #endif
   addr &= 0x1fff;
 #ifdef ALIGNLONGS
-  *(uint16 *)(cpuz80_ram + addr) = LOCENDIAN16((uint16)(data >> 16));
-  *(uint16 *)(cpuz80_ram + addr + 2) = LOCENDIAN16((uint16)(data));
+  *(uint16 *)(generator::z80().ram + addr) = LOCENDIAN16((uint16)(data >> 16));
+  *(uint16 *)(generator::z80().ram + addr + 2) = LOCENDIAN16((uint16)(data));
 #else
-  *(uint32 *)(cpuz80_ram + addr) = LOCENDIAN32(data);
+  *(uint32 *)(generator::z80().ram + addr) = LOCENDIAN32(data);
 #endif
   return;
 }
@@ -662,7 +663,7 @@ uint8 mem68k_fetch_ctrl_byte(uint32 addr)
   addr -= 0xA11000;
   /* 0x000 mode (write only), 0x100 z80 busreq, 0x200 z80 reset (write only) */
   if (addr == 0x100) {
-    return cpuz80_active ? 1 : 0;
+    return generator::z80().active ? 1 : 0;
   }
   LOG_CRITICAL("%08X [CTRL] Invalid memory fetch (byte) 0x%X", regs.pc, addr);
   return 0;
@@ -673,7 +674,7 @@ uint16 mem68k_fetch_ctrl_word(uint32 addr)
   addr -= 0xA11000;
   /* 0x000 mode (write only), 0x100 z80 busreq, 0x200 z80 reset (write only) */
   if (addr == 0x100) {
-    return cpuz80_active ? 0x100 : 0;
+    return generator::z80().active ? 0x100 : 0;
   }
   LOG_CRITICAL("%08X [CTRL] Invalid memory fetch (word) 0x%X", regs.pc, addr);
   return 0;

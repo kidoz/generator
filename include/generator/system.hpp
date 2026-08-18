@@ -16,11 +16,12 @@ class Vdp;
 class FmWriteQueue;
 class Ym2612;
 class ControllerPorts;
+class Cpuz80;
 
 /* System owns the emulated machine's subsystems and the I/O backends they
  * communicate with. It is the explicit replacement for cross-module globals
  * during the C++20/23 rewrite: as each subsystem is ported (SN76496, Vdp,
- * YM2612, Bus68K, Cpu68K, ...), its instance becomes a member here and
+ * YM2612, Cpuz80, Bus68K, Cpu68K, ...), its instance becomes a member here and
  * sibling access is repointed through System instead of `extern` globals —
  * one subsystem per phase, never a big-bang state move.
  *
@@ -86,6 +87,10 @@ public:
   {
     return *m_controllers;
   }
+  Cpuz80 &z80() const
+  {
+    return *m_z80;
+  }
 
   /* Null-safe event emission toward the installed backends. These replace
    * the former gen_ui_callbacks_t vtable: the frame driver and sound
@@ -108,6 +113,7 @@ private:
   std::unique_ptr<FmWriteQueue> m_fm_write_queue;
   std::unique_ptr<Ym2612> m_ym2612;
   std::unique_ptr<ControllerPorts> m_controllers;
+  std::unique_ptr<Cpuz80> m_z80;
 };
 
 /* Global System access. EmulatorCore registers the active System for the

@@ -183,6 +183,7 @@ endif
 inc = include_directories(
   'include/generator',
   'src/core',
+  'src/cpu/z80',
   'src/ui/common',
   'src/cpu/68k/codegen',
   'src/audio/ym2612',

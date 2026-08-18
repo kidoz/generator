@@ -4,6 +4,7 @@
 #include "system.hpp"
 
 #include "controller_ports.hpp"
+#include "cpuz80.hpp"
 #include "fm_write_queue.hpp"
 #include "sn76496.hpp"
 #include "vdp.hpp"
@@ -41,6 +42,14 @@ ControllerPorts &controllers()
     throw std::logic_error("controller access requires an active System");
   }
   return g_system->controllers();
+}
+
+Cpuz80 &z80()
+{
+  if (g_system == nullptr) {
+    throw std::logic_error("Z80 access requires an active System");
+  }
+  return g_system->z80();
 }
 
 void ui_line(int line)
@@ -104,7 +113,8 @@ System::System(std::unique_ptr<IAudioBackend> audio,
       m_vdp(std::make_unique<Vdp>()),
       m_fm_write_queue(std::make_unique<FmWriteQueue>()),
       m_ym2612(std::make_unique<Ym2612>()),
-      m_controllers(std::make_unique<ControllerPorts>())
+      m_controllers(std::make_unique<ControllerPorts>()),
+      m_z80(std::make_unique<Cpuz80>())
 {
 }
 

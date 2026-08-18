@@ -14,6 +14,7 @@
 #include "ui.h"
 #include "cpu68k.h"
 #include "cpuz80.h"
+#include "cpuz80.hpp"
 #include "vdp.h"
 #include "gensound.h"
 #include "fm.h"
@@ -244,6 +245,7 @@ void state_transfer32(const char *mod, const char *name, uint8 instance,
 static void state_dotransfer(unsigned int mode)
 {
   auto &vdp = generator::vdp();
+  auto &z80 = generator::z80();
   uint8 i8;
 
   state_transfermode = mode; /* 0 = save, 1 = load */
@@ -257,51 +259,51 @@ static void state_dotransfer(unsigned int mode)
   state_transfer16("68k", "sr", 0, &regs.sr.sr_int, 1);
   state_transfer16("68k", "stop", 0, &regs.stop, 1);
   state_transfer16("68k", "pending", 0, &regs.pending, 1);
-  state_transfer8("z80", "ram", 0, cpuz80_ram, LEN_SRAM);
-  state_transfer8("z80", "active", 0, &cpuz80_active, 1);
-  state_transfer8("z80", "resetting", 0, &cpuz80_resetting, 1);
-  state_transfer32("z80", "bank", 0, &cpuz80_bank, 1);
-  state_transfer16("z80", "af", 0, &cpuz80_z80.z80af, 1);
-  state_transfer16("z80", "bc", 0, &cpuz80_z80.z80bc, 1);
-  state_transfer16("z80", "de", 0, &cpuz80_z80.z80de, 1);
-  state_transfer16("z80", "hl", 0, &cpuz80_z80.z80hl, 1);
-  state_transfer16("z80", "af2", 0, &cpuz80_z80.z80afprime, 1);
-  state_transfer16("z80", "bc2", 0, &cpuz80_z80.z80bcprime, 1);
-  state_transfer16("z80", "de2", 0, &cpuz80_z80.z80deprime, 1);
-  state_transfer16("z80", "hl2", 0, &cpuz80_z80.z80hlprime, 1);
-  state_transfer16("z80", "ix", 0, &cpuz80_z80.z80ix, 1);
-  state_transfer16("z80", "iy", 0, &cpuz80_z80.z80iy, 1);
-  state_transfer16("z80", "sp", 0, &cpuz80_z80.z80sp, 1);
-  state_transfer16("z80", "pc", 0, &cpuz80_z80.z80pc, 1);
-  state_transfer8("z80", "i", 0, &cpuz80_z80.z80i, 1);
-  state_transfer8("z80", "r", 0, &cpuz80_z80.z80r, 1);
+  state_transfer8("z80", "ram", 0, z80.ram, LEN_SRAM);
+  state_transfer8("z80", "active", 0, &z80.active, 1);
+  state_transfer8("z80", "resetting", 0, &z80.resetting, 1);
+  state_transfer32("z80", "bank", 0, &z80.bank, 1);
+  state_transfer16("z80", "af", 0, &z80.context.z80af, 1);
+  state_transfer16("z80", "bc", 0, &z80.context.z80bc, 1);
+  state_transfer16("z80", "de", 0, &z80.context.z80de, 1);
+  state_transfer16("z80", "hl", 0, &z80.context.z80hl, 1);
+  state_transfer16("z80", "af2", 0, &z80.context.z80afprime, 1);
+  state_transfer16("z80", "bc2", 0, &z80.context.z80bcprime, 1);
+  state_transfer16("z80", "de2", 0, &z80.context.z80deprime, 1);
+  state_transfer16("z80", "hl2", 0, &z80.context.z80hlprime, 1);
+  state_transfer16("z80", "ix", 0, &z80.context.z80ix, 1);
+  state_transfer16("z80", "iy", 0, &z80.context.z80iy, 1);
+  state_transfer16("z80", "sp", 0, &z80.context.z80sp, 1);
+  state_transfer16("z80", "pc", 0, &z80.context.z80pc, 1);
+  state_transfer8("z80", "i", 0, &z80.context.z80i, 1);
+  state_transfer8("z80", "r", 0, &z80.context.z80r, 1);
   if (state_transfermode == 0) {
     /* save */
-    i8 = cpuz80_z80.z80inInterrupt;
+    i8 = z80.context.z80inInterrupt;
     state_transfer8("z80", "iff1", 0, &i8, 1);
-    i8 = cpuz80_z80.z80interruptState;
+    i8 = z80.context.z80interruptState;
     state_transfer8("z80", "iff2", 0, &i8, 1);
-    i8 = cpuz80_z80.z80interruptMode;
+    i8 = z80.context.z80interruptMode;
     state_transfer8("z80", "im", 0, &i8, 1);
-    i8 = cpuz80_z80.z80halted;
+    i8 = z80.context.z80halted;
     state_transfer8("z80", "halted", 0, &i8, 1);
   } else {
     /* load */
     state_transfer8("z80", "iff1", 0, &i8, 1);
-    cpuz80_z80.z80inInterrupt = i8;
+    z80.context.z80inInterrupt = i8;
     state_transfer8("z80", "iff2", 0, &i8, 1);
-    cpuz80_z80.z80interruptState = i8;
+    z80.context.z80interruptState = i8;
     state_transfer8("z80", "im", 0, &i8, 1);
-    cpuz80_z80.z80interruptMode = i8;
+    z80.context.z80interruptMode = i8;
     state_transfer8("z80", "halted", 0, &i8, 1);
-    cpuz80_z80.z80halted = i8;
+    z80.context.z80halted = i8;
   }
   YM2612_save_state();
   SN76496_save_state();
 
   /* Z80 interrupt vector and NMI addresses (legacy save-state fields) */
-  state_transfer16("z80", "intaddr", 0, &cpuz80_z80.z80intAddr, 1);
-  state_transfer16("z80", "nmiaddr", 0, &cpuz80_z80.z80nmiAddr, 1);
+  state_transfer16("z80", "intaddr", 0, &z80.context.z80intAddr, 1);
+  state_transfer16("z80", "nmiaddr", 0, &z80.context.z80nmiAddr, 1);
 }
 
 /*** state_savefile - save to the given filename */

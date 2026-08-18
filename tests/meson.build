@@ -9,6 +9,12 @@ xbrz_inc = include_directories('../src/xbrz')
 # supplies the latter and keeps it silent.
 test_logging_sources = files('support_logging.cpp', '../src/util/log.cpp')
 
+# System owns a Cpuz80, so anything compiling system.cpp needs the class's
+# header and its storage half. cpuz80.cpp has no emulation-core dependency,
+# so this does not drag the z80f subproject into these tests.
+cpuz80_inc = include_directories('../src/cpu/z80')
+cpuz80_storage_sources = files('../src/cpu/z80/cpuz80.cpp')
+
 test_xbrz_tools = executable('test_xbrz_tools',
   'test_xbrz_tools.cpp',
   include_directories: [xbrz_inc],
@@ -92,8 +98,9 @@ test_system = executable('test_system',
   '../src/cpu/68k/controller_ports.cpp',
   '../src/audio/ym2612/fm_write_queue.cpp',
   '../src/audio/ym2612/fm_write_queue_compat.cpp',
+  cpuz80_storage_sources,
   test_logging_sources,
-  include_directories: [sn76496_inc, vdp_inc, fm_inc],
+  include_directories: [sn76496_inc, vdp_inc, fm_inc, cpuz80_inc],
   dependencies: [catch2_dep, sn76496_dep, ym2612_dep],
   override_options: ['cpp_std=c++23'],
   build_by_default: false
@@ -217,9 +224,10 @@ test_vdp_frame_renderer = executable('test_vdp_frame_renderer',
   '../src/cpu/68k/controller_ports.cpp',
   '../src/audio/ym2612/fm_write_queue.cpp',
   '../src/audio/ym2612/fm_write_queue_compat.cpp',
+  cpuz80_storage_sources,
   test_logging_sources,
   include_directories: [vdp_inc, fm_inc, sn76496_inc, ui_common_inc_test,
-                        xbrz_inc],
+                        xbrz_inc, cpuz80_inc],
   dependencies: [catch2_dep, sn76496_dep, ym2612_dep, xbrz_dep],
   override_options: ['cpp_std=c++23'],
   build_by_default: false
