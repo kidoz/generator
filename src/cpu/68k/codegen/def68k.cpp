@@ -926,8 +926,13 @@ void procline(char *line, int lineno, FILE *outiibs, FILE *outfuncs,
 
   {
     t_size size;
-    t_datatype ea_e;
-    t_datatype ea_f;
+    /* EA loop counters: these iterate over addressing modes, so they are
+        t_eatypes. They were declared t_datatype, which only worked because
+        the two enumerations happen to share their first twelve values in
+        the same order; every switch below labels them with ea_* constants
+        and stores the result into the separate t_datatype stype/dtype. */
+    t_eatypes ea_e;
+    t_eatypes ea_f;
     int cc;
     int wordlen, type;
     int idx;
@@ -938,14 +943,14 @@ void procline(char *line, int lineno, FILE *outiibs, FILE *outfuncs,
          size = (t_size)(size + 1)) {
       /* loop through 'e' EA or just once if no EA 'e' to loop on */
 
-      for (ea_e = (t_datatype)ea_Dreg;
-           (ea_e == (t_datatype)ea_Dreg) || (num[bite] && (ea_e <= ea_Imm));
-           ea_e = (t_datatype)(ea_e + 1)) {
+      for (ea_e = ea_Dreg;
+           (ea_e == ea_Dreg) || (num[bite] && (ea_e <= ea_Imm));
+           ea_e = (t_eatypes)(ea_e + 1)) {
         /* loop through 'f' EA or just once if no EA 'e' to loop on */
 
-        for (ea_f = (t_datatype)ea_Dreg;
-             (ea_f == (t_datatype)ea_Dreg) || (num[bitf] && (ea_f <= ea_Imm));
-             ea_f = (t_datatype)(ea_f + 1)) {
+        for (ea_f = ea_Dreg;
+             (ea_f == ea_Dreg) || (num[bitf] && (ea_f <= ea_Imm));
+             ea_f = (t_eatypes)(ea_f + 1)) {
           for (cc = 0; (cc == 0) || (num[bitc] && (cc < 16)); cc++) {
             if (cc == 1)
               continue;
