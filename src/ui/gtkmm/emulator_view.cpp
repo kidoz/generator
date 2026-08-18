@@ -2,6 +2,7 @@
 #include "emulator_thread.hpp"
 #include "generator_app.hpp"
 #include "main_window.hpp"
+#include "screen_geometry.hpp"
 #include "ui_bridge.hpp"
 
 #include "vdp.hpp"
@@ -13,12 +14,6 @@
 extern uint8_t* g_screen0;
 extern uint8_t* g_screen1;
 extern std::atomic<int> g_whichbank;
-
-// HMAXSIZE and VMAXSIZE matching the core scale bounds
-#define MAX_SCALE_FACTOR 4
-#define HBORDER_MAX 32
-#define VBORDER_MAX 32
-#define HMAXSIZE ((320 * MAX_SCALE_FACTOR) + 2 * HBORDER_MAX)
 
 EmulatorView::EmulatorView(EmulatorThread& emu_thread) 
     : m_emu_thread(emu_thread) 

@@ -571,7 +571,10 @@ int main(int argc, char *argv[])
   return 0;
 }
 
-/* UI interface stubs required by existing code. */
+/* UI interface stubs. This backend does its own driving in main(), so the
+   entry points exist only to satisfy the ui.h contract. The per-scanline
+   callbacks that used to be stubbed here are gone: the core emits through
+   CapturingVideo/HeadlessVideo instead. */
 int ui_init(int argc, char *argv[])
 {
   return 0;
@@ -579,12 +582,6 @@ int ui_init(int argc, char *argv[])
 int ui_loop(void)
 {
   return 0;
-}
-void ui_line(int line)
-{
-}
-void ui_endfield(void)
-{
 }
 void ui_final(void)
 {
@@ -597,7 +594,4 @@ void ui_final(void)
   va_end(args);
   fputc('\n', stderr);
   exit(1);
-}
-void ui_musiclog(uint8_t *data, unsigned int length)
-{
 }

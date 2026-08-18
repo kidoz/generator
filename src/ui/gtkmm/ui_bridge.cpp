@@ -1,11 +1,14 @@
 #include "ui_bridge.hpp"
 #include "generator_app.hpp"
 #include "emulator_core.hpp"
-#include "vdp.hpp"
+#include "screen_geometry.hpp"
 
-#include <vector>
-#include <string>
+#include "null_audio_backend.hpp"
+#include "stream_logger.hpp"
+#include "vdp_frame_renderer.hpp"
+
 #include <atomic>
+#include <cstdlib>
 #include <iostream>
 #include <span>
 
@@ -13,7 +16,6 @@
 #include "ui.h"
 #include "uiplot.h"
 #include "initcart.h"
-#include "vdp.h"
 
 using namespace generator;
 
@@ -27,13 +29,7 @@ std::unique_ptr<EmulatorCore> g_emulator_core;
 static int g_argc = 0;
 static char** g_argv = nullptr;
 
-// Pixel buffers
-#define MAX_SCALE_FACTOR 4
-#define HBORDER_MAX 32
-#define VBORDER_MAX 32
-#define HMAXSIZE ((320 * MAX_SCALE_FACTOR) + 2 * HBORDER_MAX)
-#define VMAXSIZE ((240 * MAX_SCALE_FACTOR) + 2 * VBORDER_MAX)
-
+// Pixel buffers (geometry in screen_geometry.hpp)
 uint8_t* g_screen_buffers[3] = {nullptr, nullptr, nullptr};
 uint8_t* g_screen0 = nullptr;
 uint8_t* g_screen1 = nullptr;
@@ -41,79 +37,51 @@ uint8_t* g_newscreen = nullptr;
 std::atomic<int> g_whichbank{0};
 bool g_plotfield = true;
 
-class UiBridgeAudio : public IAudioBackend {
-public:
-    void output_samples(std::span<const uint16_t> left, std::span<const uint16_t> right) override {
-        // Handled by platform SDL3 backend internally for now
-    }
-};
+/* Audio and logging come from src/ui/common; only the video path is
+   specific to this backend, and only because of how it publishes fields. */
 
+/* Converts VDP scanlines into the fixed-stride ARGB8888 buffer GDK uploads.
+   The conversion itself -- interlace handling, the field-width latch, the
+   palette cache and the opaque-alpha fixup -- lives in the shared
+   generator::ui::VdpFrameRenderer. */
 class UiBridgeVideo : public IVideoBackend {
 public:
-    void render_line(int line, std::span<const uint8_t> pixels) override {
-        auto &vdp = generator::vdp();
-        if (!g_plotfield) return;
-        
-        if (!g_emulator_core) return;
+    void render_line(int line, std::span<const uint8_t> /*pixels*/) override {
+        if (!g_plotfield || !g_emulator_core)
+            return;
 
-        if (line < 0 || line >= static_cast<int>(vdp.vdp_vislines)) return;
+        if (renderer_.begin_line(line) == 0)
+            return;
 
-        static uint8_t gfx[320];
-        unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
-
-        switch ((vdp.vdp_reg[12] >> 1) & 3) {
-        case 0:
-        case 1:
-        case 2:
-            vdp_renderline(static_cast<unsigned int>(line), gfx, 0);
-            break;
-        case 3:
-            vdp_renderline(static_cast<unsigned int>(line), gfx, vdp.vdp_oddframe);
-            break;
-        }
-
-        uiplot_checkpalcache(0);
-        uiplot_convertdata32(gfx, (uint32_t*)(g_newscreen + line * HMAXSIZE * 4), width);
+        renderer_.render_into(
+            line, reinterpret_cast<uint32_t*>(g_newscreen + line * HMAXSIZE * 4));
     }
 
     void present_field() override {
-        if (g_plotfield) {
-            int current_bank = g_whichbank.load();
-            int next_bank = current_bank ^ 1;
-            
-            uint8_t* temp = g_newscreen;
-            if (next_bank == 0) {
-                g_newscreen = g_screen0;
-                g_screen0 = temp;
-            } else {
-                g_newscreen = g_screen1;
-                g_screen1 = temp;
-            }
-            
-            g_whichbank.store(next_bank);
-        }
-    }
-};
+        /* Always end the field, even when not plotting, so the width latch
+           does not carry over into the next one. */
+        renderer_.end_field();
 
-class UiBridgeLogger : public ILogger {
-public:
-    void log(LogLevel level, std::string_view message) override {
-        switch (level) {
-        case LogLevel::None:
-        case LogLevel::Debug3:
-        case LogLevel::Debug2:
-        case LogLevel::Debug1:
-            break;
-        case LogLevel::Verbose:
-        case LogLevel::Normal:
-        case LogLevel::User:
-            std::cout << message << std::endl;
-            break;
-        case LogLevel::Critical:
-            std::cerr << "CRITICAL: " << message << std::endl;
-            break;
+        if (!g_plotfield)
+            return;
+
+        int current_bank = g_whichbank.load();
+        int next_bank = current_bank ^ 1;
+
+        uint8_t* temp = g_newscreen;
+        if (next_bank == 0) {
+            g_newscreen = g_screen0;
+            g_screen0 = temp;
+        } else {
+            g_newscreen = g_screen1;
+            g_screen1 = temp;
         }
+
+        g_whichbank.store(next_bank);
     }
+
+private:
+    generator::ui::VdpFrameRenderer renderer_;
 };
 
 /*** ui_init - called by main() in generator.c ***/
@@ -141,9 +109,9 @@ int ui_loop(void)
 {
     try {
         g_emulator_core = std::make_unique<EmulatorCore>(
-            std::make_unique<UiBridgeAudio>(),
+            std::make_unique<generator::ui::NullAudioBackend>(),
             std::make_unique<UiBridgeVideo>(),
-            std::make_shared<UiBridgeLogger>()
+            std::make_shared<generator::ui::StreamLogger>()
         );
         
         std::span<const uint8_t> initcart_span(initcart, initcart_len);
@@ -160,17 +128,7 @@ int ui_loop(void)
     return g_app->run(g_argc, g_argv);
 }
 
-/*** ui_err - fatal error exit ***/
-void ui_err(const char *text, ...)
-{
-    va_list ap;
-    va_start(ap, text);
-    fprintf(stderr, "FATAL ERROR: ");
-    vfprintf(stderr, text, ap);
-    fprintf(stderr, "\n");
-    va_end(ap);
-    exit(1);
-}
+/* ui_err comes from src/ui/common/ui_error.cpp. */
 
 /*** ui_final - graceful shutdown ***/
 void ui_final(void)
@@ -181,28 +139,4 @@ void ui_final(void)
     free(g_screen_buffers[0]);
     free(g_screen_buffers[1]);
     free(g_screen_buffers[2]);
-}
-
-/*** Legacy C callbacks mapped to C++ logic ***/
-
-// Legacy UI line drawing adapter (still used by uiplot.c)
-void ui_line(int line)
-{
-    auto &vdp = generator::vdp();
-    if (line < 0 || line >= 240) return;
-    
-    // Read from VDP line
-    uint8_t* gfx = (uint8_t*)vdp.vdp_reg + 0; // Fake for now, actually uiplot reads from vdp structures
-    unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
-    
-    uiplot_checkpalcache(0);
-    uiplot_convertdata32(gfx, (uint32_t*)(g_newscreen + line * HMAXSIZE * 4), width);
-}
-
-void ui_endfield(void)
-{
-}
-
-void ui_musiclog(uint8_t *data, unsigned int length)
-{
 }

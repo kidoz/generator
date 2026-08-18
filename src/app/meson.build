@@ -47,6 +47,8 @@ if ui_backend == 'gtk4'
     # Utilities
     util_sources,
     # UI
+    ui_common_sources,
+    ui_common_error_sources,
     gtkmm_ui_sources
   ]
 
@@ -70,6 +72,8 @@ elif ui_backend == 'nodalkit'
     # Utilities
     util_sources,
     # UI
+    ui_common_sources,
+    ui_common_error_sources,
     nodalkit_ui_sources
   ]
 

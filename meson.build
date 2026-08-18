@@ -183,6 +183,7 @@ endif
 inc = include_directories(
   'include/generator',
   'src/core',
+  'src/ui/common',
   'src/cpu/68k/codegen',
   'src/audio/ym2612',
   'src/audio/sn76496',
@@ -207,6 +208,10 @@ if enable_netplay
 else
   network_dep = declare_dependency()
 endif
+
+# Shared UI backend support (VDP->ARGB conversion, logger, no-op audio).
+# Read before the backend-specific subdirs so they can use it.
+subdir('src/ui/common')
 
 # UI-specific libraries
 if ui_backend == 'gtk4'

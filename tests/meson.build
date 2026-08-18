@@ -199,3 +199,33 @@ test('fm_chip', test_fm_chip,
   timeout: 30,
   suite: 'catch2'
 )
+
+# Shared UI backend adapter tests.
+# The VDP -> ARGB8888 conversion the windowed backends share. vdp.cpp,
+# uiplot.cpp and system.cpp come in directly because the renderer reaches
+# the chip through generator::vdp(), which needs a live System; the 68K
+# globals they reference are stubbed in the test source.
+ui_common_inc_test = include_directories('../src/ui/common')
+
+test_vdp_frame_renderer = executable('test_vdp_frame_renderer',
+  'test_vdp_frame_renderer.cpp',
+  '../src/ui/common/vdp_frame_renderer.cpp',
+  vdp_sources,
+  vdp_compat_sources,
+  '../src/video/uiplot.cpp',
+  '../src/core/system.cpp',
+  '../src/cpu/68k/controller_ports.cpp',
+  '../src/audio/ym2612/fm_write_queue.cpp',
+  '../src/audio/ym2612/fm_write_queue_compat.cpp',
+  test_logging_sources,
+  include_directories: [vdp_inc, fm_inc, sn76496_inc, ui_common_inc_test,
+                        xbrz_inc],
+  dependencies: [catch2_dep, sn76496_dep, ym2612_dep, xbrz_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('vdp_frame_renderer', test_vdp_frame_renderer,
+  timeout: 30,
+  suite: 'catch2'
+)

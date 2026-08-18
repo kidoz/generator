@@ -43,6 +43,7 @@
 #include "ui_console.h"
 
 #include "emulator_core.hpp"
+#include "null_audio_backend.hpp"
 
 #include <memory>
 #include <string>
@@ -70,6 +71,12 @@ t_interlace ui_interlace = DEINTERLACE_WEAVEFILTER;
 static void ui_usage(void);
 void ui_exithandler(void);
 void ui_newframe(void);
+/* This backend's own raster plotting path. These used to be declared in
+   ui.h as core callbacks; the core now emits through IVideoBackend, and
+   ConsoleVideo below forwards into these. */
+void ui_line(int line);
+void ui_endfield(void);
+void ui_musiclog(uint8 *data, unsigned int length);
 void ui_plotsprite_acorn(uint16 *logo, uint16 width, uint16 height, uint16 x,
                          uint16 y);
 int ui_unpackfont(void);
@@ -97,18 +104,6 @@ static void ui_simpleplot(void);
 static void console_log_sink(int level, const char *msg, void *user_data);
 
 /*** EmulatorCore backend adapters ***/
-
-/* SDL audio output is handled by the platform layer (gensoundp_sdl3), same
- * arrangement as the gtkmm backend - the audio callback path stays no-op. */
-class ConsoleAudio : public generator::IAudioBackend {
-public:
-  void output_samples(std::span<const uint16_t> left,
-                      std::span<const uint16_t> right) override
-  {
-    (void)left;
-    (void)right;
-  }
-};
 
 /* Video callbacks forward into the legacy ui_line/ui_endfield plotting path
  * exactly like the old C callback vtable did. */
@@ -306,7 +301,7 @@ int ui_init(int argc, char *argv[])
   /* Initialize the emulator core via the C++ DI wrapper */
   try {
     console_core = std::make_unique<generator::EmulatorCore>(
-        std::make_unique<ConsoleAudio>(), std::make_unique<ConsoleVideo>(),
+        std::make_unique<generator::ui::NullAudioBackend>(), std::make_unique<ConsoleVideo>(),
         std::make_shared<ConsoleLogger>());
   } catch (const std::exception &e) {
     fprintf(stderr, "Failed to initialize emulator core: %s\n", e.what());
