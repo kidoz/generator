@@ -9,11 +9,9 @@
 #include "kaillera_protocol.h"
 #include "socket.h"
 
-/* Emulator headers for input access - the mem68k symbols this unit
- * references. */
+/* Emulator headers for input access. */
+#include "controller_ports.hpp"
 #include "generator.h"
-#include "cpu68k.h"
-#include "mem68k.h"
 
 /* Emulator name sent to Kaillera servers */
 #define NETPLAY_EMULATOR_NAME "Generator " VERSION
@@ -281,7 +279,9 @@ int netplay_sync_frame(void)
     local_player = 0;
 
   /* Serialize local input */
-  uint16_t local_input = netplay_serialize_input(&mem68k_cont[local_player]);
+  auto &controllers = generator::controllers();
+  uint16_t local_input =
+      netplay_serialize_input(&controllers.controller(local_player));
 
   /* Exchange inputs with server (blocking) */
   uint16_t inputs[KAILLERA_MAX_PLAYERS];
@@ -306,7 +306,7 @@ int netplay_sync_frame(void)
   int num_players = kaillera_client_get_num_players(netplay_ctx.client);
   for (int i = 0; i < num_players && i < 2; i++) {
     if (i != local_player) {
-      netplay_deserialize_input(inputs[i], &mem68k_cont[i]);
+      netplay_deserialize_input(inputs[i], &controllers.controller(i));
     }
   }
 

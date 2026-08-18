@@ -15,6 +15,7 @@ class SN76496;
 class Vdp;
 class FmWriteQueue;
 class Ym2612;
+class ControllerPorts;
 
 /* System owns the emulated machine's subsystems and the I/O backends they
  * communicate with. It is the explicit replacement for cross-module globals
@@ -81,6 +82,10 @@ public:
   {
     return *m_ym2612;
   }
+  ControllerPorts &controllers() const
+  {
+    return *m_controllers;
+  }
 
   /* Null-safe event emission toward the installed backends. These replace
    * the former gen_ui_callbacks_t vtable: the frame driver and sound
@@ -102,6 +107,7 @@ private:
   std::unique_ptr<Vdp> m_vdp;
   std::unique_ptr<FmWriteQueue> m_fm_write_queue;
   std::unique_ptr<Ym2612> m_ym2612;
+  std::unique_ptr<ControllerPorts> m_controllers;
 };
 
 /* Global System access. EmulatorCore registers the active System for the

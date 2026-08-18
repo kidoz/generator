@@ -12,6 +12,7 @@ headless_common_sources = [
   files('../../app/generator.cpp', '../../app/event.cpp'),
   # CPU subsystem (without diss68k.c to avoid tab68k dependency)
   files(
+    '../../cpu/68k/controller_ports.cpp',
     '../../cpu/68k/cpu68k.cpp',
     '../../cpu/68k/mem68k.cpp',
     '../../cpu/68k/reg68k.cpp'

@@ -6,6 +6,7 @@
 #include <memory>
 #include <stdexcept>
 
+#include "controller_ports.hpp"
 #include "fm_write_queue.hpp"
 #include "machine.h"
 #include "sn76496.hpp"
@@ -110,6 +111,32 @@ TEST_CASE("System owns independent YM2612 instances", "[system][fm]")
           0);
   REQUIRE(second.ym2612().init(1, FM_CLOCK, FM_SAMPLE_RATE, nullptr, nullptr) ==
           0);
+}
+
+TEST_CASE("System owns independent controller ports", "[system][controller]")
+{
+  generator::System first = make_system();
+  generator::System second = make_system();
+
+  REQUIRE(&first.controllers() != &second.controllers());
+  first.controllers().controller(0).start = 1;
+  REQUIRE(second.controllers().controller(0).start == 0);
+}
+
+TEST_CASE("Active controller access routes to the registered System",
+          "[system][controller]")
+{
+  generator::System system = make_system();
+  ActiveSystem active{system};
+
+  REQUIRE(&generator::controllers() == &system.controllers());
+}
+
+TEST_CASE("Active controller access rejects a missing System",
+          "[system][controller]")
+{
+  generator::set_system(nullptr);
+  REQUIRE_THROWS_AS(generator::controllers(), std::logic_error);
 }
 
 TEST_CASE("Active VDP access routes to the registered System", "[system][vdp]")

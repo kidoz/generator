@@ -64,10 +64,26 @@ test('sn76496_psg', test_sn76496,
   suite: 'catch2'
 )
 
+# Genesis controller-port latch and six-button handshake tests.
+test_controller_ports = executable('test_controller_ports',
+  'test_controller_ports.cpp',
+  '../src/cpu/68k/controller_ports.cpp',
+  include_directories: [sn76496_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('controller_ports', test_controller_ports,
+  timeout: 30,
+  suite: 'catch2'
+)
+
 # System subsystem ownership and transitional compatibility routing.
 test_system = executable('test_system',
   'test_system.cpp',
   '../src/core/system.cpp',
+  '../src/cpu/68k/controller_ports.cpp',
   '../src/audio/ym2612/fm_write_queue.cpp',
   '../src/audio/ym2612/fm_write_queue_compat.cpp',
   include_directories: [sn76496_inc, vdp_inc, fm_inc],

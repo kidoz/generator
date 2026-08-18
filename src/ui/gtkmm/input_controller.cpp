@@ -2,9 +2,8 @@
 
 #include <iostream>
 
+#include "controller_ports.hpp"
 #include "generator.h"
-#include "cpu68k.h" /* mem68k.h's DIRECTRAM fast paths need these first */
-#include "mem68k.h" // For mem68k_cont
 
 // Default keyboard mappings for two players (6-button mode)
 // Player 1: Arrow keys + Z/X/C/Enter + A/S/D/Tab
@@ -75,18 +74,31 @@ void InputController::on_key_released(guint keyval, guint /*keycode*/, Gdk::Modi
 void InputController::update_keyboard_controller(int player, guint keyval, bool pressed) {
     if (player < 0 || player > 1) return;
 
-    if (keyval == default_keys[player].up) mem68k_cont[player].up = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].down) mem68k_cont[player].down = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].left) mem68k_cont[player].left = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].right) mem68k_cont[player].right = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].a) mem68k_cont[player].a = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].b) mem68k_cont[player].b = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].c) mem68k_cont[player].c = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].start) mem68k_cont[player].start = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].x) mem68k_cont[player].x = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].y) mem68k_cont[player].y = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].z) mem68k_cont[player].z = pressed ? 1 : 0;
-    else if (keyval == default_keys[player].mode) mem68k_cont[player].mode = pressed ? 1 : 0;
+    auto &controller = generator::controllers().controller(player);
+    if (keyval == default_keys[player].up)
+      controller.up = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].down)
+      controller.down = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].left)
+      controller.left = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].right)
+      controller.right = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].a)
+      controller.a = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].b)
+      controller.b = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].c)
+      controller.c = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].start)
+      controller.start = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].x)
+      controller.x = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].y)
+      controller.y = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].z)
+      controller.z = pressed ? 1 : 0;
+    else if (keyval == default_keys[player].mode)
+      controller.mode = pressed ? 1 : 0;
 }
 
 void InputController::open_gamepad(SDL_JoystickID id) {
@@ -136,19 +148,44 @@ void InputController::handle_gamepad_button(const SDL_GamepadButtonEvent& event)
     if (player < 0 || player > 1) return;
 
     bool pressed = (event.down);
+    auto &controller = generator::controllers().controller(player);
     switch (event.button) {
-        case SDL_GAMEPAD_BUTTON_DPAD_UP:    mem68k_cont[player].up = pressed; break;
-        case SDL_GAMEPAD_BUTTON_DPAD_DOWN:  mem68k_cont[player].down = pressed; break;
-        case SDL_GAMEPAD_BUTTON_DPAD_LEFT:  mem68k_cont[player].left = pressed; break;
-        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: mem68k_cont[player].right = pressed; break;
-        case SDL_GAMEPAD_BUTTON_SOUTH:      mem68k_cont[player].a = pressed; break;
-        case SDL_GAMEPAD_BUTTON_EAST:       mem68k_cont[player].b = pressed; break;
-        case SDL_GAMEPAD_BUTTON_WEST:       mem68k_cont[player].c = pressed; break;
-        case SDL_GAMEPAD_BUTTON_START:      mem68k_cont[player].start = pressed; break;
-        case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: mem68k_cont[player].x = pressed; break;
-        case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: mem68k_cont[player].y = pressed; break;
-        case SDL_GAMEPAD_BUTTON_LEFT_STICK:  mem68k_cont[player].z = pressed; break;
-        case SDL_GAMEPAD_BUTTON_RIGHT_STICK: mem68k_cont[player].mode = pressed; break;
+    case SDL_GAMEPAD_BUTTON_DPAD_UP:
+      controller.up = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
+      controller.down = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
+      controller.left = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
+      controller.right = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_SOUTH:
+      controller.a = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_EAST:
+      controller.b = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_WEST:
+      controller.c = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_START:
+      controller.start = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
+      controller.x = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
+      controller.y = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_LEFT_STICK:
+      controller.z = pressed;
+      break;
+    case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
+      controller.mode = pressed;
+      break;
     }
 }
 
@@ -157,28 +194,29 @@ void InputController::handle_gamepad_axis(const SDL_GamepadAxisEvent& event) {
     if (player < 0 || player > 1) return;
 
     const int DEADZONE = 8000;
-    
+    auto &controller = generator::controllers().controller(player);
+
     if (event.axis == SDL_GAMEPAD_AXIS_LEFTX) {
         if (event.value < -DEADZONE) {
-            mem68k_cont[player].left = 1;
-            mem68k_cont[player].right = 0;
+          controller.left = 1;
+          controller.right = 0;
         } else if (event.value > DEADZONE) {
-            mem68k_cont[player].left = 0;
-            mem68k_cont[player].right = 1;
+          controller.left = 0;
+          controller.right = 1;
         } else {
-            mem68k_cont[player].left = 0;
-            mem68k_cont[player].right = 0;
+          controller.left = 0;
+          controller.right = 0;
         }
     } else if (event.axis == SDL_GAMEPAD_AXIS_LEFTY) {
         if (event.value < -DEADZONE) {
-            mem68k_cont[player].up = 1;
-            mem68k_cont[player].down = 0;
+          controller.up = 1;
+          controller.down = 0;
         } else if (event.value > DEADZONE) {
-            mem68k_cont[player].up = 0;
-            mem68k_cont[player].down = 1;
+          controller.up = 0;
+          controller.down = 1;
         } else {
-            mem68k_cont[player].up = 0;
-            mem68k_cont[player].down = 0;
+          controller.up = 0;
+          controller.down = 0;
         }
     }
 }

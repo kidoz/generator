@@ -3,6 +3,7 @@
 
 #include "system.hpp"
 
+#include "controller_ports.hpp"
 #include "fm_write_queue.hpp"
 #include "sn76496.hpp"
 #include "vdp.hpp"
@@ -32,6 +33,14 @@ Vdp &vdp()
     throw std::logic_error("VDP access requires an active System");
   }
   return g_system->vdp();
+}
+
+ControllerPorts &controllers()
+{
+  if (g_system == nullptr) {
+    throw std::logic_error("controller access requires an active System");
+  }
+  return g_system->controllers();
 }
 
 void ui_line(int line)
@@ -94,7 +103,8 @@ System::System(std::unique_ptr<IAudioBackend> audio,
       m_logger(std::move(logger)), m_psg(std::make_unique<SN76496>()),
       m_vdp(std::make_unique<Vdp>()),
       m_fm_write_queue(std::make_unique<FmWriteQueue>()),
-      m_ym2612(std::make_unique<Ym2612>())
+      m_ym2612(std::make_unique<Ym2612>()),
+      m_controllers(std::make_unique<ControllerPorts>())
 {
 }
 

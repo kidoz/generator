@@ -158,7 +158,7 @@ int netplay_request_gamelist(void);
  * The function:
  * 1. Serializes local player input
  * 2. Sends to server and waits for all player inputs
- * 3. Deserializes and applies remote player input to mem68k_cont[]
+ * 3. Deserializes and applies remote player input to the controller ports
  *
  * Returns 0 on success, -1 on connection lost or error.
  */
@@ -186,19 +186,19 @@ int netplay_get_local_player(void);
 /*
  * Input serialization/deserialization utilities.
  * These are used internally but exposed for testing.
- * The keys parameter should be a pointer to t_keys (defined in mem68k.h).
+ * The keys parameter should be a pointer to t_keys.
  */
 
 /*
  * Serialize controller input to a 16-bit value.
  * Format: up|down|left|right|a|b|c|start|x|y|z|mode (bits 0-11)
- * @param keys Pointer to t_keys structure (from mem68k.h)
+ * @param keys Pointer to a t_keys structure
  */
 uint16_t netplay_serialize_input(const void *keys);
 
 /*
  * Deserialize a 16-bit value to controller input.
- * @param keys Pointer to t_keys structure (from mem68k.h)
+ * @param keys Pointer to a t_keys structure
  */
 void netplay_deserialize_input(uint16_t data, void *keys);
 

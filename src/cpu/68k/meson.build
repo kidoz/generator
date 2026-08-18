@@ -6,6 +6,7 @@ subdir('codegen')
 
 # 68k CPU source files (runtime)
 cpu68k_runtime_sources = files(
+  'controller_ports.cpp',
   'cpu68k.cpp',
   'mem68k.cpp',
   'reg68k.cpp',

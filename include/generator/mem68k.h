@@ -19,29 +19,9 @@ typedef struct {
   void (*store_long)(uint32 addr, uint32 data);
 } t_mem68k_def;
 
-/* Controller button state - supports both 3-button and 6-button controllers */
-typedef struct {
-  /* Standard 3-button controller */
-  unsigned int a;
-  unsigned int b;
-  unsigned int c;
-  unsigned int up;
-  unsigned int down;
-  unsigned int left;
-  unsigned int right;
-  unsigned int start;
-  /* 6-button controller extensions */
-  unsigned int x;
-  unsigned int y;
-  unsigned int z;
-  unsigned int mode;  /* Mode button on 6-button controller */
-} t_keys;
-
 extern t_mem68k_def mem68k_def[];
-extern t_keys mem68k_cont[2];
 
 int mem68k_init(void);
-void mem68k_controller_refresh(void);  /* Called per scanline for 6-button timeout */
 
 extern uint8 *(*mem68k_memptr[0x1000])(uint32 addr);
 extern uint8 (*mem68k_fetch_byte[0x1000])(uint32 addr);

@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "generator.h"
+#include "controller_ports.hpp"
 #include "event.h"
 #include "vdp.h"
 #include "cpu68k.h"
@@ -10,7 +11,6 @@
 #include "reg68k.h"
 #include "ui.h"
 #include "gensound.h"
-#include "mem68k.h"
 
 /* VDP state moved into generator::Vdp (see vdp.hpp) */
 #include "vdp.hpp"
@@ -215,7 +215,7 @@ void event_nextevent(void)
     sound_line();
 
     /* Update 6-button controller timeout (resets counter if no TH activity) */
-    mem68k_controller_refresh();
+    generator::controllers().refresh();
 
     /* Advance to next scanline */
     vdp.vdp_line++;

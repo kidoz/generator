@@ -6,6 +6,8 @@
 #include "generator.h"
 #include "cpu68k.h"
 #include "mem68k.h"
+
+#include "controller_ports.hpp"
 #include "cpuz80.h"
 #include "gensound.h"
 #include "ui.h"
@@ -82,31 +84,6 @@ void mem68k_store_ram_byte(uint32 addr, uint8 data);
 void mem68k_store_ram_word(uint32 addr, uint16 data);
 void mem68k_store_ram_long(uint32 addr, uint32 data);
 
-t_keys mem68k_cont[2];
-
-static uint8 mem68k_cont1ctrl;
-static uint8 mem68k_cont2ctrl;
-static uint8 mem68k_contEctrl;
-static uint8 mem68k_cont1output;
-static uint8 mem68k_cont2output;
-static uint8 mem68k_contEoutput;
-
-/* 6-button controller state machine (based on Genesis Plus GX)
- *
- * The 6-button protocol uses a counter that increments by 2 on each TH rising edge:
- * - Counter 0,2: Normal 3-button responses
- * - Counter 4, TH=0: First signature (low nibble = 0)
- * - Counter 6, TH=1: Extra buttons (X, Y, Z, Mode)
- * - Counter 6, TH=0: Second signature (low nibble = F)
- * - Counter wraps at 8
- *
- * Timeout: Counter resets after ~25 scanlines without TH activity.
- * This ensures 3-button games (which toggle TH once per frame) never reach counter 4+.
- */
-static uint8 mem68k_cont_counter[2];  /* Counter (0,2,4,6) per controller */
-static uint8 mem68k_cont_timeout[2];  /* Timeout counter per controller */
-static uint8 mem68k_cont_th_prev[2];  /* Previous TH value for edge detection */
-
 /*** memory map ***/
 
 t_mem68k_def mem68k_def[] = {
@@ -182,18 +159,7 @@ int mem68k_init(void)
     }
     i++;
   } while ((mem68k_def[i].start != 0) || (mem68k_def[i].end != 0));
-  mem68k_cont1ctrl = 0;
-  mem68k_cont2ctrl = 0;
-  mem68k_contEctrl = 0;
-  mem68k_cont1output = 0;
-  mem68k_cont2output = 0;
-  mem68k_contEoutput = 0;
-  memset(&mem68k_cont, 0, sizeof(mem68k_cont));
-
-  /* Initialize 6-button controller state machine */
-  memset(mem68k_cont_counter, 0, sizeof(mem68k_cont_counter));
-  memset(mem68k_cont_timeout, 0, sizeof(mem68k_cont_timeout));
-  memset(mem68k_cont_th_prev, 0, sizeof(mem68k_cont_th_prev));
+  generator::controllers().reset();
 
   return 0;
 }
@@ -584,97 +550,12 @@ void mem68k_store_bank_long(uint32 addr, uint32 data)
 }
 
 
-/*** 6-button controller implementation (based on Genesis Plus GX) ***/
-
-/* Called every scanline to handle timeout */
-void mem68k_controller_refresh(void)
-{
-  for (int i = 0; i < 2; i++) {
-    if (mem68k_cont_timeout[i]++ > 25) {
-      mem68k_cont_counter[i] = 0;
-      mem68k_cont_timeout[i] = 0;
-    }
-  }
-}
-
-/* Called when game writes to controller port to update TH state machine */
-static void mem68k_controller_write(int player, uint8 new_th)
-{
-  uint8 prev_th = mem68k_cont_th_prev[player];
-  mem68k_cont_th_prev[player] = new_th;
-
-  /* Detect TH rising edge (0 -> 1) */
-  if (new_th && !prev_th) {
-    /* Increment counter by 2, wrap at 8 */
-    mem68k_cont_counter[player] = (mem68k_cont_counter[player] + 2) & 6;
-    mem68k_cont_timeout[player] = 0;
-  }
-}
-
-/* Read controller state with 6-button support
- *
- * Counter values and responses:
- *   Counter 0: TH=1: CBRLDU, TH=0: SA00DU (normal)
- *   Counter 2: TH=1: CBRLDU, TH=0: SA00DU (normal)
- *   Counter 4: TH=1: CBRLDU, TH=0: SA0000 (first signature)
- *   Counter 6: TH=1: CBMXYZ, TH=0: SA1111 (extra buttons + second signature)
- */
-static uint8 mem68k_read_controller(int player, int th_high)
-{
-  t_keys *cont = &mem68k_cont[player];
-  uint8 counter = mem68k_cont_counter[player];
-
-  if (th_high) {
-    /* TH = 1 */
-    if (counter == 6) {
-      /* Counter 6, TH=1: Return extra buttons
-       * Format: 0 0 C B | M Z Y X */
-      return ((1 - cont->x)) |
-             ((1 - cont->y) << 1) |
-             ((1 - cont->z) << 2) |
-             ((1 - cont->mode) << 3) |
-             ((1 - cont->b) << 4) |
-             ((1 - cont->c) << 5);
-    } else {
-      /* Counter 0,2,4, TH=1: Normal response
-       * Format: 0 0 C B | R L D U */
-      return ((1 - cont->up)) |
-             ((1 - cont->down) << 1) |
-             ((1 - cont->left) << 2) |
-             ((1 - cont->right) << 3) |
-             ((1 - cont->b) << 4) |
-             ((1 - cont->c) << 5);
-    }
-  } else {
-    /* TH = 0 */
-    if (counter == 4) {
-      /* Counter 4, TH=0: First signature (low nibble = 0)
-       * Format: 0 0 S A | 0 0 0 0 */
-      return ((1 - cont->a) << 4) |
-             ((1 - cont->start) << 5);
-    } else if (counter == 6) {
-      /* Counter 6, TH=0: Second signature (low nibble = F)
-       * Format: 0 0 S A | 1 1 1 1 */
-      return ((1 - cont->a) << 4) |
-             ((1 - cont->start) << 5) |
-             0x0F;
-    } else {
-      /* Counter 0,2, TH=0: Normal response
-       * Format: 0 0 S A | 0 0 D U */
-      return ((1 - cont->up)) |
-             ((1 - cont->down) << 1) |
-             ((1 - cont->a) << 4) |
-             ((1 - cont->start) << 5);
-    }
-  }
-}
-
 /*** I/O fetch/store ***/
 
 uint8 mem68k_fetch_io_byte(uint32 addr)
 {
+  auto &controllers = generator::controllers();
   auto &vdp = generator::vdp();
-  uint8 in;
 
   addr -= 0xA10000;
   if ((addr & 1) == 0) {
@@ -686,24 +567,18 @@ uint8 mem68k_fetch_io_byte(uint32 addr)
     /* version */
     return (1 << 5 | vdp.vdp_pal << 6 | vdp.vdp_overseas << 7);
   case 1: /* 0x3 - Controller 1 data */
-    /* 6-button controller support */
-    in = mem68k_read_controller(0, (mem68k_cont1output >> 6) & 1);
-    return (in & ~mem68k_cont1ctrl) | (mem68k_cont1output & mem68k_cont1ctrl);
+    return controllers.read_data(0);
   case 2: /* 0x5 - Controller 2 data */
-    /* 6-button controller support */
-    in = mem68k_read_controller(1, (mem68k_cont2output >> 6) & 1);
-    return (in & ~mem68k_cont2ctrl) | (mem68k_cont2output & mem68k_cont2ctrl);
+    return controllers.read_data(1);
   case 3: /* 0x7 - External port */
     LOG_NORMAL("%08X [IO] EXT port read", regs.pc);
-    /* get input state */
-    in = 0; /* External port unsupported (used for mouse/multitap) */
-    return (in & ~mem68k_contEctrl) | (mem68k_contEoutput & mem68k_contEctrl);
+    return controllers.read_data(2);
   case 4: /* 0x9 */
-    return mem68k_cont1ctrl;
+    return controllers.control(0);
   case 5: /* 0xB */
-    return mem68k_cont2ctrl;
+    return controllers.control(1);
   case 6: /* 0xD */
-    return mem68k_contEctrl;
+    return controllers.control(2);
   default:
     LOG_CRITICAL("%08X [IO] Invalid memory fetch (byte) 0x%X", regs.pc, addr);
     return 0;
@@ -722,32 +597,30 @@ uint32 mem68k_fetch_io_long(uint32 addr)
 
 void mem68k_store_io_byte(uint32 addr, uint8 data)
 {
+  auto &controllers = generator::controllers();
+
   addr -= 0xA10000;
   switch (addr) {
   case 0x3:
-    /* Controller 1 output - update 6-button state machine */
-    mem68k_controller_write(0, (data >> 6) & 1);
-    mem68k_cont1output = data;
+    controllers.write_data(0, data);
     return;
   case 0x5:
-    /* Controller 2 output - update 6-button state machine */
-    mem68k_controller_write(1, (data >> 6) & 1);
-    mem68k_cont2output = data;
+    controllers.write_data(1, data);
     return;
   case 0x7:
-    mem68k_contEoutput = data;
+    controllers.write_data(2, data);
     LOG_NORMAL("%08X [IO] EXT port output set to %X", regs.pc, data);
     return;
   case 0x9:
-    mem68k_cont1ctrl = data;
+    controllers.set_control(0, data);
     /* 0x40 is standard, but games may use different values for 6-button */
     return;
   case 0xB:
-    mem68k_cont2ctrl = data;
+    controllers.set_control(1, data);
     /* 0x40 is standard, but games may use different values for 6-button */
     return;
   case 0xD:
-    mem68k_contEctrl = data;
+    controllers.set_control(2, data);
     LOG_NORMAL("%08X [IO] EXT port ctrl set to %X", regs.pc, data);
     return;
   case 0xF:

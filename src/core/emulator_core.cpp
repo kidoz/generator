@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "controller_ports.hpp"
 #include "cpu68k.h"
 #include "cpuz80.h"
 #include "gensound.h"
@@ -212,14 +213,15 @@ void EmulatorCore::set_input(int player, unsigned int up, unsigned int down,
     return;
   }
 
-  mem68k_cont[player].up = up;
-  mem68k_cont[player].down = down;
-  mem68k_cont[player].left = left;
-  mem68k_cont[player].right = right;
-  mem68k_cont[player].a = a;
-  mem68k_cont[player].b = b;
-  mem68k_cont[player].c = c;
-  mem68k_cont[player].start = start;
+  auto &controller = m_system.controllers().controller(player);
+  controller.up = up;
+  controller.down = down;
+  controller.left = left;
+  controller.right = right;
+  controller.a = a;
+  controller.b = b;
+  controller.c = c;
+  controller.start = start;
 }
 
 int EmulatorCore::audio_start()

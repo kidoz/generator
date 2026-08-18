@@ -7,9 +7,8 @@
 #include <nk/actions/shortcut.h>
 #include <nk/platform/key_codes.h>
 
+#include "controller_ports.hpp"
 #include "generator.h"
-#include "cpu68k.h" /* mem68k.h's DIRECTRAM fast paths need these first */
-#include "mem68k.h"
 #include "log.h"
 
 #include <utility>
@@ -57,31 +56,32 @@ bool is_accelerator(int modifiers)
 void set_button(int player, KeyCode key, const KeyMap &map, bool pressed)
 {
   const unsigned int value = pressed ? 1 : 0;
+  auto &controller = generator::controllers().controller(player);
 
   if (key == map.up)
-    mem68k_cont[player].up = value;
+    controller.up = value;
   else if (key == map.down)
-    mem68k_cont[player].down = value;
+    controller.down = value;
   else if (key == map.left)
-    mem68k_cont[player].left = value;
+    controller.left = value;
   else if (key == map.right)
-    mem68k_cont[player].right = value;
+    controller.right = value;
   else if (key == map.a)
-    mem68k_cont[player].a = value;
+    controller.a = value;
   else if (key == map.b)
-    mem68k_cont[player].b = value;
+    controller.b = value;
   else if (key == map.c)
-    mem68k_cont[player].c = value;
+    controller.c = value;
   else if (key == map.start)
-    mem68k_cont[player].start = value;
+    controller.start = value;
   else if (key == map.x)
-    mem68k_cont[player].x = value;
+    controller.x = value;
   else if (key == map.y)
-    mem68k_cont[player].y = value;
+    controller.y = value;
   else if (key == map.z)
-    mem68k_cont[player].z = value;
+    controller.z = value;
   else if (key == map.mode)
-    mem68k_cont[player].mode = value;
+    controller.mode = value;
 }
 
 }  // namespace
@@ -136,18 +136,7 @@ void InputController::set_accelerators_enabled(bool enabled)
 void InputController::release_all()
 {
   for (int player = 0; player < 2; player++) {
-    mem68k_cont[player].up = 0;
-    mem68k_cont[player].down = 0;
-    mem68k_cont[player].left = 0;
-    mem68k_cont[player].right = 0;
-    mem68k_cont[player].a = 0;
-    mem68k_cont[player].b = 0;
-    mem68k_cont[player].c = 0;
-    mem68k_cont[player].start = 0;
-    mem68k_cont[player].x = 0;
-    mem68k_cont[player].y = 0;
-    mem68k_cont[player].z = 0;
-    mem68k_cont[player].mode = 0;
+    generator::controllers().controller(player) = {};
   }
 }
 
@@ -314,42 +303,43 @@ void InputController::handle_gamepad_button(const SDL_GamepadButtonEvent &event)
     return;
 
   const unsigned int pressed = event.down ? 1 : 0;
+  auto &controller = generator::controllers().controller(player);
   switch (event.button) {
   case SDL_GAMEPAD_BUTTON_DPAD_UP:
-    mem68k_cont[player].up = pressed;
+    controller.up = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
-    mem68k_cont[player].down = pressed;
+    controller.down = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
-    mem68k_cont[player].left = pressed;
+    controller.left = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
-    mem68k_cont[player].right = pressed;
+    controller.right = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_SOUTH:
-    mem68k_cont[player].a = pressed;
+    controller.a = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_EAST:
-    mem68k_cont[player].b = pressed;
+    controller.b = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_WEST:
-    mem68k_cont[player].c = pressed;
+    controller.c = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_START:
-    mem68k_cont[player].start = pressed;
+    controller.start = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
-    mem68k_cont[player].x = pressed;
+    controller.x = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
-    mem68k_cont[player].y = pressed;
+    controller.y = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_LEFT_STICK:
-    mem68k_cont[player].z = pressed;
+    controller.z = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
-    mem68k_cont[player].mode = pressed;
+    controller.mode = pressed;
     break;
   default:
     break;
@@ -362,12 +352,13 @@ void InputController::handle_gamepad_axis(const SDL_GamepadAxisEvent &event)
   if (player < 0 || player > 1)
     return;
 
+  auto &controller = generator::controllers().controller(player);
   if (event.axis == SDL_GAMEPAD_AXIS_LEFTX) {
-    mem68k_cont[player].left = event.value < -kAxisDeadzone ? 1 : 0;
-    mem68k_cont[player].right = event.value > kAxisDeadzone ? 1 : 0;
+    controller.left = event.value < -kAxisDeadzone ? 1 : 0;
+    controller.right = event.value > kAxisDeadzone ? 1 : 0;
   } else if (event.axis == SDL_GAMEPAD_AXIS_LEFTY) {
-    mem68k_cont[player].up = event.value < -kAxisDeadzone ? 1 : 0;
-    mem68k_cont[player].down = event.value > kAxisDeadzone ? 1 : 0;
+    controller.up = event.value < -kAxisDeadzone ? 1 : 0;
+    controller.down = event.value > kAxisDeadzone ? 1 : 0;
   }
 }
 
