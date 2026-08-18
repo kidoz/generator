@@ -107,6 +107,7 @@ DELTAN register = 0) !!!!!!
 
 /* Generator - legacy headers plus the extracted testable units, which the
  * Catch2 tests include directly. */
+#include "log.h"
 #include "support.h"
 #include "fm.h"
 #include "genstate.h"
@@ -362,10 +363,22 @@ typedef struct fm_work {
 #define LOG_INF 1 /* INFORMATION */
 #define LOG_LEVEL LOG_INF
 
+/* Route this imported core's diagnostics into the project logger. support.h
+ * defines logerror as empty, so the original macro compiled every message
+ * away -- including the allocation failures in Ym2612::init, which returned
+ * -1 with no explanation. The parenthesised argument list is kept so the
+ * call sites stay byte-identical to upstream: LOG_CRITICAL and friends are
+ * rescanned as function-like macro invocations against it. */
 #ifndef __RAINE__
-#define LOG(n, x)       \
-  if ((n) >= LOG_LEVEL) \
-  logerror x
+#define LOG(n, x)              \
+  do {                         \
+    if ((n) >= LOG_ERR)        \
+      LOG_CRITICAL x;          \
+    else if ((n) >= LOG_WAR)   \
+      LOG_NORMAL x;            \
+    else if ((n) >= LOG_LEVEL) \
+      LOG_VERBOSE x;           \
+  } while (0)
 #endif
 
 /* ----- limitter ----- */
@@ -1998,7 +2011,7 @@ UINT8 Ym2612::read(int n, int a)
   case 1:
   case 2:
   case 3:
-    LOG(LOG_WAR, ("YM2612 #%d:A=%d read unmapped area\n"));
+    LOG(LOG_WAR, ("YM2612 #%d:A=%d read unmapped area\n", n, a));
     return FM_STATUS_FLAG(&F2612->OPN.ST);
   }
   return 0;

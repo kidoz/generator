@@ -7,8 +7,10 @@
 // connection pointers, the FM_OPN work area, the per-chip LFO cache).
 //
 // fm.cpp (plus the extracted fm_eg/fm_lfo units) is compiled directly into
-// this test; the only external symbol the core references (state_transfer*)
-// is stubbed below, mirroring tests/test_sn76496.cpp.
+// this test; state_transfer* is stubbed below, mirroring
+// tests/test_sn76496.cpp. The chip's diagnostics go through the project
+// logger; tests/meson.build links src/util/log.cpp and support_logging.cpp
+// so those diagnostics resolve and stay silent.
 
 #include <catch2/catch_test_macros.hpp>
 

@@ -3,6 +3,12 @@
 
 xbrz_inc = include_directories('../src/xbrz')
 
+# Emulator subsystems route diagnostics through gen_log_* (src/util/log.cpp),
+# whose verbosity threshold is owned by the application. Tests that link such
+# a subsystem need both the emitters and a threshold; support_logging.cpp
+# supplies the latter and keeps it silent.
+test_logging_sources = files('support_logging.cpp', '../src/util/log.cpp')
+
 test_xbrz_tools = executable('test_xbrz_tools',
   'test_xbrz_tools.cpp',
   include_directories: [xbrz_inc],
@@ -86,6 +92,7 @@ test_system = executable('test_system',
   '../src/cpu/68k/controller_ports.cpp',
   '../src/audio/ym2612/fm_write_queue.cpp',
   '../src/audio/ym2612/fm_write_queue_compat.cpp',
+  test_logging_sources,
   include_directories: [sn76496_inc, vdp_inc, fm_inc],
   dependencies: [catch2_dep, sn76496_dep, ym2612_dep],
   override_options: ['cpp_std=c++23'],
@@ -172,6 +179,8 @@ test('vdp_core', test_vdp,
 # fm_eg/fm_lfo units are compiled directly into the test; state_transfer*
 # is stubbed in the test source (the splash-cart audio fingerprint never
 # exercises FM, so this is the FM regression net).
+# log.cpp is linked rather than stubbed: fm.cpp's diagnostics route through
+# the real logger, and the test owns gen_loglevel to keep them quiet.
 fm_inc = include_directories('../include/generator', '../src/audio/ym2612')
 
 test_fm_chip = executable('test_fm_chip',
@@ -179,6 +188,7 @@ test_fm_chip = executable('test_fm_chip',
   '../src/audio/ym2612/fm.cpp',
   '../src/audio/ym2612/fm_eg.cpp',
   '../src/audio/ym2612/fm_lfo.cpp',
+  test_logging_sources,
   include_directories: [fm_inc],
   dependencies: [catch2_dep],
   override_options: ['cpp_std=c++23'],
