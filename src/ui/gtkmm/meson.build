@@ -1,4 +1,5 @@
 # GTKmm 4 / libadwaita UI backend
+# This is the backend selected by -Dui-backend=gtk4.
 
 gtkmm_ui_sources = files(
     'generator_app.cpp',

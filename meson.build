@@ -210,7 +210,10 @@ endif
 
 # UI-specific libraries
 if ui_backend == 'gtk4'
-  subdir('src/ui/gtk4')
+  # The backend itself lives in src/ui/gtkmm; gtkopts is its config-file
+  # helper. (There is no src/ui/gtk4 any more -- it held only gtkopts. The
+  # -Dui-backend=gtk4 option value stays, it is the user-facing name.)
+  subdir('src/ui/gtkmm/gtkopts')
   subdir('src/ui/gtkmm')
   ui_libs = [gtkopts_dep]
 elif ui_backend == 'nodalkit'
