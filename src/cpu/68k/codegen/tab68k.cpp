@@ -4,7 +4,7 @@
 
 
 
-char *condition_table[] = {"T",  "F",  "HI", "LS", "CC", "CS", "NE", "EQ",
+const char *condition_table[] = {"T",  "F",  "HI", "LS", "CC", "CS", "NE", "EQ",
                            "VC", "VS", "PL", "MI", "GE", "LT", "GT", "LE"};
 
 t_mnemonic_table mnemonic_table[] = {
