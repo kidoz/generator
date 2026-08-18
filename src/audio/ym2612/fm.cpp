@@ -103,6 +103,8 @@ DELTAN register = 0) !!!!!!
 #include <stdarg.h>
 #include <math.h>
 
+#include <new>
+
 /* Generator - legacy headers plus the extracted testable units, which the
  * Catch2 tests include directly. */
 #include "support.h"
@@ -110,6 +112,7 @@ DELTAN register = 0) !!!!!!
 #include "genstate.h"
 #include "fm_eg.hpp" /* FM_SLOT struct + calc_eg/CALC_FCSLOT (extracted, tested) */
 #include "fm_lfo.hpp" /* opn_lfo_step (extracted, tested) */
+#include "ym2612.hpp"
 
 #define _STATE_H
 
@@ -534,7 +537,7 @@ INLINE void FM_BUSY_SET(FM_ST *ST, int busyclock)
   (void)busyclock; /* Currently unused - using fixed 1 sample */
   ST->BusyCount = 1;
 }
-/* Called from YM2612UpdateOne to decrement busy counter each sample */
+/* Called from Ym2612::update_one to decrement busy counter each sample */
 INLINE void FM_BUSY_UPDATE(FM_ST *ST)
 {
   if (ST->BusyCount > 0)
@@ -1627,16 +1630,29 @@ typedef struct ym2612_f {
   /* dac output (YM2612) */
   int dacen;
   INT32 dacout;
-} YM2612;
+} Ym2612State;
 
-static int YM2612NumChips;       /* total chip */
-static YM2612 *FM2612 = nullptr; /* array of YM2612's */
+namespace generator {
+
+struct Ym2612::Impl {
+  int num_chips = 0;
+  std::unique_ptr<Ym2612State[]> chips;
+};
+
+Ym2612::Ym2612() : m_impl(std::make_unique<Impl>())
+{
+}
+
+Ym2612::~Ym2612()
+{
+  shutdown();
+}
 
 /* ---------- update one of chip ----------- */
-void YM2612UpdateOne(int num, INT16 **buffer, int length)
+void Ym2612::update_one(int num, INT16 **buffer, int length)
 {
-  YM2612 *F2612 = &(FM2612[num]);
-  FM_OPN *OPN = &(FM2612[num].OPN);
+  Ym2612State *F2612 = &(m_impl->chips[num]);
+  FM_OPN *OPN = &(m_impl->chips[num].OPN);
   int i;
   FMSAMPLE *bufL, *bufR;
   INT32 dacout = F2612->dacout;
@@ -1745,8 +1761,8 @@ void YM2612UpdateOne(int num, INT16 **buffer, int length)
      * The LFO AM waveform is inverted: LFO_RATE - wave gives correct direction
      * This fixes audio bugs in Spider-Man & Venom, California Games, etc. */
     if (LFOIncr) {
-      LFOCnt = opn_lfo_step(LFOCnt, LFOIncr, OPN_LFO_wave, 1, &lfo_amd,
-                            &lfo_pmd);
+      LFOCnt =
+          opn_lfo_step(LFOCnt, LFOIncr, OPN_LFO_wave, 1, &lfo_amd, &lfo_pmd);
     }
 
     /* Update busy flag counter */
@@ -1763,134 +1779,137 @@ void YM2612UpdateOne(int num, INT16 **buffer, int length)
 }
 
 #ifdef _STATE_H
-static void YM2612_postload(void)
+void Ym2612::postload()
 {
   int num, r;
 
-  /* Ensure FM2612 is initialized before accessing */
-  if (FM2612 == nullptr) {
+  /* Ensure the chip array is initialized before accessing it. */
+  if (m_impl->chips == nullptr) {
     return;
   }
 
-  for (num = 0; num < YM2612NumChips; num++) {
+  for (num = 0; num < m_impl->num_chips; num++) {
     /* DAC data & port */
     /* James Ponder 2001-09-30 level setting of 5 found suitable */
-    FM2612[num].dacout = ((int)FM2612[num].REGS[0x2a] - 0x80)
-                         << 5; /* level unknown */
+    m_impl->chips[num].dacout = ((int)m_impl->chips[num].REGS[0x2a] - 0x80)
+                                << 5; /* level unknown */
     /* James Ponder 2001-10-19 fix from 0x2d to 0x2b */
-    FM2612[num].dacen = FM2612[num].REGS[0x2b] & 0x80;
+    m_impl->chips[num].dacen = m_impl->chips[num].REGS[0x2b] & 0x80;
     /* OPN registers */
     /* DT / MULTI , TL , KS / AR , AMON / DR , SR , SL / RR , SSG-EG */
     for (r = 0x30; r < 0x9e; r++)
       if ((r & 3) != 3) {
-        OPNWriteReg(&FM2612[num].OPN, r, FM2612[num].REGS[r]);
-        OPNWriteReg(&FM2612[num].OPN, r | 0x100, FM2612[num].REGS[r | 0x100]);
+        OPNWriteReg(&m_impl->chips[num].OPN, r, m_impl->chips[num].REGS[r]);
+        OPNWriteReg(&m_impl->chips[num].OPN, r | 0x100,
+                    m_impl->chips[num].REGS[r | 0x100]);
       }
     /* FB / CONNECT , L / R / AMS / PMS */
     for (r = 0xb0; r < 0xb6; r++)
       if ((r & 3) != 3) {
-        OPNWriteReg(&FM2612[num].OPN, r, FM2612[num].REGS[r]);
-        OPNWriteReg(&FM2612[num].OPN, r | 0x100, FM2612[num].REGS[r | 0x100]);
+        OPNWriteReg(&m_impl->chips[num].OPN, r, m_impl->chips[num].REGS[r]);
+        OPNWriteReg(&m_impl->chips[num].OPN, r | 0x100,
+                    m_impl->chips[num].REGS[r | 0x100]);
       }
-    /* channels */
-    /*FM_channel_postload(FM2612[num].CH,6);*/
   }
 }
 
 /* James Ponder: removed static */
-void YM2612_save_state(void)
+void Ym2612::save_state()
 {
   int num;
   const char statename[] = "YM2612";
 
-  /* Ensure FM2612 is initialized before accessing */
-  if (FM2612 == nullptr) {
+  /* Ensure the chip array is initialized before accessing it. */
+  if (m_impl->chips == nullptr) {
     return;
   }
 
-  for (num = 0; num < YM2612NumChips; num++) {
-    state_save_register_UINT8(statename, num, "regs", FM2612[num].REGS, 512);
-    FMsave_state_st(statename, num, &FM2612[num].OPN.ST);
-    FMsave_state_channel(statename, num, FM2612[num].CH, 6);
+  for (num = 0; num < m_impl->num_chips; num++) {
+    state_save_register_UINT8(statename, num, "regs", m_impl->chips[num].REGS,
+                              512);
+    FMsave_state_st(statename, num, &m_impl->chips[num].OPN.ST);
+    FMsave_state_channel(statename, num, m_impl->chips[num].CH, 6);
     /* 3slots */
     state_save_register_UINT32(statename, num, "slot3fc",
-                               FM2612[num].OPN.SL3.fc, 3);
+                               m_impl->chips[num].OPN.SL3.fc, 3);
     state_save_register_UINT8(statename, num, "slot3fh",
-                              &FM2612[num].OPN.SL3.fn_h, 1);
+                              &m_impl->chips[num].OPN.SL3.fn_h, 1);
     state_save_register_UINT8(statename, num, "slot3kc",
-                              FM2612[num].OPN.SL3.kcode, 3);
+                              m_impl->chips[num].OPN.SL3.kcode, 3);
     /* address register1 */
-    state_save_register_int(statename, num, "address1", &FM2612[num].address1);
+    state_save_register_int(statename, num, "address1",
+                            &m_impl->chips[num].address1);
   }
-  state_save_register_func_postload(YM2612_postload);
+  postload();
 }
 #endif /* _STATE_H */
 
 /* -------------------------- YM2612 ---------------------------------- */
-int YM2612Init(int num, int clock, int rate, FM_TIMERHANDLER TimerHandler,
-               FM_IRQHANDLER IRQHandler)
+int Ym2612::init(int num, int clock, int rate, TimerHandler timer_handler,
+                 IrqHandler irq_handler)
 {
   int i;
 
-  if (FM2612)
-    return (-1);      /* duplicate init. */
+  if (m_impl->chips)
+    return (-1); /* duplicate init. */
 
-  YM2612NumChips = num;
+  m_impl->num_chips = num;
 
   /* allocate extend state space */
-  if ((FM2612 = (YM2612 *)malloc(sizeof(YM2612) * YM2612NumChips)) == nullptr) {
+  m_impl->chips.reset(new (std::nothrow) Ym2612State[m_impl->num_chips]);
+  if (m_impl->chips == nullptr) {
     LOG(LOG_ERR, ("YM2612Init: Failed to allocate %lu bytes for %d chips\n",
-                  (unsigned long)(sizeof(YM2612) * YM2612NumChips), YM2612NumChips));
+                  (unsigned long)(sizeof(Ym2612State) * m_impl->num_chips),
+                  m_impl->num_chips));
     return (-1);
   }
   /* clear */
-  memset(FM2612, 0, sizeof(YM2612) * YM2612NumChips);
+  memset(m_impl->chips.get(), 0, sizeof(Ym2612State) * m_impl->num_chips);
   /* allocate total level table (128kb space) */
   if (!OPNInitTable()) {
     LOG(LOG_ERR, ("YM2612Init: Failed to allocate OPN tables\n"));
-    free(FM2612);
+    m_impl->chips.reset();
+    m_impl->num_chips = 0;
     return (-1);
   }
 
-  for (i = 0; i < YM2612NumChips; i++) {
-    FM2612[i].OPN.ST.index = i;
-    FM2612[i].OPN.type = TYPE_YM2612;
-    FM2612[i].OPN.P_CH = FM2612[i].CH;
-    FM2612[i].OPN.ST.clock = clock;
-    FM2612[i].OPN.ST.rate = rate;
-    /* FM2612[i].OPN.ST.irq = 0; */
-    /* FM2612[i].OPN.ST.status = 0; */
-    FM2612[i].OPN.ST.timermodel = FM_TIMER_INTERVAL;
+  for (i = 0; i < m_impl->num_chips; i++) {
+    m_impl->chips[i].OPN.ST.index = i;
+    m_impl->chips[i].OPN.type = TYPE_YM2612;
+    m_impl->chips[i].OPN.P_CH = m_impl->chips[i].CH;
+    m_impl->chips[i].OPN.ST.clock = clock;
+    m_impl->chips[i].OPN.ST.rate = rate;
+    m_impl->chips[i].OPN.ST.timermodel = FM_TIMER_INTERVAL;
     /* Extend handler */
-    FM2612[i].OPN.ST.Timer_Handler = TimerHandler;
-    FM2612[i].OPN.ST.IRQ_Handler = IRQHandler;
-    YM2612ResetChip(i);
+    m_impl->chips[i].OPN.ST.Timer_Handler = timer_handler;
+    m_impl->chips[i].OPN.ST.IRQ_Handler = irq_handler;
+    reset_chip(i);
   }
   /* James Ponder - removed
 #ifdef _STATE_H
-  YM2612_save_state();
+  save_state();
 #endif
   */
   return 0;
 }
 
 /* ---------- shut down emulator ----------- */
-void YM2612Shutdown()
+void Ym2612::shutdown()
 {
-  if (!FM2612)
+  if (!m_impl->chips)
     return;
 
   FMCloseTable();
-  free(FM2612);
-  FM2612 = nullptr;
+  m_impl->chips.reset();
+  m_impl->num_chips = 0;
 }
 
 /* ---------- reset one of chip ---------- */
-void YM2612ResetChip(int num)
+void Ym2612::reset_chip(int num)
 {
   int i;
-  YM2612 *F2612 = &(FM2612[num]);
-  FM_OPN *OPN = &(FM2612[num].OPN);
+  Ym2612State *F2612 = &(m_impl->chips[num]);
+  FM_OPN *OPN = &(m_impl->chips[num].OPN);
 
   OPNSetPres(OPN, 6 * 24, 6 * 24, 0);
   /* status clear */
@@ -1917,9 +1936,9 @@ void YM2612ResetChip(int num)
 /* n = number  */
 /* a = address */
 /* v = value   */
-int YM2612Write(int n, int a, UINT8 v)
+int Ym2612::write(int n, int a, UINT8 v)
 {
-  YM2612 *F2612 = &(FM2612[n]);
+  Ym2612State *F2612 = &(m_impl->chips[n]);
   int addr;
 
   switch (a & 3) {
@@ -1942,7 +1961,7 @@ int YM2612Write(int n, int a, UINT8 v)
       case 0x2b: /* DAC Sel  (YM2612) */
         /* b7 = dac enable */
         F2612->dacen = v & 0x80;
-              break;
+        break;
       default: /* OPN section */
         YM2612UpdateReq(n);
         /* write register */
@@ -1969,9 +1988,9 @@ int YM2612Write(int n, int a, UINT8 v)
   }
   return F2612->OPN.ST.irq;
 }
-UINT8 YM2612Read(int n, int a)
+UINT8 Ym2612::read(int n, int a)
 {
-  YM2612 *F2612 = &(FM2612[n]);
+  Ym2612State *F2612 = &(m_impl->chips[n]);
 
   switch (a & 3) {
   case 0: /* status 0 */
@@ -1985,9 +2004,9 @@ UINT8 YM2612Read(int n, int a)
   return 0;
 }
 
-int YM2612TimerOver(int n, int c)
+int Ym2612::timer_over(int n, int c)
 {
-  YM2612 *F2612 = &(FM2612[n]);
+  Ym2612State *F2612 = &(m_impl->chips[n]);
 
   if (c) { /* Timer B */
     TimerBOver(&(F2612->OPN.ST));
@@ -2004,6 +2023,6 @@ int YM2612TimerOver(int n, int c)
   return F2612->OPN.ST.irq;
 }
 
+}  // namespace generator
+
 #endif /* BUILD_YM2612 */
-
-

@@ -3,6 +3,7 @@
 ym2612_lib = static_library('ym2612',
   sources: [
     'fm.cpp',
+    'fm_compat.cpp',
     'fm_eg.cpp',
     'fm_lfo.cpp',
     'fm_write_queue.cpp',

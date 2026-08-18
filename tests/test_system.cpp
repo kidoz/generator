@@ -9,14 +9,19 @@
 #include "fm_write_queue.hpp"
 #include "machine.h"
 #include "sn76496.hpp"
+#include "support.h"
+#include "fm.h"
 #include "system.hpp"
 #include "vdp.hpp"
+#include "ym2612.hpp"
 
 namespace {
 
 constexpr int PSG_CLOCK = 3579545;
 constexpr int PSG_SAMPLE_RATE = 44100;
 constexpr int PSG_GAIN = 0;
+constexpr int FM_CLOCK = 7670454;
+constexpr int FM_SAMPLE_RATE = 48000;
 
 class ActiveSystem {
 public:
@@ -47,6 +52,16 @@ generator::System make_system()
 // suite, while this target checks ownership and compatibility routing.
 void state_transfer32(const char * /*mod*/, const char * /*name*/,
                       uint8 /*instance*/, uint32 * /*data*/, uint32 /*size*/)
+{
+}
+
+void state_transfer8(const char * /*mod*/, const char * /*name*/,
+                     uint8 /*instance*/, uint8 * /*data*/, uint32 /*size*/)
+{
+}
+
+void state_transfer16(const char * /*mod*/, const char * /*name*/,
+                      uint8 /*instance*/, uint16 * /*data*/, uint32 /*size*/)
 {
 }
 
@@ -83,6 +98,18 @@ TEST_CASE("System owns independent FM write queues", "[system][fmq]")
   first.fm_write_queue().push(100, 1, 0xAA);
   REQUIRE(first.fm_write_queue().peek_pos() == 100);
   REQUIRE(second.fm_write_queue().peek_pos() == FMQ_FRAC_ONE);
+}
+
+TEST_CASE("System owns independent YM2612 instances", "[system][fm]")
+{
+  generator::System first = make_system();
+  generator::System second = make_system();
+
+  REQUIRE(&first.ym2612() != &second.ym2612());
+  REQUIRE(first.ym2612().init(1, FM_CLOCK, FM_SAMPLE_RATE, nullptr, nullptr) ==
+          0);
+  REQUIRE(second.ym2612().init(1, FM_CLOCK, FM_SAMPLE_RATE, nullptr, nullptr) ==
+          0);
 }
 
 TEST_CASE("Active VDP access routes to the registered System", "[system][vdp]")
@@ -148,4 +175,30 @@ TEST_CASE("Legacy FM write queue API is safe without an active System",
   REQUIRE_FALSE(fmq_pop(FMQ_FRAC_ONE, nullptr, nullptr));
   REQUIRE(fmq_peek_pos() == FMQ_FRAC_ONE);
   REQUIRE_FALSE(fmq_overflowed());
+}
+
+TEST_CASE("Legacy YM2612 API routes to the active System", "[system][fm]")
+{
+  generator::System system = make_system();
+  ActiveSystem active{system};
+
+  REQUIRE(YM2612Init(1, FM_CLOCK, FM_SAMPLE_RATE, nullptr, nullptr) == 0);
+  REQUIRE(system.ym2612().init(1, FM_CLOCK, FM_SAMPLE_RATE, nullptr, nullptr) ==
+          -1);
+  REQUIRE(YM2612Write(0, 0, 0x22) == 0);
+  REQUIRE(YM2612Write(0, 1, 0x08) == 0);
+  YM2612Shutdown();
+}
+
+TEST_CASE("Legacy YM2612 API is safe without an active System", "[system][fm]")
+{
+  generator::set_system(nullptr);
+
+  REQUIRE(YM2612Init(1, FM_CLOCK, FM_SAMPLE_RATE, nullptr, nullptr) == -1);
+  REQUIRE(YM2612Read(0, 0) == 0);
+  REQUIRE(YM2612Write(0, 0, 0x22) == 0);
+  REQUIRE(YM2612TimerOver(0, 0) == 0);
+  YM2612ResetChip(0);
+  YM2612Shutdown();
+  YM2612_save_state();
 }

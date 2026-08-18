@@ -71,7 +71,7 @@ test_system = executable('test_system',
   '../src/audio/ym2612/fm_write_queue.cpp',
   '../src/audio/ym2612/fm_write_queue_compat.cpp',
   include_directories: [sn76496_inc, vdp_inc, fm_inc],
-  dependencies: [catch2_dep, sn76496_dep],
+  dependencies: [catch2_dep, sn76496_dep, ym2612_dep],
   override_options: ['cpp_std=c++23'],
   build_by_default: false
 )
