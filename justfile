@@ -20,6 +20,19 @@ build-nodalkit:
     meson setup --wipe build -Dui-backend=nodalkit
     meson compile -C build
 
+# Record a golden baseline for a ROM (regression safety net; artifacts
+# under tmp/, never committed). Check with `just baseline-check ROM`.
+baseline-record ROM:
+    python3 scripts/golden_baseline.py record ./build/src/ui/headless/generator-headless "{{ROM}}"
+
+baseline-check ROM:
+    python3 scripts/golden_baseline.py check ./build/src/ui/headless/generator-headless "{{ROM}}"
+
+# Compare two per-frame hash logs and report the first divergence (see
+# scripts/compare_frame_hashes.py).
+frame-diff LOG_A LOG_B:
+    python3 scripts/compare_frame_hashes.py "{{LOG_A}}" "{{LOG_B}}"
+
 # Build console version (release mode, optimized)
 build-console-release:
     meson setup --wipe build --buildtype=release -Dui-backend=console
@@ -153,12 +166,14 @@ analyze-ci:
 
 # Format all source files with clang-format
 format:
-    find src -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' | xargs clang-format -i
+    find src -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' | grep -v '^src/xbrz/' | xargs clang-format -i
     @echo "Formatted all source files"
 
 # Check formatting without modifying files
+# (src/xbrz is vendored scaler code kept in upstream style; clang-format
+# is not idempotent on its macro blocks, so it is exempt)
 format-check:
-    find src -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' | xargs clang-format --dry-run --Werror
+    find src -name '*.c' -o -name '*.h' -o -name '*.cpp' -o -name '*.hpp' | grep -v '^src/xbrz/' | xargs clang-format --dry-run --Werror
     @echo "All files are properly formatted"
 
 # Run clang-tidy (requires compile_commands.json)

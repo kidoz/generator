@@ -74,7 +74,7 @@ by the test/regression harness.
 
 Single C++23 backend: [kidoz/z80f](https://github.com/kidoz/z80f), pulled in
 automatically as a Meson subproject (`subprojects/z80f.wrap`) and wired
-through `src/cpu/z80/z80f/cpuz80_z80f.cpp`. No build option to choose;
+through `src/z80/z80.cpp`. No build option to choose;
 nothing to install.
 
 ### Build Examples
@@ -135,7 +135,7 @@ meson setup build --buildtype=release -Dui-backend=gtk4
 - `.bin` - Raw binary ROM dumps
 - `.smd` - Interleaved SMD format (auto-detected)
 - `.gen` - Genesis ROM files
-- `.zip` - Compressed ROMs (auto-extracts)
+- `.md` / `.rom` - Raw ROM images using alternate extensions
 
 ## Features
 
@@ -148,12 +148,10 @@ meson setup build --buildtype=release -Dui-backend=gtk4
 
 ### CPU Emulation
 
-- **68000**: Two-stage code generation
-  1. `def68k` reads instruction definitions from `def68k.def`
-  2. `gen68k` generates 16 C files covering 64K instruction space
+- **68000**: C++23 core in `src/m68k/`, integrated with the machine bus and
+  master-clock scheduler
 - **Z80**: [z80f](https://github.com/kidoz/z80f) (C++23) via Meson subproject,
-  bridged into the C codebase by a thin `extern "C"` adapter
-  (`src/cpu/z80/z80f/cpuz80_z80f.cpp`).
+  integrated through `src/z80/z80.cpp`.
 
 ### Project Structure
 
