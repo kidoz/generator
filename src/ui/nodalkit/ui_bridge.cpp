@@ -5,11 +5,12 @@
 #include "generator_app.hpp"
 
 #include "emulator_core.hpp"
-#include "null_audio_backend.hpp"
+#include "sdl_audio_backend.hpp"
 #include "stream_logger.hpp"
 #include "vdp_frame_renderer.hpp"
 
 #include "generator.h"
+#include "gensoundp.h"
 #include "initcart.h"
 #include "ui.h"
 #include "uiplot.h"
@@ -62,23 +63,24 @@ std::string parse_arguments(int argc, char **argv)
 }
 
 /* Converts VDP scanlines into the ARGB8888 fields nk::ImageView consumes.
- * The conversion itself -- interlace handling, the field-width latch, the
- * palette cache and the opaque-alpha fixup -- lives in the shared
- * generator::ui::VdpFrameRenderer; this class only routes the rows into the
- * frame buffer and publishes completed fields. */
+ * The conversion itself -- the palette cache and the opaque-alpha fixup --
+ * lives in the shared generator::ui::VdpFrameRenderer; this class only
+ * routes the rows into the frame buffer and publishes completed fields. */
 class NodalkitVideo : public IVideoBackend {
 public:
-  void render_line(int line, std::span<const uint8_t> /*pixels*/) override
+  void render_line(int line, std::span<const uint8_t> pixels) override
   {
-    const unsigned int width = renderer_.begin_line(line);
-    if (width == 0)
+    if (line < 0 || pixels.empty())
       return;
 
-    uint32_t *dest = g_frames.row(line, static_cast<int>(width));
+    const int width = static_cast<int>(std::min<std::size_t>(
+        pixels.size(), generator::ui::VdpFrameRenderer::kMaxWidth));
+
+    uint32_t *dest = g_frames.row(line, width);
     if (dest == nullptr)
       return;
 
-    renderer_.render_into(line, dest);
+    renderer_.render_pushed(line, pixels, dest);
   }
 
   void present_field() override
@@ -122,9 +124,17 @@ int ui_loop(void)
 {
   using generator::nkui::g_emulator_core;
 
+  /* Open the sound device before the core exists: the emulation thread
+   * starts pushing fields as soon as it does, and the UI field pacing
+   * reads the queue depth. A failure here is not fatal — the platform
+   * layer drops samples with no device and the emulator runs silently. */
+  if (soundp_start() != 0) {
+    std::cerr << "Continuing without sound: no audio device" << std::endl;
+  }
+
   try {
     g_emulator_core = std::make_unique<generator::EmulatorCore>(
-        std::make_unique<generator::ui::NullAudioBackend>(),
+        std::make_unique<generator::ui::SdlAudioBackend>(),
         std::make_unique<generator::nkui::NodalkitVideo>(),
         std::make_shared<generator::ui::StreamLogger>());
 
@@ -160,4 +170,5 @@ int ui_loop(void)
 void ui_final(void)
 {
   generator::nkui::g_emulator_core.reset();
+  soundp_stop();
 }

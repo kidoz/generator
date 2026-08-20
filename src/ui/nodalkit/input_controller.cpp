@@ -7,7 +7,9 @@
 #include <nk/actions/shortcut.h>
 #include <nk/platform/key_codes.h>
 
-#include "controller_ports.hpp"
+#include "ui_bridge.hpp"
+
+#include "emulator_core.hpp"
 #include "generator.h"
 #include "log.h"
 
@@ -40,6 +42,34 @@ constexpr KeyMap kDefaultKeys[2] = {
 
 constexpr int kAxisDeadzone = 8000;
 
+/* Pad state the backend accumulates on its way to the core.
+ *
+ * The machine takes input through EmulatorCore::set_input rather than
+ * exposing its controller ports, so the backend holds what is currently
+ * pressed and republishes both pads whenever anything changes. The core
+ * reads a 3-button pad today; x/y/z/mode are tracked because the key map
+ * already binds them, and go nowhere until it grows the 6-button
+ * handshake. */
+struct PadState {
+  unsigned int up = 0, down = 0, left = 0, right = 0;
+  unsigned int a = 0, b = 0, c = 0, start = 0;
+  unsigned int x = 0, y = 0, z = 0, mode = 0;
+};
+
+PadState g_pads[2];
+
+void publish_pads()
+{
+  if (!g_emulator_core)
+    return;
+
+  for (int player = 0; player < 2; player++) {
+    const PadState &pad = g_pads[player];
+    g_emulator_core->set_input(player, pad.up, pad.down, pad.left, pad.right,
+                               pad.start, pad.a, pad.b, pad.c);
+  }
+}
+
 bool has_modifier(int modifiers, nk::Modifiers flag)
 {
   return (static_cast<uint32_t>(modifiers) & static_cast<uint32_t>(flag)) != 0;
@@ -56,7 +86,7 @@ bool is_accelerator(int modifiers)
 void set_button(int player, KeyCode key, const KeyMap &map, bool pressed)
 {
   const unsigned int value = pressed ? 1 : 0;
-  auto &controller = generator::controllers().controller(player);
+  PadState &controller = g_pads[player];
 
   if (key == map.up)
     controller.up = value;
@@ -82,6 +112,8 @@ void set_button(int player, KeyCode key, const KeyMap &map, bool pressed)
     controller.z = value;
   else if (key == map.mode)
     controller.mode = value;
+
+  publish_pads();
 }
 
 }  // namespace
@@ -135,9 +167,10 @@ void InputController::set_accelerators_enabled(bool enabled)
 
 void InputController::release_all()
 {
-  for (int player = 0; player < 2; player++) {
-    generator::controllers().controller(player) = {};
+  for (auto &pad : g_pads) {
+    pad = {};
   }
+  publish_pads();
 }
 
 void InputController::dispatch_command(std::string_view action)
@@ -177,6 +210,9 @@ void InputController::on_key(int key_code, int modifiers, bool pressed)
       break;
     case KeyCode::Q:
       dispatch_command(commands::kQuit);
+      break;
+    case KeyCode::Comma:
+      dispatch_command(commands::kPreferences);
       break;
     default:
       break;
@@ -303,7 +339,7 @@ void InputController::handle_gamepad_button(const SDL_GamepadButtonEvent &event)
     return;
 
   const unsigned int pressed = event.down ? 1 : 0;
-  auto &controller = generator::controllers().controller(player);
+  PadState &controller = g_pads[player];
   switch (event.button) {
   case SDL_GAMEPAD_BUTTON_DPAD_UP:
     controller.up = pressed;
@@ -344,6 +380,8 @@ void InputController::handle_gamepad_button(const SDL_GamepadButtonEvent &event)
   default:
     break;
   }
+
+  publish_pads();
 }
 
 void InputController::handle_gamepad_axis(const SDL_GamepadAxisEvent &event)
@@ -352,7 +390,7 @@ void InputController::handle_gamepad_axis(const SDL_GamepadAxisEvent &event)
   if (player < 0 || player > 1)
     return;
 
-  auto &controller = generator::controllers().controller(player);
+  PadState &controller = g_pads[player];
   if (event.axis == SDL_GAMEPAD_AXIS_LEFTX) {
     controller.left = event.value < -kAxisDeadzone ? 1 : 0;
     controller.right = event.value > kAxisDeadzone ? 1 : 0;
@@ -360,6 +398,8 @@ void InputController::handle_gamepad_axis(const SDL_GamepadAxisEvent &event)
     controller.up = event.value < -kAxisDeadzone ? 1 : 0;
     controller.down = event.value > kAxisDeadzone ? 1 : 0;
   }
+
+  publish_pads();
 }
 
 }  // namespace generator::nkui

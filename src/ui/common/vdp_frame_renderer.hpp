@@ -6,26 +6,24 @@
 #include "machine.h"
 
 #include <cstdint>
+#include <span>
 
 namespace generator::ui {
 
-/* Turns VDP scanlines into the ARGB8888 rows a windowed backend displays.
+/* Turns the core's paletted scanlines into the ARGB8888 rows a windowed
+ * backend displays.
  *
- * Every windowed backend needs the same sequence: pick the field's pixel
- * width, branch on the interlace mode in register 12, call vdp_renderline
- * into a scratch buffer, refresh the palette cache and convert. Each one
- * used to carry its own copy, and the copies drifted -- the two corrections
- * below existed in the NodalKit backend only.
+ * The core pushes each visible line through IVideoBackend::render_line as
+ * CRAM indices; every windowed backend then needs the same two steps —
+ * refresh the palette cache and convert — and each one used to carry its
+ * own copy of them.
  *
  * Usage, per scanline:
  *
- *     const unsigned int width = renderer.begin_line(line);
- *     if (width == 0)
- *       return;                       // line is outside the visible field
- *     uint32_t *row = <destination for `line`, at least `width` pixels>;
- *     renderer.render_into(line, row);
+ *     renderer.render_pushed(line, pixels, row);
  *
- * and once the field completes:
+ * where `row` has room for pixels.size() destination pixels, and once the
+ * field completes:
  *
  *     const int lines = renderer.end_field();
  *
@@ -37,21 +35,11 @@ public:
    * narrows it to 256. */
   static constexpr unsigned int kMaxWidth = 320;
 
-  /* Prepare to render `line`. Returns the field's pixel width, or 0 when
-   * the line falls outside the visible field and must be skipped.
-   *
-   * The width is latched on the field's first visible line and held for the
-   * rest of the field. A game that flips H32/H40 partway through a frame
-   * would otherwise leave rows at two different widths in one buffer, which
-   * either shifts the tail of the field (packed rows) or leaves stale
-   * pixels beyond the narrower rows (fixed-stride rows). */
-  unsigned int begin_line(int line);
-
-  /* Render the line prepared by begin_line() into `dest`, which must have
-   * room for field_width() pixels. Bits 24-31 are forced opaque: the
-   * uiplot palette cache carries no alpha, and a backend that honours the
-   * channel would otherwise draw a fully transparent field. */
-  void render_into(int line, uint32_t *dest);
+  /* Convert one pushed scanline into `dest`, which must have room for
+   * field_width() pixels. Bits 24-31 are forced opaque: the uiplot palette
+   * cache carries no alpha, and a backend that honours the channel would
+   * otherwise draw a fully transparent field. */
+  void render_pushed(int line, std::span<const uint8_t> pixels, uint32_t *dest);
 
   /* End the field and reset the latch. Returns the number of lines that
    * were rendered into it, which is what a backend publishing a

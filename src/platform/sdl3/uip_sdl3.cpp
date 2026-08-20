@@ -14,9 +14,6 @@
 #include "uip.h"
 #include "ui.h"
 #include "ui_console.h"
-#include "vdp.h"
-#include "cpu68k.h"
-#include "mem68k.h"
 #include "gensoundp.h"
 
 #define SCREEN_WIDTH 640
@@ -28,10 +25,10 @@
 static SDL_Window *uip_window = nullptr;
 static SDL_Renderer *uip_renderer = nullptr;
 static SDL_Texture *uip_texture[2] = {nullptr, nullptr};
-static uint8 uip_vga = 0;                   /* flag for whether in VGA mode */
-static uint8 uip_key[SDL_SCANCODE_COUNT];   /* keyboard state */
-static uint8 uip_displaybanknum = 0;        /* view this one, write to other one */
-static t_uipinfo *uip_uipinfo = nullptr;    /* uipinfo */
+static uint8 uip_vga = 0;                 /* flag for whether in VGA mode */
+static uint8 uip_key[SDL_SCANCODE_COUNT]; /* keyboard state */
+static uint8 uip_displaybanknum = 0;     /* view this one, write to other one */
+static t_uipinfo *uip_uipinfo = nullptr; /* uipinfo */
 static uint8 *uip_screenmem[2] = {nullptr, nullptr}; /* screen memory banks */
 static int uip_forceredshift = -1;   /* if set, forces red shift pos */
 static int uip_forcegreenshift = -1; /* if set, forces green shift pos */
@@ -180,12 +177,13 @@ int uip_vgamode(void)
 
   /* Get the texture properties to find the format */
   SDL_PropertiesID props = SDL_GetTextureProperties(uip_texture[0]);
-  actual_format = (SDL_PixelFormat)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_FORMAT_NUMBER, SDL_PIXELFORMAT_RGB565);
+  actual_format = (SDL_PixelFormat)SDL_GetNumberProperty(
+      props, SDL_PROP_TEXTURE_FORMAT_NUMBER, SDL_PIXELFORMAT_RGB565);
 
   if (actual_format != pixel_format) {
     LOG_NORMAL(
         "SDL created texture with format 0x%08X instead of requested 0x%08X",
-         actual_format, pixel_format);
+        actual_format, pixel_format);
     pixel_format = actual_format;
   }
 
@@ -228,14 +226,15 @@ int uip_vgamode(void)
   uip_uipinfo->bluemask = format_details->Bmask;
 
   LOG_VERBOSE("SDL texture format: %s (0x%08X)",
-               SDL_GetPixelFormatName(actual_format), actual_format);
-  LOG_VERBOSE("Pixel format masks: R=0x%04X G=0x%04X B=0x%04X", format_details->Rmask,
-               format_details->Gmask, format_details->Bmask);
+              SDL_GetPixelFormatName(actual_format), actual_format);
+  LOG_VERBOSE("Pixel format masks: R=0x%04X G=0x%04X B=0x%04X",
+              format_details->Rmask, format_details->Gmask,
+              format_details->Bmask);
 
   LOG_VERBOSE("SDL3 video mode initialized: %dx%d RGB565", SCREEN_WIDTH,
-               SCREEN_HEIGHT);
+              SCREEN_HEIGHT);
   LOG_VERBOSE("Color shifts: R=%d G=%d B=%d", uip_uipinfo->redshift,
-               uip_uipinfo->greenshift, uip_uipinfo->blueshift);
+              uip_uipinfo->greenshift, uip_uipinfo->blueshift);
 
   return 0;
 }
@@ -253,7 +252,8 @@ void uip_displaybank(int bank)
 
   /* Update texture with current screen memory */
   SDL_Rect rect = {0, 0, SCREEN_WIDTH, SCREEN_HEIGHT};
-  if (!SDL_UpdateTexture(uip_texture[bank], &rect, uip_screenmem[bank], pitch)) {
+  if (!SDL_UpdateTexture(uip_texture[bank], &rect, uip_screenmem[bank],
+                         pitch)) {
     LOG_CRITICAL("Failed to update texture: %s", SDL_GetError());
     return;
   }

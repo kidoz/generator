@@ -3,47 +3,22 @@
 
 #include "vdp_frame_renderer.hpp"
 
-#include "system.hpp"
 #include "uiplot.h"
-#include "vdp.h"
-#include "vdp.hpp"
 
 #include <algorithm>
 
 namespace generator::ui {
 
-unsigned int VdpFrameRenderer::begin_line(int line)
+void VdpFrameRenderer::render_pushed(int line, std::span<const uint8_t> pixels,
+                                     uint32_t *dest)
 {
-  const Vdp &chip = generator::vdp();
-
-  if (line < 0 || line >= static_cast<int>(chip.vdp_vislines))
-    return 0;
-
-  if (field_width_ == 0)
-    field_width_ = (chip.vdp_reg[12] & 1) ? 320 : 256;
-
-  return field_width_;
-}
-
-void VdpFrameRenderer::render_into(int line, uint32_t *dest)
-{
-  if (dest == nullptr || field_width_ == 0)
+  if (dest == nullptr || pixels.empty()) {
     return;
-
-  const Vdp &chip = generator::vdp();
-
+  }
+  field_width_ = std::min<unsigned int>(kMaxWidth, (unsigned int)pixels.size());
   field_lines_ = std::max(field_lines_, line + 1);
 
-  switch ((chip.vdp_reg[12] >> 1) & 3) {
-  case 0: /* normal */
-  case 1: /* interlace, simply doubled up */
-  case 2: /* invalid */
-    vdp_renderline(static_cast<unsigned int>(line), gfx_, 0);
-    break;
-  case 3: /* interlace with double resolution */
-    vdp_renderline(static_cast<unsigned int>(line), gfx_, chip.vdp_oddframe);
-    break;
-  }
+  std::copy_n(pixels.begin(), field_width_, gfx_);
 
   uiplot_checkpalcache(0);
   uiplot_convertdata32(gfx_, dest, field_width_);

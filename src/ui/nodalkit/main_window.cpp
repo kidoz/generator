@@ -4,15 +4,19 @@
 #include "main_window.hpp"
 #include "commands.hpp"
 #include "containers.hpp"
+#include "rom_files.hpp"
+#include "ui_bridge.hpp"
+
+#include "emulator_core.hpp"
 
 #include <nk/platform/key_codes.h>
 #include <nk/platform/native_menu.h>
 
 #include "generator.h"
 #include "log.h"
-#include "vdp.hpp"
 
 #include <chrono>
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -45,7 +49,54 @@ enum StatusSegment : std::size_t {
   kSegmentFps = 3,
 };
 
-std::vector<nk::Menu> build_menus()
+nk::MenuItem disabled_item(std::string label)
+{
+  nk::MenuItem item;
+  item.label = std::move(label);
+  item.enabled = false;
+  return item;
+}
+
+nk::MenuItem build_recent_submenu(const MenuState &state)
+{
+  using nk::MenuItem;
+
+  std::vector<MenuItem> items;
+  if (state.recent_roms.empty()) {
+    items.push_back(disabled_item("No Recent ROMs"));
+  } else {
+    for (std::size_t i = 0; i < state.recent_roms.size(); i++) {
+      const std::string name =
+          std::filesystem::path(state.recent_roms[i]).filename().string();
+      items.push_back(MenuItem::action(name, commands::kOpenRecentPrefix +
+                                                 std::to_string(i)));
+    }
+    items.push_back(MenuItem::make_separator());
+    items.push_back(MenuItem::action("Clear Menu", commands::kClearRecent));
+  }
+
+  return MenuItem::submenu("Open Recent", std::move(items));
+}
+
+nk::MenuItem build_slot_submenu(const MenuState &state)
+{
+  using nk::MenuItem;
+
+  std::vector<MenuItem> items;
+  for (int slot = 0; slot < static_cast<int>(state.slot_saved.size()); slot++) {
+    std::string label = "Slot " + std::to_string(slot);
+    if (state.slot_saved[static_cast<std::size_t>(slot)])
+      label += " (saved)";
+    if (slot == state.state_slot)
+      label = "• " + label; /* the active slot gets a bullet */
+    items.push_back(MenuItem::action(
+        std::move(label), commands::kStateSlotPrefix + std::to_string(slot)));
+  }
+
+  return MenuItem::submenu("State Slot", std::move(items));
+}
+
+std::vector<nk::Menu> build_menus(const MenuState &state)
 {
   using nk::MenuItem;
 
@@ -60,6 +111,10 @@ std::vector<nk::Menu> build_menus()
            MenuItem::action("About Generator", commands::kAbout),
            MenuItem::make_separator(),
            MenuItem::action(
+               "Preferences...", commands::kPreferences,
+               NativeMenuShortcut{.key = KeyCode::Comma, .modifiers = kAccel}),
+           MenuItem::make_separator(),
+           MenuItem::action(
                "Quit Generator", commands::kQuit,
                NativeMenuShortcut{.key = KeyCode::Q, .modifiers = kAccel}),
        }});
@@ -69,6 +124,7 @@ std::vector<nk::Menu> build_menus()
            MenuItem::action(
                "Open ROM...", commands::kOpenRom,
                NativeMenuShortcut{.key = KeyCode::O, .modifiers = kAccel}),
+           build_recent_submenu(state),
        }});
 #else
   menus.push_back(
@@ -77,6 +133,11 @@ std::vector<nk::Menu> build_menus()
            MenuItem::action(
                "Open ROM...", commands::kOpenRom,
                NativeMenuShortcut{.key = KeyCode::O, .modifiers = kAccel}),
+           build_recent_submenu(state),
+           MenuItem::make_separator(),
+           MenuItem::action(
+               "Preferences...", commands::kPreferences,
+               NativeMenuShortcut{.key = KeyCode::Comma, .modifiers = kAccel}),
            MenuItem::make_separator(),
            MenuItem::action(
                "Quit", commands::kQuit,
@@ -88,7 +149,7 @@ std::vector<nk::Menu> build_menus()
       {"Emulation",
        {
            MenuItem::action(
-               "Pause", commands::kPause,
+               state.paused ? "Resume" : "Pause", commands::kPause,
                NativeMenuShortcut{.key = KeyCode::P, .modifiers = kAccel}),
            MenuItem::make_separator(),
            MenuItem::action(
@@ -100,6 +161,7 @@ std::vector<nk::Menu> build_menus()
                             NativeMenuShortcut{.key = KeyCode::F5}),
            MenuItem::action("Load State", commands::kLoadState,
                             NativeMenuShortcut{.key = KeyCode::F8}),
+           build_slot_submenu(state),
        }});
 
   menus.push_back(
@@ -122,19 +184,36 @@ std::vector<nk::Menu> build_menus()
 
 std::string describe_video_mode()
 {
-  auto &vdp = generator::vdp();
-  const unsigned int width = (vdp.vdp_reg[12] & 1) ? 320 : 256;
-  return std::string(vdp.vdp_pal ? "PAL " : "NTSC ") + std::to_string(width) +
-         "x" + std::to_string(vdp.vdp_vislines);
+  if (!g_emulator_core)
+    return "no core";
+
+  int width = 0;
+  int height = 0;
+  g_emulator_core->screen_size(&width, &height);
+  return std::string(g_emulator_core->video_mode() ? "PAL " : "NTSC ") +
+         std::to_string(width) + "x" + std::to_string(height);
+}
+
+/* The first dropped file the emulator can load, empty when there is none. */
+std::string dropped_rom_path(const nk::DragDropEvent &event)
+{
+  if (!event.payload || !event.payload->has_files())
+    return {};
+
+  for (const auto &file : event.payload->files) {
+    if (looks_like_rom(file))
+      return file.string();
+  }
+  return {};
 }
 
 }  // namespace
 
-MainWindow::MainWindow(nk::Application &app)
+MainWindow::MainWindow(nk::Application &app, int width, int height)
     : app_(app), window_({
                      .title = "Generator",
-                     .width = 960,
-                     .height = 800,
+                     .width = width,
+                     .height = height,
                  })
 {
   build_ui(app);
@@ -153,22 +232,25 @@ void MainWindow::build_ui(nk::Application &app)
   root->set_debug_name("GeneratorShell");
   root_ = root;
 
-  auto menus = build_menus();
   if (app.supports_native_app_menu()) {
     /* macOS puts the menu in the system menu bar; no widget needed. */
-    app.set_native_app_menu(menus);
     input_.set_accelerators_enabled(false);
   } else {
     menu_bar_ = nk::MenuBar::create();
-    for (auto &menu : menus) {
-      menu_bar_->add_menu(std::move(menu));
-    }
     menu_bar_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
     root->append(menu_bar_);
   }
+  install_menus();
 
   view_ = EmulatorView::create();
-  root->append(view_);
+
+  /* The toast overlay wraps the stage so feedback floats over the game
+   * rather than pushing the layout around. */
+  toasts_ = nk::ToastOverlay::create();
+  toasts_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
+  toasts_->set_vertical_size_policy(nk::SizePolicy::Expanding);
+  toasts_->set_child(view_);
+  root->append(toasts_);
 
   status_ = nk::StatusBar::create();
   status_->set_horizontal_size_policy(nk::SizePolicy::Expanding);
@@ -186,9 +268,39 @@ void MainWindow::build_ui(nk::Application &app)
     (void)menu_bar_->on_action().connect(dispatch);
   (void)app.on_native_app_menu_action().connect(dispatch);
 
+  /* Dropping a ROM on the stage is the fastest way to load one. Enter and
+   * motion must accept for the platform to show a copy cursor. */
+  auto accept_rom = [](nk::DragDropEvent &event) {
+    if (!dropped_rom_path(event).empty())
+      event.accept(nk::DragOperation::Copy);
+  };
+  (void)view_->on_drag_enter().connect(accept_rom);
+  (void)view_->on_drag_motion().connect(accept_rom);
+  (void)view_->on_drop().connect([this](nk::DragDropEvent &event) {
+    const std::string path = dropped_rom_path(event);
+    if (path.empty())
+      return;
+    event.accept(nk::DragOperation::Copy);
+    if (rom_drop_handler_)
+      rom_drop_handler_(path);
+  });
+
   (void)window_.on_close_requested().connect([this] { app_.quit(0); });
 
   window_.set_child(root_);
+}
+
+void MainWindow::install_menus()
+{
+  auto menus = build_menus(menu_state_);
+  if (menu_bar_) {
+    menu_bar_->clear();
+    for (auto &menu : menus) {
+      menu_bar_->add_menu(std::move(menu));
+    }
+  } else {
+    app_.set_native_app_menu(std::move(menus));
+  }
 }
 
 void MainWindow::start_timers(nk::Application &app)
@@ -209,6 +321,23 @@ void MainWindow::set_command_handler(
     std::function<void(std::string_view)> handler)
 {
   command_handler_ = std::move(handler);
+}
+
+void MainWindow::set_rom_drop_handler(std::function<void(std::string)> handler)
+{
+  rom_drop_handler_ = std::move(handler);
+}
+
+void MainWindow::set_menu_state(MenuState state)
+{
+  menu_state_ = std::move(state);
+  install_menus();
+}
+
+void MainWindow::show_toast(std::string title)
+{
+  toasts_->add_toast(
+      {.title = std::move(title), .timeout = std::chrono::milliseconds(3000)});
 }
 
 void MainWindow::on_tick()

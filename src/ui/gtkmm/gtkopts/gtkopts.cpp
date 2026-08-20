@@ -170,15 +170,14 @@ int gtkopts_load(const char *file)
     else
       confi->next = conf;
   }
-finished:
-  {
-    int had_error = ferror(fd);
-    if (fclose(fd) || had_error) {
-      fprintf(stderr, "%s: error whilst reading conf: %s\n", PACKAGE,
-              strerror(errno));
-      return -1;
-    }
+finished: {
+  int had_error = ferror(fd);
+  if (fclose(fd) || had_error) {
+    fprintf(stderr, "%s: error whilst reading conf: %s\n", PACKAGE,
+            strerror(errno));
+    return -1;
   }
+}
   return 0;
 error:
   fclose(fd);

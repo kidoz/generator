@@ -9,5 +9,6 @@ nodalkit_ui_sources = files(
     'emulator_view.cpp',
     'input_controller.cpp',
     'main_window.cpp',
+    'preferences_dialog.cpp',
     'generator_app.cpp'
 )

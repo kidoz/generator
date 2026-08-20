@@ -5,9 +5,7 @@
 #include "ui_bridge.hpp"
 
 #include "emulator_core.hpp"
-#include "vdp.hpp"
 
-#include "gensound.h"
 #include "gensoundp.h"
 
 #include <chrono>
@@ -72,7 +70,6 @@ void EmulatorThread::set_emulation_running(bool running)
 
 void EmulatorThread::thread_loop()
 {
-  auto &vdp = generator::vdp();
   auto field_duration = kFieldNtsc;
   auto last_field = Clock::now();
 
@@ -102,7 +99,7 @@ void EmulatorThread::thread_loop()
      * little early. A queue well past the threshold means we are ahead of
      * the sound hardware, so skip this round entirely. */
     const int pending = soundp_samplesbuffered();
-    const int threshold = static_cast<int>(sound_threshold);
+    const int threshold = SOUNDP_THRESHOLD;
 
     bool need_field = elapsed >= field_duration;
     if (!need_field && pending < threshold / 2 && elapsed >= field_duration / 2)
@@ -113,7 +110,7 @@ void EmulatorThread::thread_loop()
     if (!need_field)
       continue;
 
-    field_duration = vdp.vdp_pal ? kFieldPal : kFieldNtsc;
+    field_duration = g_emulator_core->video_mode() ? kFieldPal : kFieldNtsc;
 
     g_emulator_core->run_frame();
 

@@ -25,4 +25,21 @@ extern t_binding ui_bindings[2]; /* keyboard/joystick bindings for players */
 int ui_topbit(unsigned long int bits);
 void ui_setupscreen(void);
 
+/* Accurate-core helpers: create/destroy the EmulatorCore instance. */
+#ifdef __cplusplus
+namespace generator {
+class EmulatorCore;
+}
+extern "C" {
+#endif
+
+void ui_create_core(void);
+void ui_destroy_core(void);
+void *ui_get_core_ptr(void);
+void ui_set_frameskip(int skip);
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif /* GENERATOR_UI_CONSOLE_H */

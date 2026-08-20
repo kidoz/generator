@@ -15,12 +15,9 @@
 
 #include "ui.h"
 #include "generator.h"
-#include "vdp.h"
-#include "state.h"
 
-/* C++ VDP class (singleton instance) for the capturing video backend. */
-#include "vdp.hpp"
-
+/* Per-frame canonical state fingerprints. */
+#include "state_v3.hpp"
 
 /* Version info */
 #ifndef VERSION
@@ -187,44 +184,20 @@ public:
   }
 };
 
-/* CapturingVideo fingerprints the rendered video output. Like the gtkmm
- * UiBridgeVideo, it pulls each scanline out of the shared VDP state itself
- * (the pixels span through the DI boundary is intentionally empty until the
- * line buffer is plumbed through). It hashes the raw 8-bit paletted VDP line
- * data — before any backend palette conversion — so the fingerprint is
- * backend-independent. The hashed stream is, in emission order: line index
- * (u32 LE) + width bytes of pixels per line, then the field index (u32 LE)
- * per present_field, so a scanline shift also changes the hash. */
+/* CapturingVideo fingerprints the rendered video output. It hashes the raw
+ * 8-bit paletted scanlines the core pushes through render_line — before any
+ * backend palette conversion — so the fingerprint is backend-independent.
+ * The hashed stream is, in emission order: line index (u32 LE) + width
+ * bytes of pixels per line, then the field index (u32 LE) per
+ * present_field, so a scanline shift also changes the hash. */
 class CapturingVideo : public IVideoBackend {
 public:
   void render_line(int line, std::span<const uint8_t> pixels) override
   {
-    auto &vdp = generator::vdp();
-
-    if (line < 0 || line >= static_cast<int>(vdp.vdp_vislines))
+    if (line < 0 || pixels.empty()) {
       return;
-
-    uint8_t gfx[320];
-    const uint8_t *reg = vdp.vdp_reg;
-
-    switch ((reg[12] >> 1) & 3) {
-    case 0:
-    case 1:
-    case 2:
-      vdp_renderline(static_cast<unsigned int>(line), gfx, 0);
-      break;
-    case 3:
-      vdp_renderline(static_cast<unsigned int>(line), gfx,
-                     vdp.vdp_oddframe);
-      break;
     }
-
-    const unsigned int width = (reg[12] & 1) ? 320 : 256;
-    m_total.update_u32(static_cast<uint32_t>(line));
-    m_total.update(gfx, width);
-    m_field.update_u32(static_cast<uint32_t>(line));
-    m_field.update(gfx, width);
-    m_lines++;
+    hash_line(line, pixels.data(), (unsigned int)pixels.size());
   }
 
   void present_field() override
@@ -253,6 +226,15 @@ public:
   }
 
 private:
+  void hash_line(int line, const uint8_t *pixels, unsigned int width)
+  {
+    m_total.update_u32(static_cast<uint32_t>(line));
+    m_total.update(pixels, width);
+    m_field.update_u32(static_cast<uint32_t>(line));
+    m_field.update(pixels, width);
+    m_lines++;
+  }
+
   Fnv1a64 m_total;
   Fnv1a64 m_field;
   uint64_t m_last_field = 0xcbf29ce484222325ULL;
@@ -260,12 +242,10 @@ private:
   unsigned int m_lines = 0;
 };
 
-/* Hash the emulator's save state after the run: state_savefile() output is
- * fully deterministic (no timestamps; the only text is the compile-time
- * VERSION header line), so hashing the serialized blob fingerprints the whole
- * machine state — CPU regs, RAM, VDP memories, sound chips — at once. Uses a
- * temporary file because the save path is file-based. */
-static int dump_state_hash_report()
+/* Hash the emulator's save state after the run. The core's blob is fully
+ * deterministic, so hashing it fingerprints the whole machine state at
+ * once. Uses a temporary file because the save path is file-based. */
+static int dump_state_hash_report(EmulatorCore &core)
 {
   char tmpl[] = "/tmp/generator-headless-state-XXXXXX";
   const int fd = mkstemp(tmpl);
@@ -275,7 +255,7 @@ static int dump_state_hash_report()
   }
   close(fd);
 
-  if (state_savefile(tmpl) != 0) {
+  if (core.save_state(tmpl) != 0) {
     std::cerr << "Error: failed to save state for hashing\n";
     unlink(tmpl);
     return 1;
@@ -303,6 +283,38 @@ static int dump_state_hash_report()
   printf("  bytes: %zu\n", total);
   printf("  fnv1a64: %016llx\n", (unsigned long long)hash.value());
   return 0;
+}
+
+/* Canonical per-frame fingerprint: the Z80 RAM (WZ80 chunk of a state v3
+ * blob), the set the reference oracle publishes too. */
+static std::optional<uint64_t> z80_ram_fingerprint(EmulatorCore &core)
+{
+  char tmpl[] = "/tmp/generator-headless-frame-XXXXXX";
+  const int fd = mkstemp(tmpl);
+  if (fd < 0) {
+    return std::nullopt;
+  }
+  close(fd);
+  if (core.save_state(tmpl) != 0) {
+    unlink(tmpl);
+    return std::nullopt;
+  }
+  std::ifstream in(tmpl, std::ios::binary);
+  std::vector<uint8_t> blob((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+  unlink(tmpl);
+  auto chunks = generator::StateV3::deserialize(blob);
+  if (!chunks) {
+    return std::nullopt;
+  }
+  Fnv1a64 hash;
+  for (const auto &chunk : *chunks) {
+    if (chunk.id == generator::fourcc("WZ80")) {
+      hash.update(chunk.data.data(), chunk.data.size());
+      return hash.value();
+    }
+  }
+  return std::nullopt;
 }
 
 class HeadlessLogger : public ILogger {
@@ -356,6 +368,15 @@ static void print_usage(const char *progname)
   printf("  --dump-state-hash   Save the final machine state to a temporary "
          "file and\n");
   printf("                      print an FNV-1a checksum of the blob\n");
+  printf("  --hash-per-frame    Print a per-frame FNV-1a video fingerprint "
+         "after each\n");
+  printf("  --hash-state-per-frame  Print a per-frame FNV-1a of the Z80 "
+         "RAM\n");
+  printf("                          (the set the reference oracle "
+         "publishes)\n");
+  printf("                      frame (fine-grained first-divergence diffs "
+         "between\n");
+  printf("                      cores/builds; implies video capture)\n");
   printf("  -V, --verbose       Enable verbose output\n");
   printf("  -q, --quiet         Suppress all output except errors\n");
 }
@@ -363,6 +384,7 @@ static void print_usage(const char *progname)
 static void print_version(void)
 {
   printf("Generator Headless Backend v%s\n", VERSION);
+  printf("Emulation core: cycle-accurate\n");
   printf("Sega Genesis/Mega Drive Emulator\n");
   printf("See AUTHORS.md for copyright attribution.\n");
 }
@@ -375,6 +397,8 @@ int main(int argc, char *argv[])
   const char *dump_audio_file = nullptr;
   int dump_video_hash = 0;
   int dump_state_hash = 0;
+  int hash_per_frame = 0;
+  int hash_state_per_frame = 0;
   unsigned int num_frames = DEFAULT_FRAMES;
   int opt;
 
@@ -389,6 +413,8 @@ int main(int argc, char *argv[])
       {"dump-audio", required_argument, 0, 'D'},
       {"dump-video-hash", no_argument, &dump_video_hash, 1},
       {"dump-state-hash", no_argument, &dump_state_hash, 1},
+      {"hash-per-frame", no_argument, &hash_per_frame, 1},
+      {"hash-state-per-frame", no_argument, &hash_state_per_frame, 1},
       {0, 0, 0, 0}};
 
   while ((opt = getopt_long(argc, argv, "hvf:Vql:s:D:", long_options,
@@ -459,7 +485,7 @@ int main(int argc, char *argv[])
       audio = std::make_unique<HeadlessAudio>();
     }
     std::unique_ptr<IVideoBackend> video;
-    if (dump_video_hash) {
+    if (dump_video_hash || hash_per_frame) {
       auto cap = std::make_unique<CapturingVideo>();
       capture_video = cap.get();
       video = std::move(cap);
@@ -510,6 +536,17 @@ int main(int argc, char *argv[])
         break;
       }
 
+      if (hash_per_frame && capture_video != nullptr) {
+        printf("frame %u fnv1a64 %016llx\n", frame,
+               (unsigned long long)capture_video->last_field_hash());
+      }
+      if (hash_state_per_frame) {
+        const auto fp = z80_ram_fingerprint(*core);
+        if (fp) {
+          printf("frame %u fnv1a64 %016llx\n", frame, (unsigned long long)*fp);
+        }
+      }
+
       if (verbose_mode && !quiet_mode && frame > 0 &&
           (frame % (core->framerate() * 10)) == 0) {
         printf("Frame %u / %u (%.1f%%)\n", frame, num_frames,
@@ -523,8 +560,8 @@ int main(int argc, char *argv[])
     if (!quiet_mode) {
       printf("\nCompleted %u frames in %.2f seconds\n", frame, elapsed);
       printf("Average: %.2f frames/sec (%.2fx realtime at %uhz)\n",
-             frame / elapsed,
-             (frame / elapsed) / core->framerate(), core->framerate());
+             frame / elapsed, (frame / elapsed) / core->framerate(),
+             core->framerate());
     }
 
     if (dump_audio_file != nullptr && capture != nullptr) {
@@ -550,7 +587,7 @@ int main(int argc, char *argv[])
     }
 
     if (dump_state_hash) {
-      if (dump_state_hash_report() != 0)
+      if (dump_state_hash_report(*core) != 0)
         return 1;
     }
 
