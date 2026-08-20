@@ -4,8 +4,6 @@
 #include "machine.h"
 #include "gensoundp.h"
 
-#include "system.hpp" /* ui_audio_output */
-
 /*** soundp_start - start sound hardware (no-op) ***/
 
 int soundp_start(void)
@@ -44,15 +42,12 @@ int soundp_samplesbuffered(void)
   return 0;
 }
 
-/*** soundp_output - forward samples to the audio_output UI callback ***/
-/* Unlike the other no-ops here, the rendered samples are forwarded to the
- * registered audio backend via the audio_output UI callback (the standard
- * delivery seam). The headless no-op backend discards them; the capturing
- * backend (--dump-audio) accumulates them for deterministic A/B comparison.
- * Previously this discarded samples, leaving the audio_output seam dead. */
-void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
+/*** soundp_output - discard samples ***/
+/* The core delivers its samples straight to the registered IAudioBackend,
+ * so nothing reaches the platform layer in a headless run; this exists only
+ * to satisfy the link. */
+void soundp_output(const uint16 *, const uint16 *, unsigned int)
 {
-  generator::ui_audio_output(left, right, samples);
 }
 
 /*** soundp_reset - reset audio subsystem (no-op) ***/

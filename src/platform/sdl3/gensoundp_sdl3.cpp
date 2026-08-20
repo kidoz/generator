@@ -9,13 +9,8 @@
 #include <SDL3/SDL.h>
 
 #include "generator.h"
-#include "gensound.h"
 #include "gensoundp.h"
-#include "vdp.h"
 #include "ui.h"
-
-/* VDP state moved into generator::Vdp (see vdp.hpp) */
-#include "vdp.hpp"
 
 /*** file scoped variables ***/
 
@@ -70,7 +65,6 @@ static const char *soundp_detect_audio_backend(void)
 
 int soundp_start(void)
 {
-  auto &vdp = generator::vdp();
   SDL_AudioSpec src_spec, dst_spec;
   int num_devices;
   SDL_AudioDeviceID *devices;
@@ -84,9 +78,9 @@ int soundp_start(void)
     }
   }
 
-  LOG_VERBOSE(
-      "SDL3 audio subsystem initialized, driver: %s",
-       SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown");
+  LOG_VERBOSE("SDL3 audio subsystem initialized, driver: %s",
+              SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver()
+                                          : "unknown");
 
   /* Get list of audio playback devices */
   devices = SDL_GetAudioPlaybackDevices(&num_devices);
@@ -109,7 +103,7 @@ int soundp_start(void)
   dev_id = SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK;
 
   /* Configure audio format */
-  src_spec.freq = sound_speed;
+  src_spec.freq = SOUND_SAMPLERATE;
   src_spec.format = SDL_AUDIO_S16; /* 16-bit signed */
   src_spec.channels = 2;           /* stereo */
 
@@ -164,13 +158,13 @@ int soundp_start(void)
   const char *backend = soundp_detect_audio_backend();
 
   LOG_VERBOSE("SDL3 Audio started: %d Hz, %d channels", src_spec.freq,
-               src_spec.channels);
-  LOG_VERBOSE(
-      "Audio backend: %s (SDL driver: %s)", backend,
-       SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver() : "unknown");
+              src_spec.channels);
+  LOG_VERBOSE("Audio backend: %s (SDL driver: %s)", backend,
+              SDL_GetCurrentAudioDriver() ? SDL_GetCurrentAudioDriver()
+                                          : "unknown");
   LOG_VERBOSE("Threshold = %d bytes (%d fields of sound === %dms latency)",
-               sound_threshold * 4, sound_minfields,
-               (int)(1000 * (float)sound_minfields / (float)vdp.vdp_framerate));
+              SOUNDP_THRESHOLD * 4, SOUNDP_MIN_FIELDS,
+              SOUNDP_MIN_FIELDS * 1000 / 50);
 
   /* Provide helpful information for PulseAudio users */
   if (strstr(backend, "PulseAudio") != nullptr &&
@@ -185,13 +179,13 @@ int soundp_start(void)
      never reaches the threshold when production == consumption rate.
      Pre-fill with ~3 frames worth of silence (half the threshold). */
   {
-    unsigned int prefill_samples = sound_sampsperfield * 3;
+    unsigned int prefill_samples = SOUNDP_SAMPLES_PER_FIELD * 3;
     size_t prefill_bytes = prefill_samples * 4; /* stereo 16-bit = 4 bytes */
     int16_t *silence = (int16_t *)calloc(prefill_samples * 2, sizeof(int16_t));
     if (silence) {
       if (SDL_PutAudioStreamData(soundp_stream, silence, (int)prefill_bytes)) {
         LOG_VERBOSE("Pre-filled audio buffer with %u samples of silence",
-                     prefill_samples);
+                    prefill_samples);
       }
       free(silence);
     }
@@ -272,7 +266,8 @@ int soundp_reset(void)
 
 /*** soundp_output - output samples to SDL3 ***/
 
-void soundp_output(uint16 *left, uint16 *right, unsigned int samples)
+void soundp_output(const uint16 *left, const uint16 *right,
+                   unsigned int samples)
 {
   int16_t interleaved[SOUND_BUFFER_SAMPLES * 2];
   unsigned int i;
