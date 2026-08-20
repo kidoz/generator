@@ -10,7 +10,6 @@
 #include "socket.h"
 
 /* Emulator headers for input access. */
-#include "controller_ports.hpp"
 #include "generator.h"
 
 /* Emulator name sent to Kaillera servers */
@@ -104,40 +103,34 @@ int netplay_connect(const netplay_config_t *config)
   }
 
   /* Set up Kaillera callbacks */
-  kaillera_callbacks_t k_callbacks = {
-    .on_connect = on_kaillera_connect,
-    .on_disconnect = on_kaillera_disconnect,
-    .on_error = on_kaillera_error,
-    .on_user_join = nullptr,
-    .on_user_quit = nullptr,
-    .on_chat = on_kaillera_chat,
-    .on_game_created = nullptr,
-    .on_game_closed = nullptr,
-    .on_player_join = nullptr,
-    .on_player_leave = on_kaillera_player_leave,
-    .on_game_start = on_kaillera_game_start,
-    .on_game_drop = on_kaillera_game_drop,
-    .on_game_data = nullptr,
-    .user_data = nullptr
-  };
+  kaillera_callbacks_t k_callbacks = {.on_connect = on_kaillera_connect,
+                                      .on_disconnect = on_kaillera_disconnect,
+                                      .on_error = on_kaillera_error,
+                                      .on_user_join = nullptr,
+                                      .on_user_quit = nullptr,
+                                      .on_chat = on_kaillera_chat,
+                                      .on_game_created = nullptr,
+                                      .on_game_closed = nullptr,
+                                      .on_player_join = nullptr,
+                                      .on_player_leave =
+                                          on_kaillera_player_leave,
+                                      .on_game_start = on_kaillera_game_start,
+                                      .on_game_drop = on_kaillera_game_drop,
+                                      .on_game_data = nullptr,
+                                      .user_data = nullptr};
   kaillera_client_set_callbacks(netplay_ctx.client, &k_callbacks);
 
   /* Initiate connection */
   netplay_ctx.state = NETPLAY_CONNECTING;
 
   int result = kaillera_client_connect(
-    netplay_ctx.client,
-    config->server,
-    config->port,
-    config->username,
-    NETPLAY_EMULATOR_NAME,
-    (uint8_t)config->conn_type
-  );
+      netplay_ctx.client, config->server, config->port, config->username,
+      NETPLAY_EMULATOR_NAME, (uint8_t)config->conn_type);
 
   if (result < 0) {
     const char *err = kaillera_client_get_error(netplay_ctx.client);
-    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
-             "%s", err ? err : "Connection failed");
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s",
+             err ? err : "Connection failed");
     netplay_ctx.state = NETPLAY_ERROR;
     kaillera_client_destroy(netplay_ctx.client);
     netplay_ctx.client = nullptr;
@@ -185,8 +178,8 @@ int netplay_create_game(const char *rom_name)
 
   if (kaillera_client_create_game(netplay_ctx.client, rom_name) < 0) {
     const char *err = kaillera_client_get_error(netplay_ctx.client);
-    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
-             "%s", err ? err : "Failed to create game");
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s",
+             err ? err : "Failed to create game");
     return -1;
   }
 
@@ -206,8 +199,8 @@ int netplay_join_game(int game_id)
 
   if (kaillera_client_join_game(netplay_ctx.client, (uint32_t)game_id) < 0) {
     const char *err = kaillera_client_get_error(netplay_ctx.client);
-    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
-             "%s", err ? err : "Failed to join game");
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s",
+             err ? err : "Failed to join game");
     return -1;
   }
 
@@ -252,7 +245,8 @@ void netplay_end_game(void)
 
 int netplay_chat_send(const char *text)
 {
-  if (!netplay_ctx.initialized || netplay_ctx.client == nullptr || text == nullptr)
+  if (!netplay_ctx.initialized || netplay_ctx.client == nullptr ||
+      text == nullptr)
     return -1;
 
   return kaillera_client_chat(netplay_ctx.client, text);
@@ -265,8 +259,12 @@ int netplay_request_gamelist(void)
   return 0;
 }
 
-int netplay_sync_frame(void)
+int netplay_sync_frame(const netplay_input_t *local, netplay_input_t *players,
+                       int max_players)
 {
+  if (local == nullptr || players == nullptr || max_players <= 0)
+    return -1;
+
   if (!netplay_ctx.initialized || netplay_ctx.client == nullptr)
     return -1;
 
@@ -279,35 +277,28 @@ int netplay_sync_frame(void)
     local_player = 0;
 
   /* Serialize local input */
-  auto &controllers = generator::controllers();
-  uint16_t local_input =
-      netplay_serialize_input(&controllers.controller(local_player));
+  uint16_t local_input = netplay_serialize_input(local);
 
   /* Exchange inputs with server (blocking) */
   uint16_t inputs[KAILLERA_MAX_PLAYERS];
   inputs[0] = local_input;
 
-  int result = kaillera_client_modify_play_values(
-    netplay_ctx.client,
-    inputs,
-    sizeof(uint16_t)
-  );
+  int result = kaillera_client_modify_play_values(netplay_ctx.client, inputs,
+                                                  sizeof(uint16_t));
 
   if (result < 0) {
     /* Connection lost or error */
     const char *err = kaillera_client_get_error(netplay_ctx.client);
-    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
-             "%s", err ? err : "Connection lost");
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s",
+             err ? err : "Connection lost");
     netplay_ctx.state = NETPLAY_ERROR;
     return -1;
   }
 
-  /* Apply remote player input */
+  /* Hand every player's input back to the caller */
   int num_players = kaillera_client_get_num_players(netplay_ctx.client);
-  for (int i = 0; i < num_players && i < 2; i++) {
-    if (i != local_player) {
-      netplay_deserialize_input(inputs[i], &controllers.controller(i));
-    }
+  for (int i = 0; i < num_players && i < max_players; i++) {
+    netplay_deserialize_input(inputs[i], &players[i]);
   }
 
   return 0;
@@ -365,49 +356,58 @@ int netplay_get_local_player(void)
 }
 
 /* Input serialization - 16-bit format for Genesis 6-button controller */
-uint16_t netplay_serialize_input(const void *keys_ptr)
+uint16_t netplay_serialize_input(const netplay_input_t *keys)
 {
-  if (keys_ptr == nullptr)
+  if (keys == nullptr)
     return 0;
 
-  const t_keys *keys = (const t_keys *)keys_ptr;
   uint16_t data = 0;
 
-  if (keys->up)    data |= (1 << 0);
-  if (keys->down)  data |= (1 << 1);
-  if (keys->left)  data |= (1 << 2);
-  if (keys->right) data |= (1 << 3);
-  if (keys->a)     data |= (1 << 4);
-  if (keys->b)     data |= (1 << 5);
-  if (keys->c)     data |= (1 << 6);
-  if (keys->start) data |= (1 << 7);
-  if (keys->x)     data |= (1 << 8);
-  if (keys->y)     data |= (1 << 9);
-  if (keys->z)     data |= (1 << 10);
-  if (keys->mode)  data |= (1 << 11);
+  if (keys->up)
+    data |= (1 << 0);
+  if (keys->down)
+    data |= (1 << 1);
+  if (keys->left)
+    data |= (1 << 2);
+  if (keys->right)
+    data |= (1 << 3);
+  if (keys->a)
+    data |= (1 << 4);
+  if (keys->b)
+    data |= (1 << 5);
+  if (keys->c)
+    data |= (1 << 6);
+  if (keys->start)
+    data |= (1 << 7);
+  if (keys->x)
+    data |= (1 << 8);
+  if (keys->y)
+    data |= (1 << 9);
+  if (keys->z)
+    data |= (1 << 10);
+  if (keys->mode)
+    data |= (1 << 11);
 
   return data;
 }
 
-void netplay_deserialize_input(uint16_t data, void *keys_ptr)
+void netplay_deserialize_input(uint16_t data, netplay_input_t *keys)
 {
-  if (keys_ptr == nullptr)
+  if (keys == nullptr)
     return;
 
-  t_keys *keys = (t_keys *)keys_ptr;
-
-  keys->up    = (data & (1 << 0)) ? 1 : 0;
-  keys->down  = (data & (1 << 1)) ? 1 : 0;
-  keys->left  = (data & (1 << 2)) ? 1 : 0;
+  keys->up = (data & (1 << 0)) ? 1 : 0;
+  keys->down = (data & (1 << 1)) ? 1 : 0;
+  keys->left = (data & (1 << 2)) ? 1 : 0;
   keys->right = (data & (1 << 3)) ? 1 : 0;
-  keys->a     = (data & (1 << 4)) ? 1 : 0;
-  keys->b     = (data & (1 << 5)) ? 1 : 0;
-  keys->c     = (data & (1 << 6)) ? 1 : 0;
+  keys->a = (data & (1 << 4)) ? 1 : 0;
+  keys->b = (data & (1 << 5)) ? 1 : 0;
+  keys->c = (data & (1 << 6)) ? 1 : 0;
   keys->start = (data & (1 << 7)) ? 1 : 0;
-  keys->x     = (data & (1 << 8)) ? 1 : 0;
-  keys->y     = (data & (1 << 9)) ? 1 : 0;
-  keys->z     = (data & (1 << 10)) ? 1 : 0;
-  keys->mode  = (data & (1 << 11)) ? 1 : 0;
+  keys->x = (data & (1 << 8)) ? 1 : 0;
+  keys->y = (data & (1 << 9)) ? 1 : 0;
+  keys->z = (data & (1 << 10)) ? 1 : 0;
+  keys->mode = (data & (1 << 11)) ? 1 : 0;
 }
 
 /* Kaillera callback implementations */
@@ -422,8 +422,8 @@ static void on_kaillera_disconnect(const char *reason, void *user_data)
 {
   (void)user_data;
   if (reason != nullptr) {
-    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
-             "%s", reason);
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s",
+             reason);
   }
   netplay_ctx.state = NETPLAY_DISCONNECTED;
 }
@@ -432,8 +432,7 @@ static void on_kaillera_error(const char *error, void *user_data)
 {
   (void)user_data;
   if (error != nullptr) {
-    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
-             "%s", error);
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s", error);
   }
   netplay_ctx.state = NETPLAY_ERROR;
 

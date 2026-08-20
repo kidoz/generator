@@ -65,7 +65,8 @@ int socket_sendto(netplay_socket_t *sock, const void *data, size_t len,
  * Blocks up to timeout_ms milliseconds (0 = non-blocking, -1 = infinite).
  * Returns number of bytes received, 0 on timeout, or -1 on error.
  */
-int socket_recv(netplay_socket_t *sock, void *buf, size_t maxlen, int timeout_ms);
+int socket_recv(netplay_socket_t *sock, void *buf, size_t maxlen,
+                int timeout_ms);
 
 /*
  * Receive data and get the sender's address.

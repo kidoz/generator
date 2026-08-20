@@ -132,12 +132,12 @@ int socket_send(netplay_socket_t *sock, const void *data, size_t len)
   if (sock == nullptr || sock->fd < 0 || !sock->has_remote)
     return -1;
 
-  ssize_t sent = sendto(sock->fd, data, len, 0,
-                        (struct sockaddr *)&sock->remote_addr,
-                        sizeof(sock->remote_addr));
+  ssize_t sent =
+      sendto(sock->fd, data, len, 0, (struct sockaddr *)&sock->remote_addr,
+             sizeof(sock->remote_addr));
   if (sent < 0) {
-    snprintf(socket_error_buf, sizeof(socket_error_buf),
-             "Send failed: %s", strerror(errno));
+    snprintf(socket_error_buf, sizeof(socket_error_buf), "Send failed: %s",
+             strerror(errno));
     return -1;
   }
 
@@ -169,15 +169,16 @@ int socket_sendto(netplay_socket_t *sock, const void *data, size_t len,
   freeaddrinfo(res);
 
   if (sent < 0) {
-    snprintf(socket_error_buf, sizeof(socket_error_buf),
-             "Send failed: %s", strerror(errno));
+    snprintf(socket_error_buf, sizeof(socket_error_buf), "Send failed: %s",
+             strerror(errno));
     return -1;
   }
 
   return (int)sent;
 }
 
-int socket_recv(netplay_socket_t *sock, void *buf, size_t maxlen, int timeout_ms)
+int socket_recv(netplay_socket_t *sock, void *buf, size_t maxlen,
+                int timeout_ms)
 {
   if (sock == nullptr || sock->fd < 0)
     return -1;
@@ -194,8 +195,8 @@ int socket_recv(netplay_socket_t *sock, void *buf, size_t maxlen, int timeout_ms
 
     int ret = select(sock->fd + 1, &readfds, nullptr, nullptr, &tv);
     if (ret < 0) {
-      snprintf(socket_error_buf, sizeof(socket_error_buf),
-               "Select failed: %s", strerror(errno));
+      snprintf(socket_error_buf, sizeof(socket_error_buf), "Select failed: %s",
+               strerror(errno));
       return -1;
     }
     if (ret == 0) {
@@ -209,8 +210,8 @@ int socket_recv(netplay_socket_t *sock, void *buf, size_t maxlen, int timeout_ms
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       return 0;
     }
-    snprintf(socket_error_buf, sizeof(socket_error_buf),
-             "Receive failed: %s", strerror(errno));
+    snprintf(socket_error_buf, sizeof(socket_error_buf), "Receive failed: %s",
+             strerror(errno));
     return -1;
   }
 
@@ -236,8 +237,8 @@ int socket_recvfrom(netplay_socket_t *sock, void *buf, size_t maxlen,
 
     int ret = select(sock->fd + 1, &readfds, nullptr, nullptr, &tv);
     if (ret < 0) {
-      snprintf(socket_error_buf, sizeof(socket_error_buf),
-               "Select failed: %s", strerror(errno));
+      snprintf(socket_error_buf, sizeof(socket_error_buf), "Select failed: %s",
+               strerror(errno));
       return -1;
     }
     if (ret == 0) {
@@ -255,8 +256,8 @@ int socket_recvfrom(netplay_socket_t *sock, void *buf, size_t maxlen,
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       return 0;
     }
-    snprintf(socket_error_buf, sizeof(socket_error_buf),
-             "Receive failed: %s", strerror(errno));
+    snprintf(socket_error_buf, sizeof(socket_error_buf), "Receive failed: %s",
+             strerror(errno));
     return -1;
   }
 

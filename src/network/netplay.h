@@ -6,6 +6,20 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/*
+ * Button state exchanged over the wire.
+ *
+ * Netplay owns this struct rather than borrowing the machine's: it does not
+ * reach into the emulator. The caller reads its own local pad, hands it to
+ * netplay_sync_frame(), and drives the core with the remote pads that come
+ * back through EmulatorCore::set_input.
+ */
+typedef struct {
+  uint8_t up, down, left, right;
+  uint8_t a, b, c, start;
+  uint8_t x, y, z, mode;
+} netplay_input_t;
+
 /* Netplay connection state */
 typedef enum {
   NETPLAY_DISCONNECTED = 0,
@@ -17,31 +31,31 @@ typedef enum {
 
 /* Connection type (affects input delay) */
 typedef enum {
-  NETPLAY_CONN_LAN = 1,        /* LAN - minimal delay */
-  NETPLAY_CONN_EXCELLENT = 2,  /* Excellent connection */
-  NETPLAY_CONN_GOOD = 3,       /* Good connection */
-  NETPLAY_CONN_AVERAGE = 4,    /* Average connection */
-  NETPLAY_CONN_LOW = 5,        /* Low bandwidth */
-  NETPLAY_CONN_BAD = 6         /* Bad connection - maximum delay */
+  NETPLAY_CONN_LAN = 1,       /* LAN - minimal delay */
+  NETPLAY_CONN_EXCELLENT = 2, /* Excellent connection */
+  NETPLAY_CONN_GOOD = 3,      /* Good connection */
+  NETPLAY_CONN_AVERAGE = 4,   /* Average connection */
+  NETPLAY_CONN_LOW = 5,       /* Low bandwidth */
+  NETPLAY_CONN_BAD = 6        /* Bad connection - maximum delay */
 } netplay_conn_type_t;
 
 /* Netplay configuration */
 typedef struct {
-  char server[256];            /* Server hostname or IP */
-  uint16_t port;               /* Server port (default 27888) */
-  char username[32];           /* Player username */
+  char server[256];              /* Server hostname or IP */
+  uint16_t port;                 /* Server port (default 27888) */
+  char username[32];             /* Player username */
   netplay_conn_type_t conn_type; /* Connection quality */
-  int local_player;            /* Local player index (0 or 1) */
+  int local_player;              /* Local player index (0 or 1) */
 } netplay_config_t;
 
 /* Game room information */
 typedef struct {
-  int id;                      /* Game ID */
-  char name[128];              /* Game name (ROM name) */
-  char owner[32];              /* Room creator username */
-  int num_players;             /* Current player count */
-  int max_players;             /* Maximum players (usually 2) */
-  int status;                  /* 0=waiting, 1=playing */
+  int id;          /* Game ID */
+  char name[128];  /* Game name (ROM name) */
+  char owner[32];  /* Room creator username */
+  int num_players; /* Current player count */
+  int max_players; /* Maximum players (usually 2) */
+  int status;      /* 0=waiting, 1=playing */
 } netplay_game_t;
 
 /* Chat callback - called when chat message received */
@@ -57,7 +71,8 @@ typedef void (*netplay_gamelist_callback_t)(const netplay_game_t *games,
                                             int count, void *user_data);
 
 /* Error callback - called on connection errors */
-typedef void (*netplay_error_callback_t)(const char *error_msg, void *user_data);
+typedef void (*netplay_error_callback_t)(const char *error_msg,
+                                         void *user_data);
 
 /* Callback structure */
 typedef struct {
@@ -156,13 +171,16 @@ int netplay_request_gamelist(void);
  * Must be called once per frame when in NETPLAY_IN_GAME state.
  *
  * The function:
- * 1. Serializes local player input
+ * 1. Serializes the caller's local player input
  * 2. Sends to server and waits for all player inputs
- * 3. Deserializes and applies remote player input to the controller ports
+ * 3. Deserializes every player's input into `players`
  *
- * Returns 0 on success, -1 on connection lost or error.
+ * `players` receives one entry per player, indexed by player number, and
+ * must have room for `max_players`; the local player's own entry is echoed
+ * back unchanged. Returns 0 on success, -1 on connection lost or error.
  */
-int netplay_sync_frame(void);
+int netplay_sync_frame(const netplay_input_t *local, netplay_input_t *players,
+                       int max_players);
 
 /*
  * Poll for incoming packets and process callbacks.
@@ -186,20 +204,17 @@ int netplay_get_local_player(void);
 /*
  * Input serialization/deserialization utilities.
  * These are used internally but exposed for testing.
- * The keys parameter should be a pointer to t_keys.
  */
 
 /*
  * Serialize controller input to a 16-bit value.
  * Format: up|down|left|right|a|b|c|start|x|y|z|mode (bits 0-11)
- * @param keys Pointer to a t_keys structure
  */
-uint16_t netplay_serialize_input(const void *keys);
+uint16_t netplay_serialize_input(const netplay_input_t *keys);
 
 /*
  * Deserialize a 16-bit value to controller input.
- * @param keys Pointer to a t_keys structure
  */
-void netplay_deserialize_input(uint16_t data, void *keys);
+void netplay_deserialize_input(uint16_t data, netplay_input_t *keys);
 
 #endif /* NETPLAY_H */

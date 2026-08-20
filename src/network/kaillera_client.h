@@ -25,17 +25,18 @@ typedef struct {
   void (*on_error)(const char *error, void *user_data);
 
   /* Server messages */
-  void (*on_user_join)(const char *username, uint16_t ping,
-                       uint8_t conn_type, void *user_data);
+  void (*on_user_join)(const char *username, uint16_t ping, uint8_t conn_type,
+                       void *user_data);
   void (*on_user_quit)(const char *username, void *user_data);
   void (*on_chat)(const char *username, const char *message, void *user_data);
 
   /* Game events */
-  void (*on_game_created)(uint32_t game_id, const char *name,
-                          const char *owner, void *user_data);
+  void (*on_game_created)(uint32_t game_id, const char *name, const char *owner,
+                          void *user_data);
   void (*on_game_closed)(uint32_t game_id, void *user_data);
   void (*on_player_join)(int player_num, const char *username, void *user_data);
-  void (*on_player_leave)(int player_num, const char *username, void *user_data);
+  void (*on_player_leave)(int player_num, const char *username,
+                          void *user_data);
   void (*on_game_start)(int num_players, void *user_data);
   void (*on_game_drop)(void *user_data);
 
@@ -69,10 +70,9 @@ void kaillera_client_set_callbacks(kaillera_client_t *client,
  * Connect to a Kaillera server.
  * Returns 0 on success (connection initiated), -1 on failure.
  */
-int kaillera_client_connect(kaillera_client_t *client,
-                            const char *host, uint16_t port,
-                            const char *username, const char *emulator,
-                            uint8_t connection_type);
+int kaillera_client_connect(kaillera_client_t *client, const char *host,
+                            uint16_t port, const char *username,
+                            const char *emulator, uint8_t connection_type);
 
 /*
  * Disconnect from the server.
@@ -106,7 +106,8 @@ int kaillera_client_chat(kaillera_client_t *client, const char *message);
  * Returns 0 on success, -1 on failure.
  * Game ID is received via on_game_created callback.
  */
-int kaillera_client_create_game(kaillera_client_t *client, const char *game_name);
+int kaillera_client_create_game(kaillera_client_t *client,
+                                const char *game_name);
 
 /*
  * Join an existing game room.
@@ -138,8 +139,8 @@ int kaillera_client_ready(kaillera_client_t *client);
  * Returns the total number of bytes of input data received (all players),
  * or -1 on error/disconnect.
  */
-int kaillera_client_modify_play_values(kaillera_client_t *client,
-                                       void *input, int size);
+int kaillera_client_modify_play_values(kaillera_client_t *client, void *input,
+                                       int size);
 
 /*
  * End the current game.

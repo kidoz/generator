@@ -57,16 +57,16 @@ typedef enum {
 
 /* Kaillera message header */
 typedef struct {
-  uint16_t sequence;           /* Sequence number */
-  uint16_t length;             /* Payload length */
-  uint8_t type;                /* Message type */
+  uint16_t sequence; /* Sequence number */
+  uint16_t length;   /* Payload length */
+  uint8_t type;      /* Message type */
 } kaillera_msg_header_t;
 
 /* Kaillera packet (contains multiple messages) */
 typedef struct {
-  uint8_t message_count;       /* Number of messages in packet */
+  uint8_t message_count;                      /* Number of messages in packet */
   uint8_t data[KAILLERA_MAX_PACKET_SIZE - 1]; /* Message data */
-  size_t data_len;             /* Current data length */
+  size_t data_len;                            /* Current data length */
 } kaillera_packet_t;
 
 /* Parsed message structure */
@@ -74,14 +74,14 @@ typedef struct {
   kaillera_msg_type_t type;
   uint16_t sequence;
   uint16_t length;
-  const uint8_t *payload;      /* Points into packet data */
+  const uint8_t *payload; /* Points into packet data */
 } kaillera_message_t;
 
 /* Login request data */
 typedef struct {
   char username[32];
   char emulator[128];
-  uint8_t connection_type;     /* 1=LAN, 2=Excellent, ..., 6=Bad */
+  uint8_t connection_type; /* 1=LAN, 2=Excellent, ..., 6=Bad */
 } kaillera_login_t;
 
 /* User info from server */
@@ -90,7 +90,7 @@ typedef struct {
   char username[32];
   uint16_t ping;
   uint8_t connection_type;
-  uint8_t status;              /* 0=idle, 1=playing */
+  uint8_t status; /* 0=idle, 1=playing */
 } kaillera_user_info_t;
 
 /* Game info from server */
@@ -101,14 +101,14 @@ typedef struct {
   char owner[32];
   uint8_t num_players;
   uint8_t max_players;
-  uint8_t status;              /* 0=waiting, 1=playing */
+  uint8_t status; /* 0=waiting, 1=playing */
 } kaillera_game_info_t;
 
 /* Game data packet (input exchange) */
 typedef struct {
-  uint16_t frame_count;        /* Frame number (wraps at 65535) */
-  uint8_t player_count;        /* Number of players */
-  uint8_t data_size;           /* Size of each player's data */
+  uint16_t frame_count; /* Frame number (wraps at 65535) */
+  uint8_t player_count; /* Number of players */
+  uint8_t data_size;    /* Size of each player's data */
   uint8_t player_data[KAILLERA_MAX_PLAYERS * 16]; /* Input data */
 } kaillera_game_data_t;
 
@@ -122,22 +122,22 @@ void kaillera_packet_init(kaillera_packet_t *pkt);
  * Returns 0 on success, -1 if packet is full.
  */
 int kaillera_packet_add_message(kaillera_packet_t *pkt, uint16_t seq,
-                                kaillera_msg_type_t type,
-                                const void *payload, uint16_t payload_len);
+                                kaillera_msg_type_t type, const void *payload,
+                                uint16_t payload_len);
 
 /*
  * Serialize a packet to a byte buffer.
  * Returns the number of bytes written, or -1 on error.
  */
-int kaillera_packet_serialize(const kaillera_packet_t *pkt,
-                              uint8_t *buf, size_t buflen);
+int kaillera_packet_serialize(const kaillera_packet_t *pkt, uint8_t *buf,
+                              size_t buflen);
 
 /*
  * Parse a received packet.
  * Returns 0 on success, -1 on parse error.
  */
-int kaillera_packet_parse(kaillera_packet_t *pkt,
-                          const uint8_t *data, size_t len);
+int kaillera_packet_parse(kaillera_packet_t *pkt, const uint8_t *data,
+                          size_t len);
 
 /*
  * Get the number of messages in a parsed packet.
@@ -155,8 +155,8 @@ int kaillera_packet_get_message(const kaillera_packet_t *pkt, int index,
  * Serialize login data.
  * Returns payload length.
  */
-int kaillera_serialize_login(const kaillera_login_t *login,
-                             uint8_t *buf, size_t buflen);
+int kaillera_serialize_login(const kaillera_login_t *login, uint8_t *buf,
+                             size_t buflen);
 
 /*
  * Parse user info from server status message.
@@ -178,8 +178,8 @@ int kaillera_parse_server_status_games(const uint8_t *data, size_t len,
  * Serialize game data (input) packet.
  * Returns payload length.
  */
-int kaillera_serialize_game_data(const kaillera_game_data_t *gd,
-                                 uint8_t *buf, size_t buflen);
+int kaillera_serialize_game_data(const kaillera_game_data_t *gd, uint8_t *buf,
+                                 size_t buflen);
 
 /*
  * Parse game data (input) packet.
