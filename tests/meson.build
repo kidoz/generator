@@ -1,5 +1,9 @@
 # Catch2-based unit tests
 # Link against catch2-with-main for auto-generated main().
+#
+# Each suite compiles the translation units under test directly rather than
+# linking the machine library, so a chip test stays self-contained and does
+# not drag the whole machine in behind it.
 
 xbrz_inc = include_directories('../src/xbrz')
 
@@ -8,12 +12,6 @@ xbrz_inc = include_directories('../src/xbrz')
 # a subsystem need both the emitters and a threshold; support_logging.cpp
 # supplies the latter and keeps it silent.
 test_logging_sources = files('support_logging.cpp', '../src/util/log.cpp')
-
-# System owns a Cpuz80, so anything compiling system.cpp needs the class's
-# header and its storage half. cpuz80.cpp has no emulation-core dependency,
-# so this does not drag the z80f subproject into these tests.
-cpuz80_inc = include_directories('../src/cpu/z80')
-cpuz80_storage_sources = files('../src/cpu/z80/cpuz80.cpp')
 
 test_xbrz_tools = executable('test_xbrz_tools',
   'test_xbrz_tools.cpp',
@@ -27,18 +25,7 @@ test('xbrz_tools', test_xbrz_tools,
   suite: 'catch2'
 )
 
-# test_catch2_smoke = executable('test_catch2_smoke',
-#   'catch2_smoke.cpp',
-#   dependencies: [catch2_dep],
-#   build_by_default: false
-# )
-
-# test('catch2_smoke', test_catch2_smoke,
-#   timeout: 30,
-#   suite: 'catch2'
-# )
-
-# Z80 backend is now z80f (kidoz/z80f, fetched via subprojects/z80f.wrap).
+# Z80 backend is z80f (kidoz/z80f, fetched via subprojects/z80f.wrap).
 # z80f ships its own Catch2 test suite; we run it from the subproject directly
 # so generator's `meson test` reports z80f core correctness alongside ours.
 test_z80f_core = executable('test_z80f_core',
@@ -53,187 +40,122 @@ test('z80f_core_smoke', test_z80f_core,
   suite: 'catch2'
 )
 
-# SN76496 PSG characterization tests.
-# sn76496.cpp is compiled directly into the test (mirroring how
-# src/persist/test pulls in state.cpp); the only external symbol
-# it references (state_transfer32) is stubbed in the test source, keeping the
-# link self-contained without dragging in the full audio/core globals.
-sn76496_inc = include_directories('../include/generator', '../src/audio/sn76496')
-vdp_inc = include_directories('../include/generator', '../src/video')
-fm_inc = include_directories('../src/audio/ym2612', '../include/generator')
-
-test_sn76496 = executable('test_sn76496',
-  'test_sn76496.cpp',
-  '../src/audio/sn76496/sn76496.cpp',
-  include_directories: [sn76496_inc],
-  dependencies: [catch2_dep],
-  override_options: ['cpp_std=c++23'],
-  build_by_default: false
-)
-
-test('sn76496_psg', test_sn76496,
-  timeout: 30,
-  suite: 'catch2'
-)
-
-# Genesis controller-port latch and six-button handshake tests.
-test_controller_ports = executable('test_controller_ports',
-  'test_controller_ports.cpp',
-  '../src/cpu/68k/controller_ports.cpp',
-  include_directories: [sn76496_inc],
-  dependencies: [catch2_dep],
-  override_options: ['cpp_std=c++23'],
-  build_by_default: false
-)
-
-test('controller_ports', test_controller_ports,
-  timeout: 30,
-  suite: 'catch2'
-)
-
-# System subsystem ownership and transitional compatibility routing.
-test_system = executable('test_system',
-  'test_system.cpp',
-  '../src/core/system.cpp',
-  '../src/cpu/68k/controller_ports.cpp',
-  '../src/audio/ym2612/fm_write_queue.cpp',
-  '../src/audio/ym2612/fm_write_queue_compat.cpp',
-  cpuz80_storage_sources,
-  test_logging_sources,
-  include_directories: [sn76496_inc, vdp_inc, fm_inc, cpuz80_inc],
-  dependencies: [catch2_dep, sn76496_dep, ym2612_dep],
-  override_options: ['cpp_std=c++23'],
-  build_by_default: false
-)
-
-test('system_subsystem_ownership', test_system,
-  timeout: 30,
-  suite: 'catch2'
-)
-
-# YM2612 envelope-core characterization tests.
-# fm_eg.cpp (extracted from fm.c) is compiled directly into the test, like
-# sn76496.c above, so the test links only the envelope math — not fm.c's full
-# chip/global state. The [gems-pin] cases pin current (incorrect) behavior so
-# the deferred TD-019/020/021 fixes land as visible diffs.
-test_fm_eg = executable('test_fm_eg',
-  'test_fm_eg.cpp',
-  '../src/audio/ym2612/fm_eg.cpp',
-  include_directories: [fm_inc],
-  dependencies: [catch2_dep],
-  override_options: ['cpp_std=c++23'],
-  build_by_default: false
-)
-
-test('fm_eg_envelope', test_fm_eg,
-  timeout: 30,
-  suite: 'catch2'
-)
-
-# OPN/YM2612 LFO step characterization tests.
-# fm_lfo.cpp (extracted from fm.c's four duplicated LFO blocks) is compiled
-# directly into the test, like fm_eg.cpp above. The [gems-pin] case pins the
-# current (incorrect) PM-clock behavior so TD-021 lands as a visible diff.
-test_fm_lfo = executable('test_fm_lfo',
-  'test_fm_lfo.cpp',
-  '../src/audio/ym2612/fm_lfo.cpp',
-  include_directories: [fm_inc],
-  dependencies: [catch2_dep],
-  override_options: ['cpp_std=c++23'],
-  build_by_default: false
-)
-
-test('fm_lfo_step', test_fm_lfo,
-  timeout: 30,
-  suite: 'catch2'
-)
-
-# Timestamped FM write queue unit tests (cycle-accurate Z80->YM2612 writes).
-test_fm_write_queue = executable('test_fm_write_queue',
-  'test_fm_write_queue.cpp',
-  '../src/audio/ym2612/fm_write_queue.cpp',
-  include_directories: [fm_inc],
-  dependencies: [catch2_dep],
-  override_options: ['cpp_std=c++23'],
-  build_by_default: false
-)
-
-test('fm_write_queue', test_fm_write_queue,
-  timeout: 30,
-  suite: 'catch2'
-)
-
-# VDP characterization tests.
-# vdp.cpp is compiled directly into the test; the emulator globals it
-# references (68K regs/ROM/RAM, event freeze, ui_err, logging) are stubbed in
-# the test source, keeping the link self-contained.
-test_vdp = executable('test_vdp',
-  'test_vdp.cpp',
-  vdp_sources,
-  '../src/util/log.cpp',
-  include_directories: [vdp_inc],
-  dependencies: [catch2_dep],
-  override_options: ['cpp_std=c++23'],
-  build_by_default: false
-)
-
-test('vdp_core', test_vdp,
-  timeout: 30,
-  suite: 'catch2'
-)
-
-# YM2612 whole-chip characterization tests. fm.cpp plus the extracted
-# fm_eg/fm_lfo units are compiled directly into the test; state_transfer*
-# is stubbed in the test source (the splash-cart audio fingerprint never
-# exercises FM, so this is the FM regression net).
-# log.cpp is linked rather than stubbed: fm.cpp's diagnostics route through
-# the real logger, and the test owns gen_loglevel to keep them quiet.
-fm_inc = include_directories('../include/generator', '../src/audio/ym2612')
-
-test_fm_chip = executable('test_fm_chip',
-  'test_fm_chip.cpp',
-  '../src/audio/ym2612/fm.cpp',
-  '../src/audio/ym2612/fm_eg.cpp',
-  '../src/audio/ym2612/fm_lfo.cpp',
-  test_logging_sources,
-  include_directories: [fm_inc],
-  dependencies: [catch2_dep],
-  override_options: ['cpp_std=c++23'],
-  build_by_default: false
-)
-
-test('fm_chip', test_fm_chip,
-  timeout: 30,
-  suite: 'catch2'
-)
-
-# Shared UI backend adapter tests.
-# The VDP -> ARGB8888 conversion the windowed backends share. vdp.cpp,
-# uiplot.cpp and system.cpp come in directly because the renderer reaches
-# the chip through generator::vdp(), which needs a live System; the 68K
-# globals they reference are stubbed in the test source.
-ui_common_inc_test = include_directories('../src/ui/common')
+# Shared UI backend adapter tests: the paletted-scanline -> ARGB8888
+# conversion the windowed backends share. uiplot reads its palette through
+# the CRAM snapshot, so the test publishes one instead of standing up a
+# machine.
+ui_common_inc_test = include_directories('../include/generator',
+                                        '../src/ui/common', '../src/video')
 
 test_vdp_frame_renderer = executable('test_vdp_frame_renderer',
   'test_vdp_frame_renderer.cpp',
   '../src/ui/common/vdp_frame_renderer.cpp',
-  vdp_sources,
-  vdp_compat_sources,
   '../src/video/uiplot.cpp',
-  '../src/core/system.cpp',
-  '../src/cpu/68k/controller_ports.cpp',
-  '../src/audio/ym2612/fm_write_queue.cpp',
-  '../src/audio/ym2612/fm_write_queue_compat.cpp',
-  cpuz80_storage_sources,
+  '../src/video/uiplot_cram.cpp',
   test_logging_sources,
-  include_directories: [vdp_inc, fm_inc, sn76496_inc, ui_common_inc_test,
-                        xbrz_inc, cpuz80_inc],
-  dependencies: [catch2_dep, sn76496_dep, ym2612_dep, xbrz_dep],
+  include_directories: [ui_common_inc_test, xbrz_inc],
+  dependencies: [catch2_dep, xbrz_dep],
   override_options: ['cpp_std=c++23'],
   build_by_default: false
 )
 
 test('vdp_frame_renderer', test_vdp_frame_renderer,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Save-state framing tests.
+core_inc = include_directories('../include/generator', '../src/core')
+
+test_state_v3 = executable('test_state_v3',
+  'test_state_v3.cpp',
+  '../src/core/state_v3.cpp',
+  include_directories: [core_inc],
+  dependencies: [catch2_dep],
+  build_by_default: false
+)
+
+test('state_v3_framing', test_state_v3,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Cartridge loading integration: format normalization and cold replacement
+# exercise the complete Machine, with only the UI palette snapshot shim added.
+machine_test_inc = include_directories('../include/generator', '../src',
+                                     '../src/core')
+
+test_rom_loading = executable('test_rom_loading',
+  'test_rom_loading.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('rom_loading', test_rom_loading,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# 68K core tests. The core links only against its own bus + the VDP (DMA
+# tests) + a null clock sink, so the test stays self-contained.
+m68k_test_inc = include_directories('../include/generator', '../src',
+                                    '../src/m68k', '../src/bus', '../src/vdp')
+
+test_m68k = executable('test_m68k',
+  'test_m68k.cpp',
+  '../src/m68k/m68k.cpp',
+  '../src/bus/m68k_bus.cpp',
+  '../src/vdp/vdp.cpp',
+  '../src/vdp/vdp_render.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [m68k_test_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('m68k_core', test_m68k,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+z80_test_inc = include_directories('../include/generator', '../src',
+                                   '../src/audio', '../src/z80', '../src/bus')
+
+test_z80_acc = executable('test_z80_acc',
+  'test_z80_acc.cpp',
+  '../src/z80/z80.cpp',
+  '../src/z80/z80_bus.cpp',
+  '../src/bus/m68k_bus.cpp',
+  '../src/audio/ym3438.cpp',
+  '../src/audio/psg.cpp',
+  include_directories: [z80_test_inc],
+  dependencies: [catch2_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('z80_acc', test_z80_acc,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+ym3438_test_inc = include_directories('../include/generator', '../src',
+                                      '../src/audio')
+
+test_ym3438 = executable('test_ym3438',
+  'test_ym3438.cpp',
+  '../src/audio/ym3438.cpp',
+  include_directories: [ym3438_test_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('ym3438_timers', test_ym3438,
   timeout: 30,
   suite: 'catch2'
 )
