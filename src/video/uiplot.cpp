@@ -6,12 +6,10 @@
 #include <cstdlib>
 
 #include "generator.h"
-#include "vdp.h"
+#include "uiplot_cram.h"
 
 #include "uiplot.h"
 
-/* VDP state moved into generator::Vdp (see vdp.hpp) */
-#include "vdp.hpp"
 
 #include "xbrz_wrapper.h" /* xBRZ high-quality upscaling (self-guarded) */
 
@@ -41,16 +39,17 @@ void uiplot_setmasks(uint32 redmask, uint32 greenmask, uint32 bluemask)
 /* uiplot_checkpalcache goes through the CRAM memory in the Genesis and
    converts it to the uiplot_palcache table.  The Genesis has 64 colours,
    but we store three versions of the colour table into uiplot_palcache - a
-   normal, hilighted and dim version.  The vdp.vdp_cramf buffer has 64
-   entries and is set to 1 when the game writes to CRAM, this means this
-   code skips entries that have not changed, unless 'flag' is set to 1 in
-   which case this updates all entries regardless. */
+   normal, hilighted and dim version.  The dirty buffer has 64 entries and
+   is set to 1 when the game writes to CRAM, this means this code skips
+   entries that have not changed, unless 'flag' is set to 1 in which case
+   this updates all entries regardless. */
 
 void uiplot_checkpalcache(int flag)
 {
-  auto &vdp = generator::vdp();
+  /* Read from the global CRAM snapshot the core publishes each field. */
+  const uint16_t *cram = uiplot_cram_ptr();
+  const uint8 *dirty = uiplot_cram_dirty_ptr();
   unsigned int col;
-  uint8 *p;
   uint8 r, g, b;
   uint8 r8, g8, b8;
 
@@ -59,32 +58,23 @@ void uiplot_checkpalcache(int flag)
      when we do a dim or bright colour, i.e. this code works with 12bpp
      upwards */
 
-  /* the flag forces it to do the update despite the vdp.vdp_cramf buffer */
+  /* the flag forces it to do the update despite the dirty buffer */
 
   for (col = 0; col < 64; col++) { /* the CRAM has 64 colours */
-    if (!flag && !vdp.vdp_cramf[col])
+    if (!flag && dirty[col] == 0)
       continue;
-    vdp.vdp_cramf[col] = 0;
-    p = (uint8 *)vdp.vdp_cram + 2 * col; /* point p to the two-byte CRAM entry */
 
-    /* Extract 3-bit Genesis colors (values 0-14)
-       Genesis CRAM format (16-bit big-endian word): 0000_BBB0_GGG0_RRR0
-       Bit layout: [15-12: 0000] [11-9: Blue] [8: 0] [7-5: Green] [4: 0] [3-1:
-       Red] [0: 0]
+    /* Genesis CRAM entry: 0000_BBB0_GGG0_RRR0
+       [15-12: 0000] [11-9: Blue] [8: 0] [7-5: Green] [4: 0] [3-1: Red]
+       [0: 0]
 
-       IMPORTANT: vdp.vdp_cram is stored in NATIVE byte order (not swapped to
-       little-endian) So on x86 (little-endian), when we read as bytes: p[0] =
-       high byte (bits 15-8) = 0000_BBB0  ← Blue is here! p[1] = low byte  (bits
-       7-0)  = GGG0_RRR0  ← Red & Green are here!
-
-       Therefore:
-         Red:   bits 3-1 of p[1]
-         Green: bits 7-5 of p[1]
-         Blue:  bits 3-1 of p[0] */
-    r = (p[1] & 0x0E); /* Red:   bits 3-1 of p[1] → mask 0x0E */
-    g = (p[1] & 0xE0) >>
-        4;             /* Green: bits 7-5 of p[1] → mask 0xE0, shift right 4 */
-    b = (p[0] & 0x0E); /* Blue:  bits 3-1 of p[0] → mask 0x0E */
+       Each channel is shifted down to bits 3-1, so the three values below
+       are the 3-bit levels doubled (0, 2, 4 ... 14) -- the expansion just
+       under here counts on that. */
+    const uint16_t entry = cram[col];
+    r = (uint8)(entry & 0x000E);
+    g = (uint8)((entry & 0x00E0) >> 4);
+    b = (uint8)((entry & 0x0E00) >> 8);
 
     /* Expand 3-bit to 8-bit: (value << 4) | (value >> 1)
        Maps: 0→0, 2→36, 4→73, 6→109, 8→146, 10→182, 12→219, 14→255 */
@@ -527,8 +517,9 @@ void uiplot_scale3x_frame32(uint32 *srcdata, uint32 *dstdata,
                                        : E;
       D = (x > 0) ? srcdata[y * src_stride + (x - 1)] : E;
       F = (x < src_width - 1) ? srcdata[y * src_stride + (x + 1)] : E;
-      G = (y < src_height - 1 && x > 0) ? srcdata[(y + 1) * src_stride + (x - 1)]
-                                        : E;
+      G = (y < src_height - 1 && x > 0)
+              ? srcdata[(y + 1) * src_stride + (x - 1)]
+              : E;
       H = (y < src_height - 1) ? srcdata[(y + 1) * src_stride + x] : E;
       I = (y < src_height - 1 && x < src_width - 1)
               ? srcdata[(y + 1) * src_stride + (x + 1)]
