@@ -1,12 +1,6 @@
-# Audio Subsystem
-# Sound coordination and chip emulation
+# Sound chips: YM3438 FM and the SN76489 PSG.
 
-# Sound coordination source
-audio_sources = files('gensound.cpp')
-
-# Sound chip emulation libraries
-subdir('ym2612')
-subdir('sn76496')
-
-# Unit tests
-# subdir('test')
+audio_sources = files(
+  'ym3438.cpp',
+  'psg.cpp',
+)
