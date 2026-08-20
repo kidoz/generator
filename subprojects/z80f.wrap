@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/kidoz/z80f.git
-revision = 32ebcd5d
+revision = v1.0.0
 clone-recursive = false
 
 [provide]
