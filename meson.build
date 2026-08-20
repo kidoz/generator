@@ -87,9 +87,6 @@ else
   endif
 endif
 
-# Direct RAM writes (faster)
-add_project_arguments('-DDIRECTRAM=1', language: 'cpp')
-
 # Logging
 if not enable_logging
   add_project_arguments('-DNOLOGGING=1', language: 'cpp')
@@ -182,20 +179,26 @@ endif
 # Include directories - organized by domain
 inc = include_directories(
   'include/generator',
+  'src',
+  'src/audio',
+  'src/bus',
   'src/core',
-  'src/cpu/z80',
+  'src/m68k',
   'src/ui/common',
-  'src/cpu/68k/codegen',
-  'src/audio/ym2612',
-  'src/audio/sn76496',
+  'src/vdp',
   'src/video',
-  'src/xbrz'
+  'src/xbrz',
+  'src/z80'
 )
 
-# Build subdirectories - core libraries
-subdir('src/core')
-subdir('src/cpu')
+# Build subdirectories. The chip dirs only export source lists; src/core
+# assembles them into the library behind EmulatorCore.
 subdir('src/audio')
+subdir('src/bus')
+subdir('src/m68k')
+subdir('src/vdp')
+subdir('src/z80')
+subdir('src/core')
 subdir('src/video')
 subdir('src/platform')
 subdir('src/persist')
@@ -242,6 +245,7 @@ subdir('tests')
 # Summary
 summary({
   'UI Backend': ui_backend,
+  'Emulation Core': 'cycle-accurate',
   'Z80 Emulator': 'z80f @0@'.format(z80f_dep.version()),
   'Processor': host_cpu,
   'Debug': enable_debug,

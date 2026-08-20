@@ -1,11 +1,7 @@
 # Persistence Subsystem
-# Save states, recording, and ROM patching
+# AVI recording. Save states belong to the core, which writes its own
+# format (src/core/state_v3.cpp).
 
 persist_sources = files(
-  'state.cpp',
-  'avi.cpp',
-  'patch.cpp'
+  'avi.cpp'
 )
-
-# Unit tests
-subdir('test')

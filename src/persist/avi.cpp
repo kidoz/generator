@@ -7,7 +7,6 @@
 
 #include "generator.h"
 
-#include "vdp.h"
 #include "ui.h"
 #include "dib.h"
 #include "avi.h"
