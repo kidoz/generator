@@ -371,9 +371,12 @@ TEST_CASE("the machine produces a field of audio every frame", "[rom_loading]")
   }
   CHECK(a->fields == frames);
 
-  /* One second of emulated NTSC time is one second of samples, give or
-   * take the accumulator's remainder on the last field. */
-  const std::size_t expected = (std::size_t)SOUND_SAMPLERATE;
+  /* One second of samples per second of emulated time: 60 NTSC fields
+   * are 60 x 262 x 3420 master clocks against the 53,693,175 Hz crystal
+   * (59.92 fields on hardware), give or take the accumulator's
+   * remainder on the last field. */
+  const std::size_t expected =
+      (std::size_t)(SOUND_SAMPLERATE * (60.0 * 262 * 3420 / 53693175.0));
   CHECK(a->samples >= expected - 60);
   CHECK(a->samples <= expected + 60);
 }
@@ -419,4 +422,37 @@ TEST_CASE("a japan-only cartridge boots the domestic NTSC machine",
   CHECK(machine.video_mode() == 0);
   CHECK(machine.framerate() == 60);
   CHECK(machine.io_debug_read(0xA10000) == 0x21);
+}
+
+TEST_CASE("field length on the master clock is standard-exact", "[rom_loading]")
+{
+  /* Steady-state fields: 262 x 3420 master clocks NTSC, 313 x 3420 PAL
+   * (the PAL VDP counts one line more than the 312 that fits an even
+   * 50 fields from the crystal — hardware refresh is 49.70 Hz). The
+   * field boundary lands inside a scheduler chunk, so a single field
+   * may be off by up to one chunk; over ten fields the average is
+   * exact. */
+  constexpr uint64_t kTolerance = 64;
+
+  auto ntsc = make_machine();
+  REQUIRE(ntsc.load_rom_mem(make_region_rom("J")));
+  ntsc.run_frame();
+  const uint64_t first = ntsc.master_clock();
+  for (int i = 0; i < 10; i++) {
+    ntsc.run_frame();
+  }
+  const uint64_t ntsc_delta = ntsc.master_clock() - first;
+  CHECK(ntsc_delta >= 10ULL * 262 * 3420 - kTolerance);
+  CHECK(ntsc_delta <= 10ULL * 262 * 3420 + kTolerance);
+
+  auto pal = make_machine();
+  REQUIRE(pal.load_rom_mem(make_region_rom("E")));
+  pal.run_frame();
+  const uint64_t pal_first = pal.master_clock();
+  for (int i = 0; i < 10; i++) {
+    pal.run_frame();
+  }
+  const uint64_t pal_delta = pal.master_clock() - pal_first;
+  CHECK(pal_delta >= 10ULL * 313 * 3420 - kTolerance);
+  CHECK(pal_delta <= 10ULL * 313 * 3420 + kTolerance);
 }

@@ -5,21 +5,13 @@
 #include "ui_bridge.hpp"
 
 #include "emulator_core.hpp"
+#include "field_timing.h"
 
 #include "gensoundp.h"
 
-#include <chrono>
-
 namespace generator::nkui {
 
-namespace {
-
 using Clock = std::chrono::steady_clock;
-
-constexpr std::chrono::microseconds kFieldNtsc{16667};
-constexpr std::chrono::microseconds kFieldPal{20000};
-
-}  // namespace
 
 EmulatorThread::EmulatorThread() = default;
 
@@ -94,15 +86,18 @@ void EmulatorThread::thread_loop()
     const auto now = Clock::now();
     const auto elapsed = now - last_field;
 
-    /* Wall clock decides; the audio queue only nudges the boundary. A queue
-     * below half the threshold is about to underrun, so allow a field a
-     * little early. A queue well past the threshold means we are ahead of
-     * the sound hardware, so skip this round entirely. */
+    /* Wall clock decides; the audio queue only guards the edges. A queue
+     * this close to empty would underrun before the next field is due,
+     * so allow one early — but only when the buffer is genuinely about
+     * to starve, not merely below the comfort level, or the loop runs
+     * fields at double tempo. A queue well past the threshold means we
+     * are ahead of the sound hardware, so skip this round entirely. */
     const int pending = soundp_samplesbuffered();
     const int threshold = SOUNDP_THRESHOLD;
 
     bool need_field = elapsed >= field_duration;
-    if (!need_field && pending < threshold / 2 && elapsed >= field_duration / 2)
+    if (!need_field && pending < SOUNDP_SAMPLES_PER_FIELD / 2 &&
+        elapsed >= field_duration * 3 / 4)
       need_field = true;
     if (threshold > 0 && pending > threshold * 3)
       need_field = false;
@@ -110,11 +105,12 @@ void EmulatorThread::thread_loop()
     if (!need_field)
       continue;
 
-    field_duration = g_emulator_core->video_mode() ? kFieldPal : kFieldNtsc;
+    field_duration =
+        generator::field_duration(g_emulator_core->video_mode() != 0);
 
     g_emulator_core->run_frame();
 
-    /* Advance on the nominal grid so rounding does not accumulate, but
+    /* Advance on the fixed grid so rounding does not accumulate, but
      * resynchronise after a stall rather than trying to catch up. */
     last_field += field_duration;
     if (Clock::now() - last_field > field_duration * 4)

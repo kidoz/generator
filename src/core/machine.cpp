@@ -31,12 +31,14 @@ constexpr uint64_t kResetHoldMclk = 693132;
  * clocks is the legacy core's measured equivalent (1.59ms NTSC). */
 constexpr uint64_t kPadThIdleResetMclk = 25 * 3420;
 
-/* Master clocks in one second of emulated time: 3420 per line, 262 lines
- * at 60 fields NTSC and 312 at 50 PAL. Deriving the audio rate from the
- * same numbers the VDP counts keeps the sample stream locked to the
- * emulated field rather than to the wall clock. */
-constexpr uint64_t kMclkPerSecondNtsc = 3420ULL * 262 * 60;
-constexpr uint64_t kMclkPerSecondPal = 3420ULL * 312 * 50;
+/* The master crystals: 53.693175 MHz NTSC, 53.203424 MHz PAL. One
+ * emulated second advances exactly this many master clocks (3420 per
+ * line, 262-line NTSC fields at 59.92 Hz, 313-line PAL fields at
+ * 49.70 Hz), keeping the audio sample stream locked to the emulated
+ * field rather than to nominal 60/50 — the field-count approximations
+ * that preceded this ran the PAL pitch ~0.3% low. */
+constexpr uint64_t kMclkPerSecondNtsc = 53693175;
+constexpr uint64_t kMclkPerSecondPal = 53203424;
 
 bool has_rom_signature(std::span<const uint8_t> image, size_t offset)
 {

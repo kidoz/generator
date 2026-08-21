@@ -9,15 +9,16 @@ namespace {
  * with 342 dots at master/10; H40 has 420 dots but cannot: 420 x 8 is
  * only 3360, so the chip runs the tail of the line on the slower clock
  * and 30 dots inside horizontal blanking cost master/10 instead. Field
- * length: 262 lines NTSC / 312 PAL. Interrupt behaviour (VINT enable
- * reg 1 bit 5, HINT enable reg 0 bit 4, counter reload from reg 10)
- * follows the YM7101 documentation; HINT/VINT are still raised at line
- * granularity.
+ * length: 262 lines NTSC / 313 PAL (the PAL field rate on hardware is
+ * crystal / (3420 x 313) = 49.70 Hz, not an even 50). Interrupt
+ * behaviour (VINT enable reg 1 bit 5, HINT enable reg 0 bit 4, counter
+ * reload from reg 10) follows the YM7101 documentation; HINT/VINT are
+ * still raised at line granularity.
  */
 constexpr uint32_t kDotsH40 = 420;
 constexpr uint32_t kDotsH32 = 342;
 constexpr uint32_t kLinesNtsc = 262;
-constexpr uint32_t kLinesPal = 312;
+constexpr uint32_t kLinesPal = 313;
 
 /* First H40 dot billed at master/10, and how many follow. Placed in
  * blanking, past the point where the Z80 interrupt pulse is released, so

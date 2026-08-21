@@ -18,12 +18,15 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include <SDL3/SDL.h>
 
 #include "emulator_core.hpp"
+#include "field_timing.h"
 #include "generator.h"
 #include "sdl_audio_backend.hpp"
 
@@ -224,6 +227,12 @@ int ui_loop(void)
   time_t last_report = start;
   unsigned int frames_since_report = 0;
 
+  /* Field pacing: without it the loop free-runs (the emulator is faster
+   * than realtime) and the sound device plays everything as fast as the
+   * frames arrive. Pace on the exact field period — nominal 60/50 is
+   * 0.13%/0.6% fast, which the audio queue then has to shed. */
+  auto next_field = std::chrono::steady_clock::now();
+
   while (ui_running) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -261,8 +270,21 @@ int ui_loop(void)
     update_input();
 
     if (console_core) {
+      const auto field =
+          generator::field_duration(console_core->video_mode() != 0);
+      const auto now = std::chrono::steady_clock::now();
+      if (now < next_field) {
+        std::this_thread::sleep_until(next_field);
+      }
       console_core->run_frame();
       ui_frame_count++;
+
+      /* Advance on the fixed grid; after a long stall (window drag,
+       * debugger) resynchronise rather than burst-catching-up. */
+      next_field += field;
+      if (std::chrono::steady_clock::now() - next_field > field * 4) {
+        next_field = std::chrono::steady_clock::now();
+      }
     }
 
     uip_vsync();

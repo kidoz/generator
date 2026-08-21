@@ -7,6 +7,8 @@
 
 #include "gensoundp.h"
 
+#include "field_timing.h"
+
 EmulatorThread::EmulatorThread() = default;
 
 EmulatorThread::~EmulatorThread()
@@ -57,7 +59,10 @@ void EmulatorThread::set_emulation_running(bool running)
 void EmulatorThread::thread_loop()
 {
   gint64 last_frame_time = g_get_monotonic_time();
-  gint64 frame_duration_us = 16667;  // Default NTSC
+  gint64 frame_duration_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          generator::kFieldNtsc)
+          .count(); /* crystal-exact NTSC field; see field_timing.h */
 
   while (m_thread_alive) {
     std::unique_lock<std::mutex> lock(m_mutex);
@@ -103,7 +108,12 @@ void EmulatorThread::thread_loop()
       }
 
       if (need_frame) {
-        frame_duration_us = g_emulator_core->video_mode() ? 20000 : 16667;
+        /* Crystal-exact field period (59.92/49.70 Hz), not nominal
+         * 60/50 — see include/generator/field_timing.h. */
+        frame_duration_us =
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                generator::field_duration(g_emulator_core->video_mode() != 0))
+                .count();
 
         g_emulator_core->run_frame();
         last_frame_time = now;
