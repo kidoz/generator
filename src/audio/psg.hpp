@@ -5,9 +5,9 @@
  * byte inside the VDP's address window, so it is written as the odd byte
  * of the $10-$17 block from either side: $7F11 from the Z80, $C00011
  * from the 68K.
- * Latch/data protocol: a write with bit 7 = 0 latches the channel
- * + attenuation; bit 7 = 1 writes the 10-bit tone period (low 4 bits
- * for the follow-up, or 6 bits for the first tone write). */
+ * Latch/data protocol: a write with bit 7 = 1 selects a channel/register
+ * and supplies its low nibble; bit 7 = 0 supplies the upper six bits of
+ * a tone period or updates the previously latched volume register. */
 
 #pragma once
 
@@ -46,7 +46,7 @@ private:
 
   /* latch state */
   uint8_t m_latch_channel = 0;
-  bool m_latch_tone_pending = false; /* waiting for period low nibble */
+  bool m_latch_volume = false;
 
   /* noise */
   uint16_t m_lfsr = 0;

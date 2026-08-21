@@ -96,18 +96,27 @@ TEST_CASE("ym3438 irq asserts when timer overflow and irq enable", "[ym]")
   CHECK_FALSE(ym.irq_line());
 }
 
-TEST_CASE("ym3438 bank select via reg 22", "[ym]")
+TEST_CASE("ym3438 register banks follow the address port", "[ym]")
 {
   Ym3438 ym;
   ym.reset();
-  /* select bank 1 */
-  ym.write_address(0x22);
-  ym.write_data(0x01);
-  /* write to bank 1 register $30 */
-  ym.write_address(0x30);
-  ym.write_data(0xAB);
+  ym.write_address(0x30, 1);
+  ym.write_data(0xAB, 1);
   CHECK(ym.reg(1, 0x30) == 0xAB);
   CHECK(ym.reg(0, 0x30) == 0x00);
+}
+
+TEST_CASE("ym3438 dac registers drive channel six output", "[ym]")
+{
+  Ym3438 ym;
+  ym.reset();
+  ym.write_address(0x2B);
+  ym.write_data(0x80);
+  ym.write_address(0x2A);
+  ym.write_data(0xFF);
+  ym.advance_mclk(1008);
+  CHECK(ym.sample_left() > 1000);
+  CHECK(ym.sample_right() > 1000);
 }
 
 namespace {

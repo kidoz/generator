@@ -47,10 +47,11 @@ void Z80Bus::write_byte(uint16_t zaddr, uint8_t value)
     return;
   }
   if (zaddr < 0x6000) {
+    const uint8_t bank = (uint8_t)((zaddr >> 1) & 1);
     if ((zaddr & 1) == 0) {
-      m_ym.write_address(value);
+      m_ym.write_address(value, bank);
     } else {
-      m_ym.write_data(value);
+      m_ym.write_data(value, bank);
     }
     return;
   }

@@ -4,7 +4,10 @@
 namespace generator {
 
 namespace {
-constexpr int kMclkPerPsgClock = 15; /* PSG clock = master / 15 */
+/* The PSG receives master/15 and its tone divider advances once per 16
+ * input clocks. Omitting the internal divider raises every tone by four
+ * octaves. */
+constexpr int kMclkPerPsgTick = 15 * 16;
 
 /* Volume table: attenuation 0-15, 2 dB per step, 0 = full */
 constexpr int16_t kVolumeTable[16] = {
@@ -22,7 +25,7 @@ void Psg::reset()
   m_atten.fill(15); /* all channels silent */
   m_output_bit = {};
   m_latch_channel = 0;
-  m_latch_tone_pending = false;
+  m_latch_volume = false;
   m_lfsr = 0x8000; /* seed: bit 15 set */
   m_noise_mode = 0;
   m_noise_rate = 0;
@@ -32,11 +35,14 @@ void Psg::reset()
 
 void Psg::write(uint8_t value)
 {
-  if ((value & 0x80) == 0) {
-    /* Latch command: 0lll dddd */
-    m_latch_channel = (value >> 4) & 3;
+  if ((value & 0x80) != 0) {
+    /* Latch command: 1ccr dddd (channel, register, low nibble). */
+    m_latch_channel = (value >> 5) & 3;
+    m_latch_volume = (value & 0x10) != 0;
     const uint8_t data = value & 0x0F;
-    if (m_latch_channel == 3) {
+    if (m_latch_volume) {
+      m_atten[m_latch_channel] = data;
+    } else if (m_latch_channel == 3) {
       /* noise channel: mode and rate */
       m_noise_mode = (data >> 2) & 1;
       m_noise_rate = data & 3;
@@ -47,28 +53,17 @@ void Psg::write(uint8_t value)
         m_period[3] = 0x10 << m_noise_rate;
       }
     } else {
-      /* tone channel: first 4 bits of a 10-bit period, or attenuation */
-      if ((value & 0x40) != 0) {
-        /* attenuation write */
-        m_atten[m_latch_channel] = data & 0x0F;
-      } else {
-        /* period high bits */
-        m_period[m_latch_channel] =
-            (m_period[m_latch_channel] & 0x3F) | ((uint16_t)(data & 3) << 8);
-        m_latch_tone_pending = true;
-      }
+      /* Tone latch supplies period bits 3..0. */
+      m_period[m_latch_channel] = (m_period[m_latch_channel] & 0x3F0) | data;
     }
   } else {
-    /* Data command: continuation */
     const uint8_t data = value & 0x3F;
-    if (m_latch_channel == 3) {
-      /* noise: shouldn't happen but handle it */
-      m_noise_mode = (data >> 2) & 1;
-      m_noise_rate = data & 3;
-    } else {
-      /* period low 6 bits */
-      m_period[m_latch_channel] = (m_period[m_latch_channel] & 0x300) | data;
-      m_latch_tone_pending = false;
+    if (m_latch_volume) {
+      m_atten[m_latch_channel] = data & 0x0F;
+    } else if (m_latch_channel < 3) {
+      /* Data byte supplies tone-period bits 9..4. */
+      m_period[m_latch_channel] =
+          (m_period[m_latch_channel] & 0x00F) | ((uint16_t)data << 4);
     }
   }
 }
@@ -97,10 +92,11 @@ void Psg::step()
   if (m_period[3] > 0) {
     if (++m_counter[3] >= m_period[3]) {
       m_counter[3] = 0;
-      /* 16-bit LFSR: feedback = bit 0 XOR bit 1 (white) or bit 0 (periodic) */
+      /* 16-bit LFSR: Sega's white-noise taps are bits 0 and 3; periodic
+       * noise feeds bit 0 back directly. */
       const uint16_t feedback =
-          m_noise_mode ? (m_lfsr & 1)
-                       : (uint16_t)((m_lfsr & 1) ^ ((m_lfsr >> 1) & 1));
+          m_noise_mode ? (uint16_t)((m_lfsr & 1) ^ ((m_lfsr >> 3) & 1))
+                       : (m_lfsr & 1);
       m_lfsr = (m_lfsr >> 1) | (feedback << 15);
       m_output_bit[3] = m_lfsr & 1;
     }
@@ -119,9 +115,9 @@ void Psg::step()
 void Psg::advance_mclk(uint64_t ticks)
 {
   m_mclk_acc += (int64_t)ticks;
-  while (m_mclk_acc >= kMclkPerPsgClock) {
+  while (m_mclk_acc >= kMclkPerPsgTick) {
     step();
-    m_mclk_acc -= kMclkPerPsgClock;
+    m_mclk_acc -= kMclkPerPsgTick;
   }
 }
 

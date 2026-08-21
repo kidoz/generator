@@ -7,6 +7,7 @@
 #include "uiplot_cram.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -146,6 +147,14 @@ Machine::Machine(std::unique_ptr<IAudioBackend> audio,
     return word;
   });
   m_blank_line.assign(Vdp::kLineBufferWidth, 0);
+
+  /* Output stage: the Mega Drive 2 puts a first-order RC low-pass ahead
+   * of the audio jack — the muffled character the model 1 lacks.
+   * Measured cutoffs land around 4.7-5 kHz across MD2 board revisions
+   * (the model 1 stage is far gentler, ~9-13 kHz). One pole is enough to
+   * place the slope; the DAC itself is already modelled in the chip. */
+  m_lp_alpha = 1.0 - std::exp(-2.0 * 3.14159265358979323846 * 4700.0 /
+                              (double)SOUND_SAMPLERATE);
 }
 
 Machine::~Machine() = default;
@@ -234,6 +243,11 @@ void Machine::power_on()
   m_halted = false;
   m_frames = 0;
   m_audio_acc = 0;
+  m_mix_acc_l = 0;
+  m_mix_acc_r = 0;
+  m_mix_ticks = 0;
+  m_lp_l = 0.0;
+  m_lp_r = 0.0;
   m_audio_left.clear();
   m_audio_right.clear();
 
@@ -326,13 +340,28 @@ void Machine::finish_frame_video()
   flush_audio();
 }
 
-void Machine::mix_audio_sample()
+void Machine::emit_audio_sample()
 {
-  const int32_t psg = m_z80bus.psg().output();
-  const int32_t left = m_z80bus.ym().sample_left() + psg;
-  const int32_t right = m_z80bus.ym().sample_right() + psg;
-  m_audio_left.push_back((uint16_t)(int16_t)std::clamp(left, -32768, 32767));
-  m_audio_right.push_back((uint16_t)(int16_t)std::clamp(right, -32768, 32767));
+  /* Windowed mean of the held chip mix (box-filter decimation), then the
+   * console's output RC stage as a first-order low-pass. Point-sampling
+   * the chips instead would beat the FM's 53267 Hz update rate against
+   * SOUND_SAMPLERATE and repeat/skip staircase steps — a periodic
+   * clicking that dominates everything else. */
+  int32_t out_l = 0;
+  int32_t out_r = 0;
+  if (m_mix_ticks != 0) {
+    const double mean_l = (double)m_mix_acc_l / (double)m_mix_ticks;
+    const double mean_r = (double)m_mix_acc_r / (double)m_mix_ticks;
+    m_mix_acc_l = 0;
+    m_mix_acc_r = 0;
+    m_mix_ticks = 0;
+    m_lp_l += m_lp_alpha * (mean_l - m_lp_l);
+    m_lp_r += m_lp_alpha * (mean_r - m_lp_r);
+    out_l = (int32_t)std::lround(m_lp_l);
+    out_r = (int32_t)std::lround(m_lp_r);
+  }
+  m_audio_left.push_back((uint16_t)(int16_t)std::clamp(out_l, -32768, 32767));
+  m_audio_right.push_back((uint16_t)(int16_t)std::clamp(out_r, -32768, 32767));
 }
 
 void Machine::flush_audio()
@@ -365,42 +394,54 @@ void Machine::halt(const char *why)
 
 void Machine::advance_mclk(uint64_t ticks)
 {
-  m_mclk_total += ticks;
-
-  /* One output sample per SOUND_SAMPLERATE-th of an emulated second. The
-   * accumulator carries the remainder so the rate stays exact over a
-   * field instead of drifting. */
   const uint64_t per_second = m_pal ? kMclkPerSecondPal : kMclkPerSecondNtsc;
-  m_audio_acc += ticks * (uint64_t)SOUND_SAMPLERATE;
-  while (m_audio_acc >= per_second) {
-    m_audio_acc -= per_second;
-    mix_audio_sample();
-  }
-  const int ipl = m_vdp.advance_mclk(ticks);
-  m_cpu.set_ipl(ipl);
-  /* The FM chip's /IRQ pin is not routed on this board — the sound CPU's
-   * only interrupt source is the VDP. Drivers poll the FM status register
-   * for timer overflows instead, so the chip still tracks its own IRQ
-   * line but nothing consumes it. */
-  m_z80bus.ym().advance_mclk(ticks);
-  m_z80bus.psg().advance_mclk(ticks);
-  m_z80.set_int(m_vdp.zint());
+  constexpr uint64_t kSampleRate = SOUND_SAMPLERATE;
 
-  /* BUSACK resume latency: the Z80 stays frozen for a few cycles
-   * after the bus is returned before it actually executes */
-  if (m_z80_resume_delay > 0) {
-    const uint32_t consume =
-        (uint32_t)std::min<uint64_t>(m_z80_resume_delay, ticks);
-    m_z80_resume_delay -= consume;
+  /* Large bus-steal advances must be split at host-sample boundaries.
+   * Otherwise one DMA can integrate a stale chip value over thousands of
+   * samples, emit it once, and fill the rest with zeroes. */
+  while (ticks != 0) {
+    const uint64_t scaled_remaining = per_second - m_audio_acc;
+    const uint64_t to_sample =
+        (scaled_remaining + kSampleRate - 1) / kSampleRate;
+    const uint64_t chunk = std::min(ticks, to_sample);
+
+    const int32_t psg = m_z80bus.psg().output();
+    m_mix_acc_l +=
+        (int64_t)(m_z80bus.ym().sample_left() + psg) * (int64_t)chunk;
+    m_mix_acc_r +=
+        (int64_t)(m_z80bus.ym().sample_right() + psg) * (int64_t)chunk;
+    m_mix_ticks += chunk;
+    m_mclk_total += chunk;
+
+    const int ipl = m_vdp.advance_mclk(chunk);
+    m_cpu.set_ipl(ipl);
+    /* The FM chip's /IRQ pin is not routed on this board — the sound CPU's
+     * only interrupt source is the VDP. Drivers poll the FM status register
+     * for timer overflows instead, so the chip still tracks its own IRQ
+     * line but nothing consumes it. */
+    m_z80bus.ym().advance_mclk(chunk);
+    m_z80bus.psg().advance_mclk(chunk);
+    m_z80.set_int(m_vdp.zint());
+
+    uint64_t z80_ticks = chunk;
     if (m_z80_resume_delay > 0) {
-      return; /* still in the sync window */
+      const uint32_t consume =
+          (uint32_t)std::min<uint64_t>(m_z80_resume_delay, z80_ticks);
+      m_z80_resume_delay -= consume;
+      z80_ticks -= consume;
     }
-    ticks -= consume;
-    if (ticks == 0) {
-      return;
+    if (z80_ticks != 0) {
+      m_z80.advance_mclk(z80_ticks, m_z80_busreq);
     }
+
+    m_audio_acc += chunk * kSampleRate;
+    if (m_audio_acc >= per_second) {
+      m_audio_acc -= per_second;
+      emit_audio_sample();
+    }
+    ticks -= chunk;
   }
-  m_z80.advance_mclk(ticks, m_z80_busreq);
 }
 
 /* ------------------------------------------------------------------ */

@@ -176,7 +176,7 @@ private:
   void parse_rom_header();
   void update_pad_th(int port, bool th);
   uint16_t read_port(int port);
-  void mix_audio_sample();
+  void emit_audio_sample();
   void flush_audio();
   void setup_sram();
   void power_on();           /* reset hold + vector fetch */
@@ -241,10 +241,19 @@ private:
 
   /* Audio is generated on the master clock, one output sample every
    * SOUND_SAMPLERATE-th of an emulated second, and handed to the backend
-   * a field at a time. */
+   * a field at a time. The chips hold staircase values between their
+   * internal sample boundaries; each output sample is the mean of the
+   * held mix over its own window (box-filter decimation), then a
+   * first-order low-pass models the console's output RC stage. */
   std::vector<uint16_t> m_audio_left;
   std::vector<uint16_t> m_audio_right;
   uint64_t m_audio_acc = 0;
+  int64_t m_mix_acc_l = 0;
+  int64_t m_mix_acc_r = 0;
+  uint64_t m_mix_ticks = 0;
+  double m_lp_l = 0.0;
+  double m_lp_r = 0.0;
+  double m_lp_alpha = 0.0;
 };
 
 }  // namespace generator

@@ -95,6 +95,29 @@ TEST_CASE("bank window routes through the 68k bus", "[z80_acc]")
   CHECK(rig.bus.read_byte(0x8001) == 0x34); /* odd: low byte */
 }
 
+TEST_CASE("ym3438 banks follow z80 address line a1", "[z80_acc]")
+{
+  Rig rig;
+  rig.bus.write_byte(0x4000, 0x30);
+  rig.bus.write_byte(0x4001, 0x12);
+  rig.bus.write_byte(0x4002, 0x30);
+  rig.bus.write_byte(0x4003, 0x34);
+  CHECK(rig.bus.ym().reg(0, 0x30) == 0x12);
+  CHECK(rig.bus.ym().reg(1, 0x30) == 0x34);
+}
+
+TEST_CASE("psg latch protocol and internal divider set tone rate", "[z80_acc]")
+{
+  Rig rig;
+  rig.bus.write_byte(0x7F11, 0x81); /* channel 0 tone, period low = 1 */
+  rig.bus.write_byte(0x7F11, 0x00); /* period high = 0 */
+  rig.bus.write_byte(0x7F11, 0x90); /* channel 0 volume = loudest */
+  rig.bus.psg().advance_mclk(15 * 16 - 1);
+  CHECK(rig.bus.psg().output() == 0);
+  rig.bus.psg().advance_mclk(1);
+  CHECK(rig.bus.psg().output() > 0);
+}
+
 TEST_CASE("z80 executes a program at master/15", "[z80_acc]")
 {
   Rig rig;

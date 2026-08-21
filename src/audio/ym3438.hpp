@@ -4,7 +4,7 @@
  * the operator pipeline (EG/PG/LFO/DAC).
  *
  * Bus (Z80 view, also reachable from the 68K window):
- *   A0=0 address, A0=1 data, bank select via reg $22 bit 0 (port 1)
+ *   A0=0 address, A0=1 data, A1=0 bank 0, A1=1 bank 1
  *
  * Clock: master / 7 (same as the 68K). Timer periods in YM clocks:
  *   A = 12 * (1024 - NA), B = 192 * (256 - NB).
@@ -21,12 +21,12 @@ class Ym3438 {
 public:
   void reset();
 
-  /* Z80-side / 68K-window access: addr_port/write/read for A0=0,
-   * data for A0=1; bank 0/1 selected by the address written to $22. */
+  /* Z80-side / 68K-window access: address for A0=0 and data for A0=1;
+   * A1 selects register bank 0/1. */
   uint8_t read_status() const;
-  void write_address(uint8_t addr); /* A0 = 0 */
-  void write_data(uint8_t data);    /* A0 = 1 */
-  uint8_t read_data() const;        /* A0 = 1 (unused on HW) */
+  void write_address(uint8_t addr, uint8_t bank = 0); /* A0 = 0 */
+  void write_data(uint8_t data, uint8_t bank = 0);    /* A0 = 1 */
+  uint8_t read_data() const; /* A0 = 1 (unused on HW) */
 
   /* Advance by master clocks; returns the IRQ level toward the Z80
    * (true = assert). */
@@ -59,12 +59,11 @@ public:
   }
 
 private:
-  void write_register(uint8_t addr, uint8_t data);
+  void write_register(uint8_t bank, uint8_t addr, uint8_t data);
   void update_irq();
 
   std::array<std::array<uint8_t, 0x100>, 2> m_regs{};
   uint8_t m_latch_addr[2] = {};
-  uint8_t m_bank = 0;
 
   /* status: bit 7 busy, bit 6 timer A, bit 5 timer B */
   uint8_t m_status = 0;
@@ -125,7 +124,7 @@ private:
   int32_t apply_feedback(int ch);
   int32_t apply_operator(int ch, int op, int32_t mod);
 
-  /* DAC (channel 6 in DAC mode, register $2D enable, $2A data) */
+  /* DAC (channel 6 in DAC mode, register $2B enable, $2A data) */
   bool m_dac_enabled = false;
   uint8_t m_dac_value = 0x80;
   int16_t m_dac_output = 0;

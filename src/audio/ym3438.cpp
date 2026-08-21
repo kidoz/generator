@@ -65,12 +65,30 @@ void Ym3438::reset()
 {
   m_regs = {};
   m_latch_addr[0] = m_latch_addr[1] = 0;
-  m_bank = 0;
   m_status = 0;
   m_busy_mclk = 0;
   m_timer_a = 0;
   m_timer_b = 0;
   m_irq = false;
+  m_ops = {};
+  for (auto &op : m_ops) {
+    op.eg_level = 0x3FF;
+    op.eg_state = 3;
+  }
+  m_channels = {};
+  m_lfo_enabled = false;
+  m_lfo_freq = 0;
+  m_lfo_counter = 0;
+  m_lfo_am_value = 0;
+  m_lfo_pm_value = 0;
+  m_dac_enabled = false;
+  m_dac_value = 0x80;
+  m_dac_output = 0;
+  m_sample_l = 0;
+  m_sample_r = 0;
+  m_sample_timer = 0;
+  m_eg_timer = 0;
+  m_eg_prescaler = 0;
 }
 
 uint8_t Ym3438::read_status() const
@@ -78,19 +96,18 @@ uint8_t Ym3438::read_status() const
   return m_status;
 }
 
-void Ym3438::write_address(uint8_t addr)
+void Ym3438::write_address(uint8_t addr, uint8_t bank)
 {
-  /* address select: latch + bank via the current $22 bit 0 */
-  m_bank = (m_regs[0][0x22] & 1);
-  m_latch_addr[m_bank] = addr;
+  m_latch_addr[bank & 1] = addr;
   m_busy_mclk = kBusyMclk;
   m_status |= kStBusy; /* set immediately: the CPU polls right after */
 }
 
-void Ym3438::write_data(uint8_t data)
+void Ym3438::write_data(uint8_t data, uint8_t bank)
 {
-  const uint8_t addr = m_latch_addr[m_bank];
-  write_register(addr, data);
+  bank &= 1;
+  const uint8_t addr = m_latch_addr[bank];
+  write_register(bank, addr, data);
   m_busy_mclk = kBusyMclk;
   m_status |= kStBusy; /* set immediately */
 }
@@ -100,11 +117,11 @@ uint8_t Ym3438::read_data() const
   return 0xFF; /* data port reads float high on real hardware */
 }
 
-void Ym3438::write_register(uint8_t addr, uint8_t data)
+void Ym3438::write_register(uint8_t bank, uint8_t addr, uint8_t data)
 {
-  m_regs[m_bank][addr] = data;
+  m_regs[bank][addr] = data;
 
-  if (addr == 0x27 && m_bank == 0) {
+  if (bank == 0 && addr == 0x27) {
     /* mode register: timer load/enable/flag-reset/irq-enable */
     if (data & kModeLoadA) {
       m_timer_a = timer_a_period(m_regs[0][0x24], m_regs[0][0x25]);
@@ -118,19 +135,19 @@ void Ym3438::write_register(uint8_t addr, uint8_t data)
     if (data & kModeResetFlagB) {
       m_status &= ~kStTimerB;
     }
-    if (addr == 0x2B) { /* DAC enable/disable */
-      m_dac_enabled = (data & 0x80) != 0;
-    }
-    if (addr == 0x2A) { /* DAC data */
-      m_dac_value = data;
-      /* The YM2612 DAC: 8-bit unsigned input, nonlinear output.
-       * Approximate: center at 0x80, scale to int16. */
-      const int dac = ((int)data - 128) * 256;
-      m_dac_output = (int16_t)(dac >> 1);
-    }
     /* the IRQ line reflects the flag state immediately (level-triggered
      * toward the Z80), not on the next clock tick */
     update_irq();
+  }
+  if (bank == 0 && addr == 0x2B) {
+    m_dac_enabled = (data & 0x80) != 0;
+  }
+  if (bank == 0 && addr == 0x2A) {
+    m_dac_value = data;
+    /* The YM2612 DAC: 8-bit unsigned input, nonlinear output.
+     * Approximate: center at 0x80, scale to int16. */
+    const int dac = ((int)data - 128) * 256;
+    m_dac_output = (int16_t)(dac >> 1);
   }
   if (addr == 0x24 || addr == 0x25) {
     /* timer A period changed: reload if not running */
@@ -454,8 +471,6 @@ void Ym3438::update_lfo()
    * counter at the sample rate (~44kHz) and derive the LFO period
    * from that. */
   m_lfo_counter++;
-  /* Approximate: the LFO has a period of 2^17 / 2^freq samples */
-  const uint32_t period = 1u << (17 - (m_lfo_freq & 7));
   const uint32_t phase = (m_lfo_counter >> (17 - (m_lfo_freq & 7))) & 0x3FFFF;
 
   /* PM LFO: signed triangular/sine approximation.
