@@ -14,8 +14,11 @@
 /*** variables externed in generator.h ***/
 
 volatile sig_atomic_t gen_quit = 0; /* Signal-safe flag for clean shutdown */
-unsigned int gen_loglevel = GEN_LOG_NORMAL; /* normal + critical */
-unsigned int gen_modifiedrom = 0;           /* set when a patch is applied */
+#include <cstdlib>
+unsigned int gen_loglevel = /* normal + critical */
+    std::getenv("GEN_LOG_VERBOSE") != nullptr ? GEN_LOG_VERBOSE
+                                              : GEN_LOG_NORMAL;
+unsigned int gen_modifiedrom = 0; /* set when a patch is applied */
 
 /*** Signal handler ***/
 
