@@ -65,6 +65,8 @@ public:
 
   // --- Input ---
 
+  virtual void debug_log_zram_to(const char *path) = 0;
+
   virtual void set_input(int player, unsigned int up, unsigned int down,
                          unsigned int left, unsigned int right,
                          unsigned int start, unsigned int a, unsigned int b,

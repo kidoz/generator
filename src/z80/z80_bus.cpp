@@ -11,6 +11,8 @@ void Z80Bus::reset()
   m_ym.reset();
   m_psg.reset();
   m_bank = 0;
+  /* m_ram_write_sink survives: it is debug state owned by the Machine,
+   * and power-on resets race the log being attached. */
 }
 
 uint8_t Z80Bus::read_byte(uint16_t zaddr)
@@ -44,6 +46,9 @@ void Z80Bus::write_byte(uint16_t zaddr, uint8_t value)
 {
   if (zaddr < 0x4000) {
     m_zram[zaddr & 0x1FFF] = value;
+    if (m_ram_write_sink) {
+      m_ram_write_sink(zaddr & 0x1FFF, value);
+    }
     return;
   }
   if (zaddr < 0x6000) {

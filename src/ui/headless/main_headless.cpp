@@ -19,6 +19,8 @@
 /* Per-frame canonical state fingerprints. */
 #include "state_v3.hpp"
 
+#include "uiplot_cram.h"
+
 /* Version info */
 #ifndef VERSION
 #define VERSION "0.50"
@@ -198,6 +200,12 @@ public:
       return;
     }
     hash_line(line, pixels.data(), (unsigned int)pixels.size());
+    if (m_dump && line < 240) {
+      const unsigned int n = std::min((unsigned int)pixels.size(), 320u);
+      for (unsigned int x = 0; x < n; x++) {
+        m_dump_buf[(std::size_t)line * 320 + x] = pixels[x] & 0x3F;
+      }
+    }
   }
 
   void present_field() override
@@ -205,7 +213,37 @@ public:
     m_total.update_u32(m_frames);
     m_last_field = m_field.h;
     m_field = Fnv1a64{};
+    if (m_dump && m_frames >= m_dump_start &&
+        m_frames < m_dump_start + m_dump_count) {
+      char path[512];
+      std::snprintf(path, sizeof(path), "%s_%u.ppm", m_dump_prefix, m_frames);
+      std::FILE *f = std::fopen(path, "wb");
+      if (f) {
+        /* RGB through the published CRAM snapshot, so the dump shows
+         * what the game actually put on screen. */
+        const uint16_t *cram = uiplot_cram_ptr();
+        std::fprintf(f, "P6\n320 240\n255\n");
+        for (std::size_t i = 0; i < 320u * 240; i++) {
+          const uint16_t entry = cram[m_dump_buf[i] & 0x3F];
+          const unsigned char rgb[3] = {
+              (unsigned char)(((entry >> 1) & 7) * 255 / 7),
+              (unsigned char)(((entry >> 5) & 7) * 255 / 7),
+              (unsigned char)(((entry >> 9) & 7) * 255 / 7)};
+          std::fwrite(rgb, 1, 3, f);
+        }
+        std::fclose(f);
+      }
+    }
     m_frames++;
+  }
+
+  void enable_frame_dump(const char *prefix, unsigned int start,
+                         unsigned int count)
+  {
+    m_dump = true;
+    m_dump_prefix = prefix;
+    m_dump_start = start;
+    m_dump_count = count;
   }
 
   unsigned int frames() const
@@ -220,6 +258,11 @@ public:
   {
     return m_total.value();
   }
+  bool m_dump = false;
+  const char *m_dump_prefix = "";
+  unsigned int m_dump_start = 0, m_dump_count = 0;
+  std::array<uint8_t, 320u * 240> m_dump_buf{};
+
   uint64_t last_field_hash() const
   {
     return m_last_field;
@@ -362,6 +405,13 @@ static void print_usage(const char *progname)
       "  -D, --dump-audio F  Dump rendered audio to a 16-bit stereo WAV and\n");
   printf("                      print a checksum (deterministic; for A/B "
          "diffs)\n");
+  printf("  -I, --hold-input B  Hold buttons for the whole run (u,d,l,r,"
+         "start,a,b,c,\n");
+  printf("                      x,y,z,mode; comma separated, e.g. "
+         "--hold-input start)\n");
+  printf("  -T, --tap-input B   Tap buttons 8 frames of every 40 so "
+         "edge-detected\n");
+  printf("                      menus advance (same button names)\n");
   printf("  --dump-video-hash   Fingerprint the rendered video (per-line VDP "
          "output)\n");
   printf("                      and print FNV-1a checksums after the run\n");
@@ -395,6 +445,10 @@ int main(int argc, char *argv[])
   const char *load_state_file = nullptr;
   const char *save_state_file = nullptr;
   const char *dump_audio_file = nullptr;
+  const char *hold_input = nullptr;
+  const char *tap_input = nullptr;
+  const char *dump_frames = nullptr;
+  const char *zram_log = nullptr;
   int dump_video_hash = 0;
   int dump_state_hash = 0;
   int hash_per_frame = 0;
@@ -411,13 +465,17 @@ int main(int argc, char *argv[])
       {"load-state", required_argument, 0, 'l'},
       {"save-state", required_argument, 0, 's'},
       {"dump-audio", required_argument, 0, 'D'},
+      {"hold-input", required_argument, 0, 'I'},
+      {"tap-input", required_argument, 0, 'T'},
+      {"dump-frames", required_argument, 0, 'F'},
+      {"zram-log", required_argument, 0, 'Z'},
       {"dump-video-hash", no_argument, &dump_video_hash, 1},
       {"dump-state-hash", no_argument, &dump_state_hash, 1},
       {"hash-per-frame", no_argument, &hash_per_frame, 1},
       {"hash-state-per-frame", no_argument, &hash_state_per_frame, 1},
       {0, 0, 0, 0}};
 
-  while ((opt = getopt_long(argc, argv, "hvf:Vql:s:D:", long_options,
+  while ((opt = getopt_long(argc, argv, "hvf:Vql:s:D:I:T:F:Z:", long_options,
                             nullptr)) != -1) {
     switch (opt) {
     case 'h':
@@ -441,6 +499,18 @@ int main(int argc, char *argv[])
       break;
     case 'D':
       dump_audio_file = optarg;
+      break;
+    case 'I':
+      hold_input = optarg;
+      break;
+    case 'T':
+      tap_input = optarg;
+      break;
+    case 'F':
+      dump_frames = optarg;
+      break;
+    case 'Z':
+      zram_log = optarg;
       break;
     case 'V':
       verbose_mode = 1;
@@ -485,7 +555,7 @@ int main(int argc, char *argv[])
       audio = std::make_unique<HeadlessAudio>();
     }
     std::unique_ptr<IVideoBackend> video;
-    if (dump_video_hash || hash_per_frame) {
+    if (dump_video_hash || hash_per_frame || dump_frames != nullptr) {
       auto cap = std::make_unique<CapturingVideo>();
       capture_video = cap.get();
       video = std::move(cap);
@@ -521,13 +591,119 @@ int main(int argc, char *argv[])
         printf("State loaded from: %s\n", load_state_file);
     }
 
+    if (dump_frames != nullptr && capture_video != nullptr) {
+      /* PREFIX:START:COUNT */
+      char prefix[400];
+      unsigned int start = 0, count = 0;
+      if (std::sscanf(dump_frames, "%399[^:]:%u:%u", prefix, &start, &count) ==
+          3) {
+        capture_video->enable_frame_dump(strdup(prefix), start, count);
+        if (!quiet_mode)
+          printf("Dumping frames %u..%u to %s_*\n", start, start + count,
+                 prefix);
+      }
+    }
+
+    if (zram_log != nullptr) {
+      core->debug_log_zram_to(zram_log);
+      if (!quiet_mode)
+        printf("Z80-RAM write log: %s\n", zram_log);
+    }
+
     if (!quiet_mode)
-      printf("\nRunning %u frames...\n", num_frames);
+      if (zram_log != nullptr) {
+        core->debug_log_zram_to(zram_log);
+        printf("Z80-RAM write log: %s\n", zram_log);
+      }
+
+    printf("\nRunning %u frames...\n", num_frames);
 
     clock_t start_time = clock();
     unsigned int frame = 0;
 
+    /* Scripted input for automated runs, so audio/video comparisons can
+     * reach gameplay: --hold-input keeps the buttons down from frame 0
+     * (no press edges — games with edge detection never see these fire),
+     * --tap-input presses them 8 frames of every 40 so menus advance.
+     * Buttons: u,d,l,r,start,a,b,c,x,y,z,mode, comma separated. */
+    unsigned int hold_up = 0, hold_down = 0, hold_left = 0, hold_right = 0;
+    unsigned int hold_start = 0, hold_a = 0, hold_b = 0, hold_c = 0;
+    unsigned int hold_x = 0, hold_y = 0, hold_z = 0, hold_mode = 0;
+    unsigned int tap_up = 0, tap_down = 0, tap_left = 0, tap_right = 0;
+    unsigned int tap_start = 0, tap_a = 0, tap_b = 0, tap_c = 0;
+    unsigned int tap_x = 0, tap_y = 0, tap_z = 0, tap_mode = 0;
+    for (int mode = 0; mode < 2; mode++) {
+      const char *spec = mode == 0 ? hold_input : tap_input;
+      if (spec == nullptr) {
+        continue;
+      }
+      unsigned int *const dst[12] = {mode == 0 ? &hold_up : &tap_up,
+                                     mode == 0 ? &hold_down : &tap_down,
+                                     mode == 0 ? &hold_left : &tap_left,
+                                     mode == 0 ? &hold_right : &tap_right,
+                                     mode == 0 ? &hold_start : &tap_start,
+                                     mode == 0 ? &hold_a : &tap_a,
+                                     mode == 0 ? &hold_b : &tap_b,
+                                     mode == 0 ? &hold_c : &tap_c,
+                                     mode == 0 ? &hold_x : &tap_x,
+                                     mode == 0 ? &hold_y : &tap_y,
+                                     mode == 0 ? &hold_z : &tap_z,
+                                     mode == 0 ? &hold_mode : &tap_mode};
+      for (const char *p = spec; *p != '\0'; p++) {
+        if (*p == ',' || *p == ' ' || *p == '+') {
+          continue;
+        }
+        const char *q = p;
+        while (*q != '\0' && *q != ',' && *q != ' ' && *q != '+') {
+          q++;
+        }
+        const std::string name(p, (std::size_t)(q - p));
+        int idx = -1;
+        if (name == "u" || name == "up") {
+          idx = 0;
+        } else if (name == "d" || name == "down") {
+          idx = 1;
+        } else if (name == "l" || name == "left") {
+          idx = 2;
+        } else if (name == "r" || name == "right") {
+          idx = 3;
+        } else if (name == "start") {
+          idx = 4;
+        } else if (name == "a") {
+          idx = 5;
+        } else if (name == "b") {
+          idx = 6;
+        } else if (name == "c") {
+          idx = 7;
+        } else if (name == "x") {
+          idx = 8;
+        } else if (name == "y") {
+          idx = 9;
+        } else if (name == "z") {
+          idx = 10;
+        } else if (name == "mode") {
+          idx = 11;
+        } else {
+          std::cerr << "Error: unknown input button '" << name << "'\n";
+          return 1;
+        }
+        *dst[idx] = 1;
+        if (*q == '\0') {
+          break;
+        }
+        p = q;
+      }
+    }
+
     for (; frame < num_frames; frame++) {
+      const unsigned int tap = (frame % 40) < 8 ? 1u : 0u;
+      core->set_input(0, hold_up | (tap_up & tap), hold_down | (tap_down & tap),
+                      hold_left | (tap_left & tap),
+                      hold_right | (tap_right & tap),
+                      hold_start | (tap_start & tap), hold_a | (tap_a & tap),
+                      hold_b | (tap_b & tap), hold_c | (tap_c & tap),
+                      hold_x | (tap_x & tap), hold_y | (tap_y & tap),
+                      hold_z | (tap_z & tap), hold_mode | (tap_mode & tap));
       core->run_frame();
 
       if (gen_quit) { /* signal-safe shutdown flag */

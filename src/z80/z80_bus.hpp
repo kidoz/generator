@@ -17,6 +17,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 
 namespace generator {
 
@@ -32,6 +33,14 @@ public:
   }
 
   void reset();
+
+  /* Debug sink: one callback per Z80-RAM byte write, from either the Z80
+   * or the 68K window. The Machine timestamp is added by the owner —
+   * the bus itself has no clock. Cleared by reset(). */
+  void set_ram_write_sink(std::function<void(uint16_t, uint8_t)> sink)
+  {
+    m_ram_write_sink = std::move(sink);
+  }
 
   /* Byte access from the Z80 core (or the 68K window). */
   uint8_t read_byte(uint16_t zaddr);
@@ -83,6 +92,7 @@ private:
   Psg m_psg;
   uint32_t m_bank = 0;
   M68kBus *m_m68kbus = nullptr;
+  std::function<void(uint16_t, uint8_t)> m_ram_write_sink;
 };
 
 }  // namespace generator

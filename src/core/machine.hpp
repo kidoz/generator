@@ -27,6 +27,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <expected>
 #include <memory>
 #include <span>
@@ -95,6 +96,10 @@ public:
   unsigned int frame_count() const;
 
   // --- Diagnostics ---
+
+  /* Z80-RAM write log, one line per write (either master), formatted
+   * "master_clocks addr data" for cross-core comparison. */
+  void debug_log_zram_to(const char *path);
 
   const M68k::Fault &cpu_fault() const
   {
@@ -182,6 +187,14 @@ private:
   void power_on();           /* reset hold + vector fetch */
   void finish_frame_video(); /* emit the field through the video seam */
   void halt(const char *why);
+
+  struct FileCloser {
+    void operator()(std::FILE *f) const
+    {
+      std::fclose(f);
+    }
+  };
+  std::unique_ptr<std::FILE, FileCloser> m_zram_log;
 
   std::unique_ptr<IAudioBackend> m_audio;
   std::unique_ptr<IVideoBackend> m_video;

@@ -67,6 +67,9 @@ public:
 
   // --- Input ---
 
+  /* Debug: log every Z80-RAM write ("master_clocks addr data"). */
+  void debug_log_zram_to(const char *path);
+
   void set_input(int player, unsigned int up, unsigned int down,
                  unsigned int left, unsigned int right, unsigned int start,
                  unsigned int a, unsigned int b, unsigned int c, unsigned int x,

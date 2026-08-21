@@ -961,6 +961,23 @@ void Machine::set_input(int player, unsigned int up, unsigned int down,
   in.mode = mode != 0;
 }
 
+void Machine::debug_log_zram_to(const char *path)
+{
+  if (path == nullptr) {
+    return;
+  }
+  std::FILE *f = std::fopen(path, "w");
+  if (f == nullptr) {
+    return;
+  }
+  m_z80bus.set_ram_write_sink([this, f](uint16_t addr, uint8_t value) {
+    std::fprintf(f, "%llu %04x %02x\n", (unsigned long long)m_mclk_total, addr,
+                 value);
+  });
+  /* The sink closes with the machine; the Z80Bus clears it on reset. */
+  m_zram_log.reset(f);
+}
+
 void Machine::set_video_mode(int pal, int autodetect)
 {
   m_autodetect = autodetect != 0;

@@ -92,6 +92,11 @@ time_t EmulatorCore::state_slot_date(int slot) const
   return m_impl->state_slot_date(slot);
 }
 
+void EmulatorCore::debug_log_zram_to(const char *path)
+{
+  m_impl->debug_log_zram_to(path);
+}
+
 void EmulatorCore::set_input(int player, unsigned int up, unsigned int down,
                              unsigned int left, unsigned int right,
                              unsigned int start, unsigned int a, unsigned int b,
