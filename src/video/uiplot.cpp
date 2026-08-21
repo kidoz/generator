@@ -76,11 +76,11 @@ void uiplot_checkpalcache(int flag)
     g = (uint8)((entry & 0x00E0) >> 4);
     b = (uint8)((entry & 0x0E00) >> 8);
 
-    /* Expand 3-bit to 8-bit: (value << 4) | (value >> 1)
+    /* Expand 3-bit to 8-bit: (value << 4) | (value << 1) | (value >> 2)
        Maps: 0→0, 2→36, 4→73, 6→109, 8→146, 10→182, 12→219, 14→255 */
-    b8 = (b << 4) | (b >> 1);
-    r8 = (r << 4) | (r >> 1);
-    g8 = (g << 4) | (g >> 1);
+    b8 = (b << 4) | (b << 1) | (b >> 2);
+    r8 = (r << 4) | (r << 1) | (r >> 2);
+    g8 = (g << 4) | (g << 1) | (g >> 2);
 
     /* Normal brightness
        For 16-bit formats: need 5 bits for R/B (shift 8-bit down by 3)

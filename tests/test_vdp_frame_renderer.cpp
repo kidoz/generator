@@ -100,10 +100,33 @@ TEST_CASE("render_pushed maps each CRAM channel to the right output channel",
 
   renderer.render_pushed(0, pixels, row.data());
 
-  /* 3-bit level 7 expands to (14 << 4) | (14 >> 1) = 231. */
-  REQUIRE((row[1] & 0x00FFFFFFU) == 0x00E70000U); /* red only   */
-  REQUIRE((row[2] & 0x00FFFFFFU) == 0x0000E700U); /* green only */
-  REQUIRE((row[3] & 0x00FFFFFFU) == 0x000000E7U); /* blue only  */
+  REQUIRE((row[1] & 0x00FFFFFFU) == 0x00FF0000U); /* red only   */
+  REQUIRE((row[2] & 0x00FFFFFFU) == 0x0000FF00U); /* green only */
+  REQUIRE((row[3] & 0x00FFFFFFU) == 0x000000FFU); /* blue only  */
+}
+
+TEST_CASE("render_pushed expands every three-bit channel level to eight bits",
+          "[vdp-frame-renderer]")
+{
+  uiplot_setshifts(16, 8, 0);
+  uiplot_setmasks(0x00FF0000, 0x0000FF00, 0x000000FF);
+
+  std::array<uint16_t, 64> cram{};
+  std::array<uint8_t, 64> dirty{};
+  for (unsigned int level = 0; level < 8; level++)
+    cram[level] = (uint16_t)(level << 1);
+  dirty.fill(1);
+  uiplot_set_cram(cram.data(), dirty.data());
+
+  generator::ui::VdpFrameRenderer renderer;
+  std::array<uint8_t, 8> pixels{0, 1, 2, 3, 4, 5, 6, 7};
+  std::array<uint32_t, 8> row{};
+  constexpr std::array<uint8_t, 8> expected{0, 36, 73, 109, 146, 182, 219, 255};
+
+  renderer.render_pushed(0, pixels, row.data());
+
+  for (unsigned int level = 0; level < expected.size(); level++)
+    REQUIRE(((row[level] >> 16) & 0xFFU) == expected[level]);
 }
 
 TEST_CASE("render_pushed forces every converted pixel opaque",
