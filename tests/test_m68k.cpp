@@ -141,6 +141,46 @@ TEST_CASE("cartridge bus mirrors non-power-of-two ROM images", "[m68k_bus]")
   CHECK(value == 0x1234);
 }
 
+TEST_CASE("68K bus ignores the upper address byte", "[m68k_bus]")
+{
+  TestDevices devices;
+  M68kBus bus(devices);
+  std::vector<uint8_t> rom(0x10000, 0);
+  std::vector<uint8_t> ram(0x10000, 0);
+  rom[0x204] = 0x45;
+  rom[0x205] = 0xF9;
+  bus.attach_rom(rom.data(), rom.size());
+  bus.attach_ram(ram.data());
+
+  uint16_t value = 0;
+  bus.read(0x0F000204, true, true, &value);
+  CHECK(value == 0x45F9);
+
+  bus.write(0x12FF0204, 0xABCD, true, true);
+  CHECK(ram[0x0204] == 0xAB);
+  CHECK(ram[0x0205] == 0xCD);
+}
+
+TEST_CASE("jsr follows a callback tagged in the upper address byte", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x207C); /* MOVEA.L #$0F000120,A0 */
+  rig.lw(0x0102, 0x0F000120);
+  rig.w(0x0106, 0x4E90); /* JSR (A0) */
+  rig.w(0x0108, 0x4E71); /* return target */
+  rig.w(0x0120, 0x7007); /* MOVEQ #7,D0 */
+  rig.w(0x0122, 0x4E75); /* RTS */
+  rig.boot();
+
+  rig.cpu.step();
+  rig.cpu.step();
+  rig.cpu.step();
+  CHECK(rig.cpu.d(0) == 7);
+  CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::None);
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0x0108);
+}
+
 TEST_CASE("move.b d0,d1 executes with 4 cycles", "[m68k][cycles]")
 {
   Rig rig;
@@ -149,6 +189,95 @@ TEST_CASE("move.b d0,d1 executes with 4 cycles", "[m68k][cycles]")
   rig.cpu.step();
   CHECK(rig.cpu.d(1) == 0);
   CHECK(rig.cycles() == 4);
+}
+
+TEST_CASE("word addition reports signed negative overflow", "[m68k][flags]")
+{
+  Rig rig;
+  rig.w(0x0100, 0xD041); /* ADD.W D1,D0 */
+  rig.boot();
+  rig.cpu.set_d(0, 0x00008000);
+  rig.cpu.set_d(1, 0x0000FFFF);
+  rig.cpu.step();
+  CHECK((rig.cpu.d(0) & 0xFFFF) == 0x7FFF);
+  CHECK((rig.cpu.sr() & 0x0002) != 0); /* V */
+  CHECK((rig.cpu.sr() & 0x0008) == 0); /* N */
+  CHECK((rig.cpu.sr() & 0x0001) != 0); /* C */
+}
+
+TEST_CASE("long addition keeps carry independent from signed overflow",
+          "[m68k][flags]")
+{
+  SECTION("positive signed overflow has no unsigned carry")
+  {
+    Rig rig;
+    rig.w(0x0100, 0xD081); /* ADD.L D1,D0 */
+    rig.boot();
+    rig.cpu.set_d(0, 0x40100000);
+    rig.cpu.set_d(1, 0x40100000);
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x80200000);
+    CHECK((rig.cpu.sr() & 0x0002) != 0); /* V */
+    CHECK((rig.cpu.sr() & 0x0001) == 0); /* C */
+    CHECK((rig.cpu.sr() & 0x0010) == 0); /* X */
+  }
+
+  SECTION("unsigned carry need not be signed overflow")
+  {
+    Rig rig;
+    rig.w(0x0100, 0xD081); /* ADD.L D1,D0 */
+    rig.boot();
+    rig.cpu.set_d(0, 0xFFFFFFFF);
+    rig.cpu.set_d(1, 0x00000001);
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x00000000);
+    CHECK((rig.cpu.sr() & 0x0002) == 0); /* V */
+    CHECK((rig.cpu.sr() & 0x0001) != 0); /* C */
+    CHECK((rig.cpu.sr() & 0x0010) != 0); /* X */
+  }
+}
+
+TEST_CASE("right shifts clear a stale overflow flag", "[m68k][flags]")
+{
+  Rig rig;
+  rig.w(0x0100, 0xD081); /* ADD.L D1,D0: set V without carry */
+  rig.w(0x0102, 0xEC80); /* ASR.L #6,D0 */
+  rig.boot();
+  rig.cpu.set_d(0, 0x40100000);
+  rig.cpu.set_d(1, 0x40100000);
+  rig.cpu.step();
+  REQUIRE((rig.cpu.sr() & 0x0002) != 0);
+  rig.cpu.step();
+  CHECK(rig.cpu.d(0) == 0xFE008000);
+  CHECK((rig.cpu.sr() & 0x0002) == 0); /* V */
+}
+
+TEST_CASE("word subtraction reports signed overflow symmetrically",
+          "[m68k][flags]")
+{
+  SECTION("negative minus positive overflows to positive")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x9041); /* SUB.W D1,D0 */
+    rig.boot();
+    rig.cpu.set_d(0, 0x00008000);
+    rig.cpu.set_d(1, 0x00000001);
+    rig.cpu.step();
+    CHECK((rig.cpu.d(0) & 0xFFFF) == 0x7FFF);
+    CHECK((rig.cpu.sr() & 0x0002) != 0); /* V */
+  }
+
+  SECTION("in-range signed subtraction does not overflow")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x9041); /* SUB.W D1,D0 */
+    rig.boot();
+    rig.cpu.set_d(0, 0x0000FFFF);
+    rig.cpu.set_d(1, 0x00007FFF);
+    rig.cpu.step();
+    CHECK((rig.cpu.d(0) & 0xFFFF) == 0x8000);
+    CHECK((rig.cpu.sr() & 0x0002) == 0); /* V */
+  }
 }
 
 TEST_CASE("move.l (a0),d0 reads long and takes 16 cycles", "[m68k][cycles]")
@@ -228,6 +357,55 @@ TEST_CASE("clr.l (a0)+ reads, clears, and takes 20 cycles", "[m68k][cycles]")
   CHECK(rig.trace[3].kind == M68k::TraceEntry::Kind::Write);
 }
 
+TEST_CASE("neg.l displacement uses one effective address", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x44AB); /* NEG.L $24(A3) */
+  rig.w(0x0102, 0x0024);
+  rig.w(0x0104, 0x4E70); /* must remain the following opcode */
+  rig.cpu.set_a(3, 0xE02000);
+  rig.ram[0x2024] = 0x00;
+  rig.ram[0x2025] = 0x00;
+  rig.ram[0x2026] = 0x00;
+  rig.ram[0x2027] = 0x01;
+  rig.ram[0x6E70] = 0x12;
+  rig.ram[0x6E71] = 0x34;
+  rig.ram[0x6E72] = 0x56;
+  rig.ram[0x6E73] = 0x78;
+  rig.boot();
+  rig.cpu.step();
+
+  CHECK(rig.cpu.pc() == 0x0104);
+  CHECK(rig.cpu.a(3) == 0xE02000);
+  CHECK(rig.ram[0x2024] == 0xFF);
+  CHECK(rig.ram[0x2025] == 0xFF);
+  CHECK(rig.ram[0x2026] == 0xFF);
+  CHECK(rig.ram[0x2027] == 0xFF);
+  CHECK(rig.ram[0x6E70] == 0x12);
+  CHECK(rig.ram[0x6E71] == 0x34);
+  CHECK(rig.ram[0x6E72] == 0x56);
+  CHECK(rig.ram[0x6E73] == 0x78);
+}
+
+TEST_CASE("not.l postincrement updates its address register once", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x4698); /* NOT.L (A0)+ */
+  rig.cpu.set_a(0, 0xE02000);
+  rig.ram[0x2000] = 0x12;
+  rig.ram[0x2001] = 0x34;
+  rig.ram[0x2002] = 0x56;
+  rig.ram[0x2003] = 0x78;
+  rig.boot();
+  rig.cpu.step();
+
+  CHECK(rig.cpu.a(0) == 0xE02004);
+  CHECK(rig.ram[0x2000] == 0xED);
+  CHECK(rig.ram[0x2001] == 0xCB);
+  CHECK(rig.ram[0x2002] == 0xA9);
+  CHECK(rig.ram[0x2003] == 0x87);
+}
+
 TEST_CASE("moveq loads sign-extended immediate", "[m68k]")
 {
   Rig rig;
@@ -239,6 +417,28 @@ TEST_CASE("moveq loads sign-extended immediate", "[m68k]")
   rig.reset();
   rig.cpu.step();
   CHECK(rig.cpu.d(2) == 0xFFFFFF80);
+}
+
+TEST_CASE("ext.w replaces the complete low word with the sign-extended byte",
+          "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x203C); /* MOVE.L #$1234AB7E,D0 */
+  rig.lw(0x0102, 0x1234AB7E);
+  rig.w(0x0106, 0x223C); /* MOVE.L #$5678CD80,D1 */
+  rig.lw(0x0108, 0x5678CD80);
+  rig.w(0x010C, 0x4880); /* EXT.W D0 */
+  rig.w(0x010E, 0x4881); /* EXT.W D1 */
+  rig.boot();
+
+  rig.cpu.step();
+  rig.cpu.step();
+  rig.cpu.step();
+  CHECK(rig.cpu.d(0) == 0x1234007E);
+  rig.cpu.step();
+  CHECK(rig.cpu.d(1) == 0x5678FF80);
+  CHECK((rig.cpu.sr() & 0x08) != 0); /* N */
+  CHECK((rig.cpu.sr() & 0x07) == 0); /* Z, V, C */
 }
 
 TEST_CASE("add.l d0,d1 computes and takes 8 cycles", "[m68k][cycles]")
@@ -362,14 +562,297 @@ TEST_CASE("interrupt at level 6 preempts only above the SR mask", "[m68k]")
   CHECK(((rig.cpu.sr() >> 8) & 7) == 6);
 }
 
-TEST_CASE("unimplemented opcode faults instead of skipping", "[m68k]")
+TEST_CASE("unassigned opcode faults with its real opcode word", "[m68k]")
 {
   Rig rig;
-  rig.w(0x0100, 0x4180); /* CHK D0,D0 (not in the implemented subset) */
+  rig.w(0x0100, 0xA000); /* line A: unassigned on the 68000 */
   rig.boot();
   rig.cpu.step();
   CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::UnimplementedOpcode);
-  CHECK(rig.cpu.fault().opcode == 0x4180);
+  CHECK(rig.cpu.fault().opcode == 0xA000);
+}
+
+TEST_CASE("illegal-destination faults report the instruction, not the EA",
+          "[m68k]")
+{
+  /* ANDI.W #imm,A3 (0x004B) is an illegal encoding; the fault must carry
+   * the opcode word itself. Reporting the synthesized EA field instead
+   * logged this class of fault as "000B", hiding what actually ran. */
+  Rig rig;
+  rig.w(0x0100, 0x004B); /* ANDI.W #imm,A3 */
+  rig.w(0x0102, 0x00FF);
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::UnimplementedOpcode);
+  CHECK(rig.cpu.fault().opcode == 0x004B);
+}
+
+TEST_CASE("addx and subx memory forms run instead of faulting", "[m68k]")
+{
+  /* The 68K derail diagnosed as "unimplemented opcode 000B": ADDX/SUBX
+   * -(Ay),-(Ax) fell into the reserved EA path and reported the
+   * synthesized opcode 0x000B (mode 1, register 3 = A3). */
+  SECTION("addx.w -(a3),-(a0)")
+  {
+    Rig rig;
+    rig.w(0x0100, 0xD14B); /* ADDX.W -(A3),-(A0) */
+    rig.cpu.set_a(3, 0xE02012);
+    rig.cpu.set_a(0, 0xE03012);
+    rig.ram[0x2010] = 0x00;
+    rig.ram[0x2011] = 0x02; /* source 2 */
+    rig.ram[0x3010] = 0x00;
+    rig.ram[0x3011] = 0x10; /* destination 16 */
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::None);
+    CHECK(rig.cpu.a(3) == 0xE02010);
+    CHECK(rig.cpu.a(0) == 0xE03010);
+    CHECK(rig.ram[0x3010] == 0x00);
+    CHECK(rig.ram[0x3011] == 0x12);    /* 16 + 2 */
+    CHECK((rig.cpu.sr() & 0x04) == 0); /* non-zero result: Z clear */
+  }
+
+  SECTION("subx.b -(a3),-(a0) borrows")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x910B); /* SUBX.B -(A3),-(A0) */
+    rig.cpu.set_a(3, 0xE02001);
+    rig.cpu.set_a(0, 0xE03001);
+    rig.ram[0x2000] = 0x05; /* source 5 */
+    rig.ram[0x3000] = 0x02; /* destination 2 */
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::None);
+    CHECK(rig.ram[0x3000] == 0xFD);       /* 2 - 5 */
+    CHECK((rig.cpu.sr() & 0x11) == 0x11); /* borrow: C and X set */
+  }
+
+  SECTION("addx.w takes X as carry-in")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x44FC); /* MOVE.W #imm,CCR */
+    rig.w(0x0102, 0x0011); /* set X and C */
+    rig.w(0x0104, 0xD14B); /* ADDX.W -(A3),-(A0) */
+    rig.cpu.set_a(3, 0xE02012);
+    rig.cpu.set_a(0, 0xE03012);
+    rig.ram[0x2010] = 0x00;
+    rig.ram[0x2011] = 0x01;
+    rig.ram[0x3010] = 0x00;
+    rig.ram[0x3011] = 0x02;
+    rig.boot();
+    rig.cpu.step();                 /* MOVE #imm,CCR */
+    rig.cpu.step();                 /* ADDX */
+    CHECK(rig.ram[0x3011] == 0x04); /* 2 + 1 + 1 */
+  }
+}
+
+TEST_CASE("abcd and sbcd run as decimal, not and/or", "[m68k]")
+{
+  /* 0xC101/0x8101 previously decoded as AND.B/OR.B: the ABCD/SBCD
+   * register encodings sit where the never-assembled reg-to-reg
+   * AND/OR byte forms would be. */
+  SECTION("abcd d1,d0")
+  {
+    Rig rig;
+    rig.w(0x0100, 0xC101); /* ABCD.B D1,D0 */
+    rig.cpu.set_d(0, 0x58);
+    rig.cpu.set_d(1, 0x24);
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x82);       /* 58 + 24 in BCD */
+    CHECK((rig.cpu.sr() & 0x11) == 0); /* no decimal carry */
+  }
+
+  SECTION("abcd d1,d0 carries at 100")
+  {
+    Rig rig;
+    rig.w(0x0100, 0xC101);
+    rig.cpu.set_d(0, 0x99);
+    rig.cpu.set_d(1, 0x01);
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x00);
+    CHECK((rig.cpu.sr() & 0x11) == 0x11); /* carry: C and X set */
+  }
+
+  SECTION("abcd -(a3),-(a0)")
+  {
+    Rig rig;
+    rig.w(0x0100, 0xC10B); /* ABCD.B -(A3),-(A0) */
+    rig.cpu.set_a(3, 0xE02001);
+    rig.cpu.set_a(0, 0xE03001);
+    rig.ram[0x2000] = 0x34; /* source 34 */
+    rig.ram[0x3000] = 0x65; /* destination 65 */
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::None);
+    CHECK(rig.ram[0x3000] == 0x99); /* 65 + 34 */
+    CHECK(rig.cpu.a(3) == 0xE02000);
+    CHECK(rig.cpu.a(0) == 0xE03000);
+  }
+
+  SECTION("sbcd d1,d0")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x8101); /* SBCD.B D1,D0 */
+    rig.cpu.set_d(0, 0x50);
+    rig.cpu.set_d(1, 0x25);
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x25); /* 50 - 25, not 0x75 (OR) */
+    CHECK((rig.cpu.sr() & 0x11) == 0);
+  }
+
+  SECTION("sbcd d1,d0 borrows")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x8101);
+    rig.cpu.set_d(0, 0x05);
+    rig.cpu.set_d(1, 0x10);
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x95);          /* 100 - 5 */
+    CHECK((rig.cpu.sr() & 0x11) == 0x11); /* borrow: C and X set */
+  }
+}
+
+TEST_CASE("nbcd negates in decimal", "[m68k]")
+{
+  SECTION("nbcd dn")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x4800); /* NBCD.B D0 */
+    rig.cpu.set_d(0, 0x05);
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x95);          /* 100 - 5 */
+    CHECK((rig.cpu.sr() & 0x11) == 0x11); /* borrow out */
+  }
+
+  SECTION("nbcd (a0)")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x4810); /* NBCD.B (A0) */
+    rig.cpu.set_a(0, 0xE02000);
+    rig.ram[0x2000] = 0x21; /* 21 */
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.ram[0x2000] == 0x79); /* 100 - 21 = 79 */
+    CHECK(rig.cpu.a(0) == 0xE02000);
+  }
+}
+
+TEST_CASE("negx subtracts through X and holds Z on zero", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x4040); /* NEGX.W D0 */
+  rig.cpu.set_d(0, 0x0001);
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.cpu.d(0) == 0xFFFF);
+  CHECK((rig.cpu.sr() & 0x11) == 0x11); /* borrow: C and X set */
+
+  /* zero operand with Z pre-set: the X-family rule keeps Z set */
+  rig.w(0x0100, 0x44FC); /* MOVE.W #imm,CCR */
+  rig.w(0x0102, 0x0004); /* Z set, X clear */
+  rig.w(0x0104, 0x4000); /* NEGX.B D0 */
+  rig.cpu.set_d(0, 0);
+  rig.reset();
+  rig.cpu.step(); /* MOVE #imm,CCR */
+  rig.cpu.step(); /* NEGX.B: 0 - 0 - 0 */
+  CHECK(rig.cpu.d(0) == 0);
+  CHECK((rig.cpu.sr() & 0x04) != 0); /* Z held set */
+  CHECK((rig.cpu.sr() & 0x11) == 0); /* no borrow */
+
+  /* zero operand with Z clear: Z must stay clear, not be re-set */
+  rig.w(0x0102, 0x0002); /* V set instead: Z clear */
+  rig.reset();
+  rig.cpu.step();                    /* MOVE #imm,CCR */
+  rig.cpu.step();                    /* NEGX.B */
+  CHECK((rig.cpu.sr() & 0x04) == 0); /* Z held clear */
+}
+
+TEST_CASE("chk traps out-of-range through vector 6", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x4190); /* CHK.W (A0),D0 */
+  rig.cpu.set_a(0, 0xE02000);
+  rig.ram[0x2000] = 0x00;
+  rig.ram[0x2001] = 0x05;     /* source 5 */
+  rig.cpu.set_d(0, 0x0004);   /* limit 4 */
+  rig.lw(0x0018, 0x000000F0); /* vector 6 -> 0xF0 */
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0xF0);
+  CHECK(rig.cpu.d(0) == 0x0004); /* registers untouched by the trap */
+
+  /* negative source traps too */
+  rig.ram[0x2000] = 0x80;
+  rig.reset();
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0xF0);
+
+  /* in range: no trap, C cleared */
+  rig.ram[0x2000] = 0x00;
+  rig.ram[0x2001] = 0x03;
+  rig.reset();
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0x102);
+  CHECK((rig.cpu.sr() & 0x01) == 0);
+}
+
+TEST_CASE("chk destination register spans the full Ry field", "[m68k]")
+{
+  /* The decode mask once pinned the destination to D0 (0x4180): CHK into
+   * D1-D7 (0x4380-0x4FBF) fell through as unimplemented. */
+  Rig rig;
+  rig.w(0x0100, 0x4B90); /* CHK.W (A0),D5 */
+  rig.cpu.set_a(0, 0xE02000);
+  rig.ram[0x2000] = 0x00;
+  rig.ram[0x2001] = 0x05;     /* source 5 */
+  rig.cpu.set_d(5, 0x0004);   /* limit 4 */
+  rig.lw(0x0018, 0x000000F0); /* vector 6 -> 0xF0 */
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0xF0);
+  CHECK(rig.cpu.d(5) == 0x0004); /* untouched by the trap */
+
+  /* in range: no trap */
+  rig.ram[0x2001] = 0x04;
+  rig.reset();
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0x102);
+}
+
+TEST_CASE("btst dn,#imm tests the immediate byte", "[m68k]")
+{
+  /* The dynamic BTST alone may take an immediate EA — def68k calls it
+   * the weirdo instruction. The bit number comes from Dn; the operand is
+   * the extension word's low byte. */
+  Rig rig;
+  rig.w(0x0100, 0x033C); /* BTST D1,#imm */
+  rig.w(0x0102, 0x0004); /* immediate byte 0x04 */
+  rig.cpu.set_d(1, 2);
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::None);
+  CHECK((rig.cpu.sr() & 0x04) == 0); /* bit 2 of 0x04 set: Z clear */
+
+  rig.cpu.set_d(1, 3); /* bit 3 of 0x04 clear */
+  rig.reset();
+  rig.cpu.step();
+  CHECK((rig.cpu.sr() & 0x04) != 0); /* Z set */
+}
+
+TEST_CASE("illegal opcode 4AFC traps through vector 4", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x4AFC);      /* ILLEGAL */
+  rig.lw(0x0010, 0x000000F0); /* vector 4 -> 0xF0 */
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0xF0);
+  CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::None);
 }
 
 TEST_CASE("prefetch queue makes extensions free after memory forms",
@@ -454,6 +937,36 @@ TEST_CASE("movem.w -(a0),list stores descending", "[m68k]")
   CHECK(rig.ram[0x200E] == 0x22);
   CHECK(rig.ram[0x200F] == 0x22);
   CHECK(rig.cpu.a(0) == 0xE0200C);
+}
+
+TEST_CASE("movem predecrement stores the original base register", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x48A2); /* MOVEM.W A2,-(A2) */
+  rig.w(0x0102, 0x0020); /* reversed predecrement mask: bit 5 selects A2 */
+  rig.cpu.set_a(2, 0xE02010);
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.cpu.a(2) == 0xE0200E);
+  CHECK(rig.ram[0x200E] == 0x20);
+  CHECK(rig.ram[0x200F] == 0x10);
+}
+
+TEST_CASE("move between address registers and USP uses the encoded direction",
+          "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x4E61); /* MOVE A1,USP */
+  rig.w(0x0102, 0x4E6A); /* MOVE USP,A2 */
+  rig.boot();
+  rig.cpu.set_a(1, 0x00FF8124);
+
+  rig.cpu.step();
+  CHECK(rig.cpu.a(1) == 0x00FF8124);
+  CHECK(rig.cpu.save().usp == 0x00FF8124);
+
+  rig.cpu.step();
+  CHECK(rig.cpu.a(2) == 0x00FF8124);
 }
 
 TEST_CASE("movep.w d0,(4,a0) strides the byte lanes", "[m68k]")
@@ -602,6 +1115,19 @@ TEST_CASE("move.b #imm,(an)+ post-increments the destination", "[m68k]")
   rig.cpu.step();
   CHECK(rig.ram[0x2002] == 0x01);
   CHECK(rig.cpu.a(6) == 0xE02003);
+}
+
+TEST_CASE("scc through (an)+ post-increments the destination", "[m68k]")
+{
+  Rig rig;
+  /* Batman's palette lookup state uses this exact ST.B (A3)+ sequence.
+   * Leaving A3 on the byte just written shifts every later lookup table. */
+  rig.w(0x0100, 0x50DB); /* ST.B (A3)+ */
+  rig.cpu.set_a(3, 0xE02002);
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.ram[0x2002] == 0xFF);
+  CHECK(rig.cpu.a(3) == 0xE02003);
 }
 
 /* --- VDP DMA (data movement through the bus) --- */

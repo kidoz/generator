@@ -195,6 +195,11 @@ private:
   void exec_moveq(uint16_t op);
   void exec_lea(uint16_t op);
   void exec_alu(uint16_t op, int op_kind);
+  void exec_x_op(uint16_t op, bool is_add); /* ADDX/SUBX */
+  void exec_bcd(uint16_t op, bool is_add);  /* ABCD/SBCD */
+  void exec_nbcd(uint16_t op);
+  void exec_negx(uint16_t op);
+  void exec_chk(uint16_t op);
   void exec_immediate(uint16_t op);
   void exec_addq_subq(uint16_t op);
   void exec_scc(uint16_t op);
@@ -220,8 +225,10 @@ private:
   static uint32_t bsign(uint32_t v, int size);
   void set_zn(uint32_t res, int size);
   void flags_logic(uint32_t res, int size);
-  void flags_add(uint32_t a, uint32_t b, uint32_t res, int size);
-  void flags_sub(uint32_t a, uint32_t b, uint32_t res, int size);
+  void flags_add(uint32_t a, uint32_t b, uint32_t res, int size,
+                 uint32_t carry_in = 0);
+  void flags_sub(uint32_t a, uint32_t b, uint32_t res, int size,
+                 uint32_t borrow_in = 0);
   void flags_cmp(uint32_t a, uint32_t b, uint32_t res, int size);
 
   M68kBus &m_bus;
@@ -240,7 +247,8 @@ private:
   int m_queue_len = 0;
   uint32_t m_prefetch_addr = 0;
 
-  int m_ipl = 7; /* 7 = no request */
+  int m_ipl = 7;         /* 7 = no request */
+  uint16_t m_cur_op = 0; /* opcode being executed (fault reporting) */
   Fault m_fault{};
   bool m_abort = false;
   bool m_in_exception = false;

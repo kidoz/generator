@@ -28,6 +28,36 @@ int decode_size(int bits /* op bits 7-6 */)
   return 1 << (bits & 3); /* 0->1, 1->2, 2->4 */
 }
 
+/* Decimal adjust of dst +/- src +/- x over byte BCD operands: returns the
+ * BCD result and reports the decimal carry/borrow out. */
+uint8_t bcd_adjust(uint32_t dst, uint32_t src, bool is_add, bool x, bool &carry)
+{
+  if (is_add) {
+    uint32_t r = (dst & 0xFF) + (src & 0xFF) + (x ? 1u : 0u);
+    if ((r & 0xF) > 9) {
+      r += 6;
+    }
+    carry = r > 0x99;
+    if (carry) {
+      r += 0x60;
+    }
+    return (uint8_t)r;
+  }
+  /* subtract: decimal per nibble, with the low-nibble borrow carried into
+   * the high digit; a high-digit borrow is the BCD carry out */
+  int lo = (int)(dst & 0xF) - (int)(src & 0xF) - (x ? 1 : 0);
+  int hi = (int)((dst >> 4) & 0xF) - (int)((src >> 4) & 0xF);
+  if (lo < 0) {
+    lo += 10;
+    hi -= 1;
+  }
+  carry = hi < 0;
+  if (carry) {
+    hi += 10;
+  }
+  return (uint8_t)((hi << 4) | lo);
+}
+
 }  // namespace
 
 M68k::M68k(M68kBus &bus, MasterClockSink &clock) : m_bus(bus), m_clock(clock)
@@ -222,7 +252,8 @@ void M68k::flags_logic(uint32_t res, int size)
   set_zn(res, size);
 }
 
-void M68k::flags_add(uint32_t a, uint32_t b, uint32_t res, int size)
+void M68k::flags_add(uint32_t a, uint32_t b, uint32_t res, int size,
+                     uint32_t carry_in)
 {
   const uint32_t m = bmask(size);
   const int shift = size * 8 - 1;
@@ -235,17 +266,18 @@ void M68k::flags_add(uint32_t a, uint32_t b, uint32_t res, int size)
   if (r >> shift & 1) {
     m_sr |= SR_N;
   }
-  if (((x ^ r) & (y ^ r)) >> shift & 1) {
+  if ((uint64_t)x + y + carry_in > m) {
     m_sr |= SR_C | SR_X;
   }
   const bool sn = (x >> shift & 1) != 0, sm = (y >> shift & 1) != 0,
              sr = (r >> shift & 1) != 0;
-  if (!sn && !sm && sr) {
+  if (sn == sm && sn != sr) {
     m_sr |= SR_V;
   }
 }
 
-void M68k::flags_sub(uint32_t a, uint32_t b, uint32_t res, int size)
+void M68k::flags_sub(uint32_t a, uint32_t b, uint32_t res, int size,
+                     uint32_t borrow_in)
 {
   /* res = a - b */
   const uint32_t m = bmask(size);
@@ -259,12 +291,12 @@ void M68k::flags_sub(uint32_t a, uint32_t b, uint32_t res, int size)
   if (r >> shift & 1) {
     m_sr |= SR_N;
   }
-  if (x < y) {
+  if ((uint64_t)x < (uint64_t)y + borrow_in) {
     m_sr |= SR_C | SR_X;
   }
   const bool sn = (x >> shift & 1) != 0, sm = (y >> shift & 1) != 0,
              sr = (r >> shift & 1) != 0;
-  if (sn != sm && sm != sr) {
+  if (sn != sm && sn != sr) {
     m_sr |= SR_V;
   }
 }
@@ -470,8 +502,11 @@ uint32_t M68k::ea_addr(const Ea &ea, int size)
   default:
     break;
   }
-  m_fault = Fault{Fault::Kind::UnimplementedOpcode, m_pc,
-                  (uint16_t)(0x0000 | ea.mode << 3 | ea.reg)};
+  /* An EA outside the mode set legal for memory operands. Report the
+   * actual opcode word, not the EA encoding: diagnosing a derail needs
+   * the instruction that ran, and mode 1 here stands in for several
+   * reserved bit patterns. */
+  m_fault = Fault{Fault::Kind::UnimplementedOpcode, m_pc, m_cur_op};
   return 0;
 }
 
@@ -632,6 +667,7 @@ void M68k::step()
   if (aborted()) {
     return;
   }
+  m_cur_op = opcode;
   /* PC tracks the next unfetched stream word (prefetch address minus the
    * queued words): after the opcode pop it is the address following the
    * opcode; after execute() it is the next instruction's address. */
@@ -914,6 +950,22 @@ void M68k::exec_alu(uint16_t op, int op_kind)
 
   const bool to_memory = (op & 0x0100) != 0;
 
+  /* ADDX/SUBX occupy bit-8-set mode 0/1 entirely: reg-to-reg OR/AND never
+   * assemble there (their Dn,Dm form uses bit 8 clear), and mode 1 is the
+   * -(Ay),-(Ax) pair — the 68000 has no postincrement X form. */
+  if (to_memory && ea.mode <= 1 && (op_kind == 1 || op_kind == 4)) {
+    exec_x_op(op, op_kind == 4);
+    return;
+  }
+  /* ABCD/SBCD: byte size, mode 0/1, bit 8 set (0x8100-0x810F / 0xC100-
+   * 0xC10F). OR/AND reg-to-reg at byte size with bit 8 set do not exist as
+   * encodings, so recognizing the decimal pair here steals nothing. */
+  if (to_memory && ea.mode <= 1 && size == 1 &&
+      (op_kind == 0 || op_kind == 3)) {
+    exec_bcd(op, op_kind == 3);
+    return;
+  }
+
   if (!to_memory) {
     /* <ea>,Dn — An is a legal source EA (the register's low word for
      * .B/.W); it is only invalid as a data destination. */
@@ -966,9 +1018,7 @@ void M68k::exec_alu(uint16_t op, int op_kind)
   if (ea.mode == 0) {
     const uint32_t src = m_d[reg];
     const uint32_t dst = m_d[ea.reg];
-    const uint32_t x = (m_sr & SR_X) != 0 ? 1 : 0;
     uint32_t res;
-    const bool was_zero = (m_sr & SR_Z) != 0;
     switch (op_kind) {
     case 0:
       res = dst | src;
@@ -981,24 +1031,6 @@ void M68k::exec_alu(uint16_t op, int op_kind)
     case 2:
       res = dst ^ src;
       flags_logic(res, size);
-      break;
-    case 1: /* SUBX */
-      res = dst - src - x;
-      flags_sub(dst, src + x, res, size);
-      if ((res & bmask(size)) != 0) {
-        m_sr = (uint16_t)(m_sr & ~SR_Z);
-      } else if (!was_zero) {
-        m_sr = (uint16_t)(m_sr & ~SR_Z);
-      }
-      break;
-    case 4: /* ADDX */
-      res = dst + src + x;
-      flags_add(dst, src + x, res, size);
-      if ((res & bmask(size)) != 0) {
-        m_sr = (uint16_t)(m_sr & ~SR_Z);
-      } else if (!was_zero) {
-        m_sr = (uint16_t)(m_sr & ~SR_Z);
-      }
       break;
     default:
       m_fault = Fault{Fault::Kind::UnimplementedOpcode, m_pc, op};
@@ -1068,6 +1100,211 @@ void M68k::exec_alu(uint16_t op, int op_kind)
   if (ea.mode == 3) {
     m_a[ea.reg] += (uint32_t)size;
   }
+  prefetch_fill(1);
+}
+
+/* ------------------------------------------------------------------ */
+/* extended (X) and decimal (BCD) arithmetic                           */
+/* ------------------------------------------------------------------ */
+
+void M68k::exec_x_op(uint16_t op, bool is_add)
+{
+  /* ADDX/SUBX: 1101/1001 xxx 1 ss 00m rrr. m=0 is Dy,Dx; m=1 is
+   * -(Ay),-(Ax) only — both registers count down by the operand size.
+   * Z clears on a non-zero result and otherwise holds its previous value,
+   * so a multi-precision loop can test it once after the whole chain. */
+  const int size = decode_size(op >> 6);
+  const int rx = (op >> 9) & 7; /* Dx / -(Ax): destination */
+  const int ry = op & 7;        /* Dy / -(Ay): source */
+  const uint32_t x = (m_sr & SR_X) != 0 ? 1 : 0;
+  const bool was_zero = (m_sr & SR_Z) != 0;
+
+  if (((op >> 3) & 7) == 0) {
+    const uint32_t src = m_d[ry];
+    const uint32_t dst = m_d[rx];
+    const uint32_t res = is_add ? dst + src + x : dst - src - x;
+    if (is_add) {
+      flags_add(dst, src, res, size, x);
+    } else {
+      flags_sub(dst, src, res, size, x);
+    }
+    m_d[rx] = size == 1   ? (m_d[rx] & ~0xFFu) | (res & 0xFF)
+              : size == 2 ? (m_d[rx] & ~0xFFFFu) | (res & 0xFFFF)
+                          : res;
+    if ((res & bmask(size)) != 0 || !was_zero) {
+      m_sr = (uint16_t)(m_sr & ~SR_Z);
+    }
+    advance_clk(size == 4 ? 4 : 0); /* 4/8 total with the refill; unverified */
+    prefetch_fill(1);
+    return;
+  }
+
+  /* -(Ay),-(Ax): fetch source, fetch destination, write back low word
+   * first like every read-modify-write. unverified */
+  m_a[ry] -= (uint32_t)size;
+  const uint32_t src = read_mem(m_a[ry], size);
+  if (aborted()) {
+    return;
+  }
+  m_a[rx] -= (uint32_t)size;
+  const uint32_t dst = read_mem(m_a[rx], size);
+  if (aborted()) {
+    return;
+  }
+  const uint32_t res = is_add ? dst + src + x : dst - src - x;
+  if (is_add) {
+    flags_add(dst, src, res, size, x);
+  } else {
+    flags_sub(dst, src, res, size, x);
+  }
+  if ((res & bmask(size)) != 0 || !was_zero) {
+    m_sr = (uint16_t)(m_sr & ~SR_Z);
+  }
+  write_mem(m_a[rx], size, res, size == 4);
+  advance_clk(2);
+  prefetch_fill(1);
+}
+
+void M68k::exec_bcd(uint16_t op, bool is_add)
+{
+  /* ABCD/SBCD: 1100/1000 xxx 1 0000 R/M rrr — byte only. Decimal carry
+   * always writes C and X together; N and V are undefined on the 68000
+   * and are left alone. Z follows the X-family hold-on-zero rule. */
+  const int rx = (op >> 9) & 7;
+  const int ry = op & 7;
+  const bool was_zero = (m_sr & SR_Z) != 0;
+  const bool x = (m_sr & SR_X) != 0;
+
+  uint32_t dst, res;
+  bool carry = false;
+  if (((op >> 3) & 7) == 0) {
+    dst = m_d[rx] & 0xFF;
+    res = bcd_adjust(dst, m_d[ry] & 0xFF, is_add, x, carry);
+    m_d[rx] = (m_d[rx] & ~0xFFu) | res;
+    advance_clk(2); /* 6 total with the refill */
+    prefetch_fill(1);
+  } else {
+    /* -(Ay),-(Ax): one byte each way, predecrement by one. unverified */
+    m_a[ry] -= 1;
+    const uint32_t src = bus_read_byte(m_a[ry]);
+    if (aborted()) {
+      return;
+    }
+    m_a[rx] -= 1;
+    dst = bus_read_byte(m_a[rx]);
+    if (aborted()) {
+      return;
+    }
+    res = bcd_adjust(dst, src, is_add, x, carry);
+    bus_write_byte(m_a[rx], (uint8_t)res);
+    advance_clk(2);
+    prefetch_fill(1);
+  }
+  m_sr =
+      (uint16_t)((m_sr & ~(SR_C | SR_X | SR_Z)) | (carry ? (SR_C | SR_X) : 0u) |
+                 (res == 0 && was_zero ? SR_Z : 0u));
+}
+
+void M68k::exec_nbcd(uint16_t op)
+{
+  /* NBCD <ea>: 0100 1000 000 mmm rrr — zero minus the operand in decimal,
+   * with X as the borrow-in. Same flag rules as SBCD. */
+  const Ea ea{(op >> 3) & 7, op & 7};
+  const bool was_zero = (m_sr & SR_Z) != 0;
+  const bool x = (m_sr & SR_X) != 0;
+
+  uint32_t res;
+  bool carry = false;
+  if (!ea_is_memory(ea)) {
+    res = bcd_adjust(0, m_d[ea.reg] & 0xFF, false, x, carry);
+    m_d[ea.reg] = (m_d[ea.reg] & ~0xFFu) | res;
+    advance_clk(2); /* 6 total with the refill */
+    prefetch_fill(1);
+  } else {
+    const uint32_t addr = ea_addr(ea, 1);
+    if (m_fault.kind == Fault::Kind::UnimplementedOpcode || aborted()) {
+      return;
+    }
+    const uint32_t dst = bus_read_byte(addr);
+    if (aborted()) {
+      return;
+    }
+    res = bcd_adjust(0, dst, false, x, carry);
+    bus_write_byte(addr, (uint8_t)res);
+    if (ea.mode == 3) { /* (An)+ */
+      m_a[ea.reg] += 1;
+    }
+    prefetch_fill(1);
+  }
+  m_sr =
+      (uint16_t)((m_sr & ~(SR_C | SR_X | SR_Z)) | (carry ? (SR_C | SR_X) : 0u) |
+                 (res == 0 && was_zero ? SR_Z : 0u));
+}
+
+void M68k::exec_negx(uint16_t op)
+{
+  /* NEGX <ea>: 0100 0000 ss mmm EEE — zero minus the destination minus X,
+   * with SUBX's Z rule. Same structure and timing as NEG. */
+  const int size = decode_size(op >> 6);
+  const Ea ea{(op >> 3) & 7, op & 7};
+  const uint32_t x = (m_sr & SR_X) != 0 ? 1 : 0;
+  const bool was_zero = (m_sr & SR_Z) != 0;
+
+  if (!ea_is_memory(ea)) {
+    const uint32_t dst = m_d[ea.reg];
+    const uint32_t res = 0 - dst - x;
+    flags_sub(0, dst, res, size, x);
+    if ((res & bmask(size)) != 0 || !was_zero) {
+      m_sr = (uint16_t)(m_sr & ~SR_Z);
+    }
+    m_d[ea.reg] = size == 1   ? (m_d[ea.reg] & ~0xFFu) | (res & 0xFF)
+                  : size == 2 ? (m_d[ea.reg] & ~0xFFFFu) | (res & 0xFFFF)
+                              : res;
+    advance_clk(size == 4 ? 4 : 0);
+    prefetch_fill(1);
+    return;
+  }
+
+  const uint32_t addr = ea_addr(ea, size);
+  if (m_fault.kind == Fault::Kind::UnimplementedOpcode || aborted()) {
+    return;
+  }
+  const uint32_t dst = read_mem(addr, size);
+  if (aborted()) {
+    return;
+  }
+  const uint32_t res = 0 - dst - x;
+  flags_sub(0, dst, res, size, x);
+  if ((res & bmask(size)) != 0 || !was_zero) {
+    m_sr = (uint16_t)(m_sr & ~SR_Z);
+  }
+  write_mem(addr, size, res, size == 4);
+  if (ea.mode == 3) { /* (An)+ */
+    m_a[ea.reg] += (uint32_t)size;
+  }
+  prefetch_fill(1);
+}
+
+void M68k::exec_chk(uint16_t op)
+{
+  /* CHK <ea>,Dn (word only): traps through vector 6 when the source is
+   * negative or above the unsigned limit in Dn's low word; the stacked
+   * PC is the address after CHK. C always clears; N, V and Z are
+   * undefined and left alone. */
+  constexpr int kVecChk = 6;
+  const Ea ea{(op >> 3) & 7, op & 7};
+  const uint32_t src = ea_read(ea, 2);
+  if (aborted() || m_fault.kind == Fault::Kind::UnimplementedOpcode) {
+    return;
+  }
+  const int32_t value = (int32_t)(int16_t)src;
+  const uint32_t limit = m_d[(op >> 9) & 7] & 0xFFFF;
+  m_sr = (uint16_t)(m_sr & ~SR_C);
+  if (value < 0 || (uint32_t)value > limit) {
+    exception(kVecChk, m_pc, 6);
+    return;
+  }
+  advance_clk(6); /* 10 total with the refill; unverified */
   prefetch_fill(1);
 }
 
@@ -1311,6 +1548,9 @@ void M68k::exec_scc(uint16_t op)
   } else {
     bus_write_byte(addr, 0xFF);
   }
+  if (ea.mode == 3) { /* (An)+ post-increment */
+    m_a[ea.reg] += ea.reg == 7 ? 2U : 1U;
+  }
   prefetch_fill(1);
 }
 
@@ -1532,6 +1772,10 @@ void M68k::exec_single(uint16_t op)
     }
     return;
   }
+  if (sub == 0x4AFC) { /* ILLEGAL — checked before LEA, which shares bits 8-6 */
+    exception(kVecIllegal, m_pc, 4);
+    return;
+  }
   if ((op & 0xFFF0) == 0x4E40) { /* TRAP #n */
     exception(kVecTrap0 + (op & 0xF), m_pc, 4);
     return;
@@ -1549,21 +1793,21 @@ void M68k::exec_single(uint16_t op)
     exec_movem(op);
     return;
   }
-  if ((op & 0xFFF8) == 0x4E60) { /* MOVE USP,Ay */
-    if ((m_sr & SR_S) == 0) {
-      exception(kVecIllegal, m_pc, 4);
-      return;
-    }
-    m_a[op & 7] = m_usp;
-    prefetch_fill(1);
-    return;
-  }
-  if ((op & 0xFFF8) == 0x4E68) { /* MOVE Ax,USP */
+  if ((op & 0xFFF8) == 0x4E60) { /* MOVE Ay,USP */
     if ((m_sr & SR_S) == 0) {
       exception(kVecIllegal, m_pc, 4);
       return;
     }
     m_usp = m_a[op & 7];
+    prefetch_fill(1);
+    return;
+  }
+  if ((op & 0xFFF8) == 0x4E68) { /* MOVE USP,Ax */
+    if ((m_sr & SR_S) == 0) {
+      exception(kVecIllegal, m_pc, 4);
+      return;
+    }
+    m_a[op & 7] = m_usp;
     prefetch_fill(1);
     return;
   }
@@ -1588,9 +1832,9 @@ void M68k::exec_single(uint16_t op)
       m_d[r] = (uint32_t)(int32_t)(int16_t)(m_d[r] & 0xFFFF);
       set_zn(m_d[r], 4);
     } else {
-      m_d[r] =
-          (m_d[r] & 0xFFFFFF00) | (uint32_t)(uint8_t)(int8_t)(m_d[r] & 0xFF);
-      set_zn(m_d[r], 1);
+      const uint16_t extended = (uint16_t)(int16_t)(int8_t)(m_d[r] & 0xFF);
+      m_d[r] = (m_d[r] & 0xFFFF0000) | extended;
+      set_zn(m_d[r], 2);
     }
     m_sr = (uint16_t)(m_sr & ~(SR_C | SR_V));
     prefetch_fill(1);
@@ -1624,6 +1868,20 @@ void M68k::exec_single(uint16_t op)
     exec_clr_neg_not_tst(op);
     return;
   }
+  if ((op & 0xF1C0) == 0x4180 && ((op >> 3) & 7) != 1) { /* CHK <ea>,Dn */
+    exec_chk(op);
+    return;
+  }
+  /* NEGX 0x4000-0x40BF; 0x40C0 upward is MOVE from SR (handled above). */
+  if ((op & 0xFF00) == 0x4000 && ((op >> 3) & 7) != 1 &&
+      (op & 0x00C0) != 0x00C0) {
+    exec_negx(op);
+    return;
+  }
+  if ((op & 0xFFC0) == 0x4800 && ((op >> 3) & 7) != 1) { /* NBCD */
+    exec_nbcd(op);
+    return;
+  }
 
   m_fault = Fault{Fault::Kind::UnimplementedOpcode, m_pc, op};
 }
@@ -1653,7 +1911,10 @@ void M68k::exec_clr_neg_not_tst(uint16_t op)
       }
       /* The 68000 performs a read cycle before writing zero. Besides
        * preserving bus-visible behaviour, this makes CLR.L memory forms
-       * eight clocks slower than a plain long write. */
+       * eight clocks slower than a plain long write; the read/write
+       * pairs below cover those, and the +4 is the dead cycle every
+       * read-modify-write instruction carries (published CLR.L (An)+
+       * timing is 20 clocks). */
       (void)read_mem(addr, size);
       if (aborted()) {
         return;
@@ -1690,11 +1951,25 @@ void M68k::exec_clr_neg_not_tst(uint16_t op)
     return;
   }
 
-  const uint32_t dst = ea_read(ea, size);
+  uint32_t addr = 0;
+  uint32_t dst = 0;
+  if (ea_is_memory(ea)) {
+    /* NEG and NOT are read-modify-write operations: their effective
+     * address is calculated once, then used for both bus phases. Resolving
+     * it again would consume displacement/index extension words twice and
+     * update predecrement/postincrement address registers twice. */
+    addr = ea_addr(ea, size);
+    if (aborted() || m_fault.kind == Fault::Kind::UnimplementedOpcode) {
+      return;
+    }
+    dst = read_mem(addr, size);
+  } else {
+    dst = ea_read(ea, size);
+  }
   if (aborted() || m_fault.kind == Fault::Kind::UnimplementedOpcode) {
     return;
   }
-  uint32_t res;
+  uint32_t res = 0;
   if (kind == 0x4400) { /* NEG */
     res = 0 - dst;
     flags_sub(0, dst, res, size);
@@ -1702,12 +1977,15 @@ void M68k::exec_clr_neg_not_tst(uint16_t op)
     res = ~dst;
     flags_logic(res, size);
   }
-  ea_write(ea, size, res);
   if (ea_is_memory(ea)) {
-    prefetch_fill(1);
+    write_mem(addr, size, res, size == 4 && ea.mode == 4);
+    if (ea.mode == 3) {
+      m_a[ea.reg] += (uint32_t)size;
+    }
   } else {
-    prefetch_fill(1);
+    ea_write(ea, size, res);
   }
+  prefetch_fill(1);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1794,6 +2072,7 @@ void M68k::exec_shift(uint16_t op)
     if (aborted()) {
       return;
     }
+    m_sr = (uint16_t)(m_sr & ~SR_V);
     const uint32_t res = shift_once(v, type, left, 2);
     set_zn(res, 2);
     if (type != 0 && type != 3) {
@@ -1827,6 +2106,9 @@ void M68k::exec_shift(uint16_t op)
   }
 
   uint32_t res = m_d[r] & bmask(size);
+  /* Every shift/rotate starts with V clear. ASL sets it if any step changes
+   * the sign bit; the other seven forms always leave it clear. */
+  m_sr = (uint16_t)(m_sr & ~SR_V);
   for (int i = 0; i < count; i++) {
     res = shift_once(res, type, left, size);
   }
@@ -1890,6 +2172,20 @@ void M68k::exec_bitop(uint16_t op)
     if (kind != 0) {
       advance_clk(2);
     }
+    prefetch_fill(1);
+    return;
+  }
+
+  /* BTST Dn,#imm: the read-only bit op alone may take an immediate EA
+   * (the def68k tables single it out); the mutating kinds keep the
+   * illegal-EA fault. */
+  if (kind == 0 && ea.mode == 7 && ea.reg == 4) {
+    const uint32_t v = fetch_stream_word() & 0xFF;
+    if (aborted()) {
+      return;
+    }
+    m_sr = (uint16_t)((m_sr & ~SR_Z) |
+                      ((v & (1u << (bitnum & 7))) != 0 ? 0 : SR_Z));
     prefetch_fill(1);
     return;
   }
@@ -2005,13 +2301,19 @@ void M68k::exec_movem(uint16_t op)
        * D0. Walking the registers from A7 down to D0 while the address
        * steps down leaves the usual D0..A7 ascending layout in memory,
        * which is what the (An)+ restore below reads back. */
+      const uint32_t initial_base = m_a[ea.reg];
       for (int i = 15; i >= 0; i--) {
         if ((mask & (1u << (15 - i))) == 0) {
           continue;
         }
         m_a[ea.reg] -= (uint32_t)size;
         const uint32_t addr = m_a[ea.reg];
-        const uint32_t value = i < 8 ? m_d[i] : m_a[i - 8];
+        /* On a 68000, including the effective-address register stores its
+         * value from before the MOVEM, not the value after this transfer's
+         * predecrement. Games use that value to link packed structures. */
+        const uint32_t value = i < 8             ? m_d[i]
+                               : i - 8 == ea.reg ? initial_base
+                                                 : m_a[i - 8];
         write_mem(addr, size, size == 2 ? value & 0xFFFF : value, size == 4);
         if (aborted()) {
           return;

@@ -122,6 +122,27 @@ test('m68k_core', test_m68k,
   suite: 'catch2'
 )
 
+# Opcode-completeness sweep against the def68k tables: a generated range
+# table drives every legal 68000 encoding through the decoder, so a hole
+# in the implemented subset cannot ship unnoticed.
+test_m68k_opcode_table = executable('test_m68k_opcode_table',
+  'test_m68k_opcode_table.cpp',
+  '../src/m68k/m68k.cpp',
+  '../src/bus/m68k_bus.cpp',
+  '../src/vdp/vdp.cpp',
+  '../src/vdp/vdp_render.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [m68k_test_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('m68k_opcode_table', test_m68k_opcode_table,
+  timeout: 60,
+  suite: 'catch2'
+)
+
 z80_test_inc = include_directories('../include/generator', '../src',
                                    '../src/audio', '../src/z80', '../src/bus')
 

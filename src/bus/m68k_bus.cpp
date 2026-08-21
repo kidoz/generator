@@ -44,6 +44,10 @@ void M68kBus::reset()
 
 int M68kBus::read(uint32_t addr, bool upper, bool lower, uint16_t *out)
 {
+  /* The MC68000 exposes A23-A1 (plus UDS/LDS), so the upper byte of an
+   * address register never reaches the Genesis bus. Some games deliberately
+   * keep flags there and call or dereference the tagged address. */
+  addr &= 0xFFFFFF;
   uint16_t value = 0;
 
   if (m_sram != nullptr && addr >= m_sram_start && addr < m_sram_end) {
@@ -92,6 +96,7 @@ int M68kBus::read(uint32_t addr, bool upper, bool lower, uint16_t *out)
 
 int M68kBus::write(uint32_t addr, uint16_t data, bool upper, bool lower)
 {
+  addr &= 0xFFFFFF;
   if (addr >= 0xE00000) {
     const uint32_t offset = addr & 0xFFFE;
     if (upper) {
