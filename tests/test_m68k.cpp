@@ -1632,3 +1632,123 @@ TEST_CASE("sprite size comes from the high byte of the second word",
   }
   CHECK(row[16] == 0x00); /* and no further */
 }
+
+TEST_CASE("sprite mask entry stops lower-priority sprites on its scanline",
+          "[vdp_render]")
+{
+  generator::Vdp vdp;
+  vdp.reset(false);
+  auto regw = [&](int reg, uint8_t val) {
+    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+  };
+  auto vwrite = [&](uint32_t addr, uint16_t value) {
+    vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
+    vdp.port_write(0xC00004, (uint16_t)((addr >> 14) & 3));
+    vdp.port_write(0xC00000, value);
+  };
+
+  regw(0x0F, 2);
+  regw(0x0C, 0x81); /* H40 */
+  regw(0x05, 0x78); /* sprite table at 0xF000 */
+
+  for (uint32_t w = 0; w < 16; w++) {
+    vwrite(0x20 + w * 2, 0x1111);
+    vwrite(0x40 + w * 2, 0x2222);
+  }
+
+  /* Visible sprite, mask sprite at raw X=0, then a sprite which must not
+   * leak through after the mask. */
+  vwrite(0xF000, 0x0080);
+  vwrite(0xF002, 0x0001);
+  vwrite(0xF004, 0x0001);
+  vwrite(0xF006, 0x0090); /* screen X=16 */
+  vwrite(0xF008, 0x0080);
+  vwrite(0xF00A, 0x0002);
+  vwrite(0xF00C, 0x0000);
+  vwrite(0xF00E, 0x0000); /* raw X=0: mask */
+  vwrite(0xF010, 0x0080);
+  vwrite(0xF012, 0x0000);
+  vwrite(0xF014, 0x0002);
+  vwrite(0xF016, 0x00A0); /* screen X=32 */
+
+  std::array<generator::Vdp::Px, generator::Vdp::kLineBufferWidth> row{};
+  vdp.render_sprites(0, row.data());
+  CHECK(row[16].value == 0x01);
+  CHECK(row[32].value == 0x00);
+}
+
+TEST_CASE("cell horizontal scroll uses one table pair per eight scanlines",
+          "[vdp_render]")
+{
+  generator::Vdp vdp;
+  vdp.reset(false);
+  auto regw = [&](int reg, uint8_t val) {
+    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+  };
+  auto vwrite = [&](uint32_t addr, uint16_t value) {
+    vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
+    vdp.port_write(0xC00004, (uint16_t)((addr >> 14) & 3));
+    vdp.port_write(0xC00000, value);
+  };
+
+  regw(0x0F, 2);
+  regw(0x02, 0x30); /* plane A at 0xC000 */
+  regw(0x0D, 0x38); /* horizontal-scroll table at 0xE000 */
+  regw(0x0B, 0x02); /* eight-scanline horizontal scroll */
+  regw(0x10, 0x00); /* 32x32-cell plane */
+
+  for (uint32_t w = 0; w < 16; w++) {
+    vwrite(0x20 + w * 2, 0x1111);
+    vwrite(0x40 + w * 2, 0x2222);
+  }
+  vwrite(0xC040, 0x0001); /* row 1, column 0 */
+  vwrite(0xC042, 0x0002); /* row 1, column 1 */
+
+  /* Each line-pair occupies four bytes (plane A then plane B). Lines 8-15
+   * select the pair at byte offset 32; an eight-pixel source offset makes
+   * screen X=0 fetch column 1. */
+  vwrite(0xE020, 0x03F8);
+
+  CHECK(vdp.layer_pixel(0, 8, 0).value == 0x02);
+}
+
+TEST_CASE("two-cell vertical scroll leaves partial left fetch unscrolled",
+          "[vdp_render]")
+{
+  generator::Vdp vdp;
+  vdp.reset(false);
+  auto regw = [&](int reg, uint8_t val) {
+    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+  };
+  auto vwrite = [&](uint32_t addr, uint16_t value) {
+    vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
+    vdp.port_write(0xC00004, (uint16_t)((addr >> 14) & 3));
+    vdp.port_write(0xC00000, value);
+  };
+  auto vswrite = [&](uint32_t addr, uint16_t value) {
+    vdp.port_write(0xC00004,
+                   (uint16_t)(0x4000 | (addr & 0x3FFF))); /* CD1-CD0=1 */
+    vdp.port_write(0xC00004,
+                   (uint16_t)(0x0010 | ((addr >> 14) & 3))); /* CD2=1 */
+    vdp.port_write(0xC00000, value);
+  };
+
+  regw(0x0F, 2);
+  regw(0x02, 0x30); /* plane A at 0xC000 */
+  regw(0x0D, 0x38); /* horizontal-scroll table at 0xE000 */
+  regw(0x0B, 0x04); /* two-cell vertical scroll */
+  regw(0x10, 0x00); /* 32x32-cell plane */
+
+  for (uint32_t w = 0; w < 16; w++) {
+    vwrite(0x20 + w * 2, 0x1111);
+    vwrite(0x40 + w * 2, 0x2222);
+  }
+  vwrite(0xC000, 0x0001); /* row 0, column 0 */
+  vwrite(0xC040, 0x0002); /* row 1, column 0 */
+  vwrite(0xE000, 0x03FF); /* one-pixel source offset */
+  vswrite(0, 8);          /* would select row 1 if applied */
+
+  /* With a non-aligned horizontal offset, the first fetch column is left
+   * of the VSRAM column range and therefore uses vertical offset zero. */
+  CHECK(vdp.layer_pixel(0, 0, 0).value == 0x01);
+}

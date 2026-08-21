@@ -53,26 +53,41 @@ Vdp::Px Vdp::layer_pixel(int layer, uint32_t line, uint32_t x) const
 
   uint32_t hsentry;
   switch (hmode) {
-  case 1: /* per-line for the first 8 lines, then constant (the doc
-           * calls this mode erroneous; legacy semantics) */
-    hsentry = (line < 8 ? line : 0) * 2;
+  case 1: /* prohibited mode: repeat the first eight line entries */
+    hsentry = (line & 7) * 4;
     break;
-  case 2: /* 16-pixel cells. unverified */
-    hsentry = (x >> 4) * 16;
+  case 2: /* one scroll pair per eight scanlines */
+    hsentry = (line & ~7U) * 4;
     break;
   case 3: /* per scanline */
-    hsentry = line * 2;
+    hsentry = line * 4;
     break;
   default:
     hsentry = 0;
     break;
   }
-  int32_t hoffset = 0x400 - (int32_t)vram_word(hsbase + hsentry);
-  hoffset = (hoffset + (int32_t)x) & 0x3FF;
+  const int32_t hscroll =
+      (0x400 - (int32_t)vram_word(hsbase + hsentry)) & 0x3FF;
+  int32_t hoffset = (hscroll + (int32_t)x) & 0x3FF;
 
-  const uint32_t vsidx =
-      vmode ? (((x >> 4) << 1) | (uint32_t)layer) : (uint32_t)layer;
-  const uint32_t voffset = (uint32_t)((int32_t)m_vsram[vsidx] + (int32_t)line);
+  uint32_t vsidx = (uint32_t)layer;
+  bool vscroll_unavailable = false;
+  if (vmode) {
+    /* Two-cell vertical scroll follows the VDP fetch columns, including
+     * the one or two partial columns fetched to the left when horizontal
+     * scroll is not 16-pixel aligned. VSRAM is unavailable for those
+     * negative columns and the hardware uses zero. */
+    const int32_t fine = hscroll & 15;
+    int32_t column = fine == 0 ? 0 : (fine > 8 ? -2 : -1);
+    column += ((int32_t)x + (hscroll & 7)) >> 3;
+    if (column < 0) {
+      vscroll_unavailable = true;
+    } else {
+      vsidx = (uint32_t)(column & ~1) + (uint32_t)layer;
+    }
+  }
+  const uint32_t vscroll = vscroll_unavailable ? 0 : m_vsram[vsidx];
+  const uint32_t voffset = (uint32_t)((int32_t)vscroll + (int32_t)line);
 
   uint32_t hwidth = (hsize + 1) << 5;
   const uint32_t vmask = (((vsize + 1) << 5) << 3) - 1;
@@ -109,14 +124,15 @@ void Vdp::render_sprites(uint32_t line, Px *out) const
 
   struct Sp {
     uint32_t entry;
-    int32_t y, x, w, h;
+    int32_t y, x, w, h, plot_w;
   };
   Sp list[128];
   uint32_t count = 0;
+  uint32_t on_line_count = 0;
   int32_t budget = budget0;
 
   uint32_t entry = table;
-  for (uint32_t guard = 0; guard < 255 && count < maxspl; guard++) {
+  for (uint32_t guard = 0; guard < 255; guard++) {
     const int32_t y = (int32_t)(vram_word(entry) & 0x1FF) - 0x80;
     /* Second word: the size nibble is the high byte (bits 11-10 width,
      * bits 9-8 height, both in cells minus one) and the link is the low
@@ -127,17 +143,23 @@ void Vdp::render_sprites(uint32_t line, Px *out) const
     const int32_t w = 1 + ((sz >> 10) & 3);
     const int32_t x = (int32_t)(vram_word(entry + 6) & 0x1FF) - 0x80;
     const bool on_line = (int32_t)line >= y && (int32_t)line < y + h * 8;
+    if (on_line && on_line_count++ >= maxspl) {
+      break;
+    }
+    if (on_line && x == -128) {
+      /* Sprite masking: a sprite at screen x=-128 whose own vertical
+       * range covers this line terminates evaluation — lower-priority
+       * sprites are not plotted. Hardware requires the masking sprite
+       * itself to cover the line: a sprite merely parked at (-128,
+       * off-screen) between the active ones masks nothing. Testing the
+       * previous sprite's extent instead makes those parked sprites
+       * erase live ones on random lines (visible as blinking). */
+      break;
+    }
     if (on_line && budget > 0) {
-      list[count++] = {entry, y, x, w, h};
-      budget -= w;
-    } else if (x == -128 && on_line) {
-      /* mask sprite: a sprite at x=-128 whose vertical range covers
-       * this line stops the plotting of lower-priority sprites
-       * (legacy semantics, itself approximate) */
-      break;
-    } else if (x == -128 && count > 0 && (int32_t)line >= list[count - 1].y &&
-               (int32_t)line < list[count - 1].y + list[count - 1].h * 8) {
-      break;
+      const int32_t plot_w = w < budget ? w : budget;
+      list[count++] = {entry, y, x, w, h, plot_w};
+      budget -= plot_w;
     }
     const uint32_t link = sz & 0x7F;
     if (link == 0) {
@@ -154,7 +176,7 @@ void Vdp::render_sprites(uint32_t line, Px *out) const
     const uint32_t row = (uint32_t)((int32_t)line - sp.y);
     const uint32_t rowoff =
         (tile & 0x1000) ? (sp.h * 8 - 1 - row) * 4 : row * 4;
-    for (int32_t c = 0; c < sp.w; c++) {
+    for (int32_t c = 0; c < sp.plot_w; c++) {
       const int32_t col = (tile & 0x800) ? sp.w - 1 - c : c;
       const uint32_t pattern =
           (base + (uint32_t)col * (sp.h << 5) + rowoff) & 0xFFFF;
