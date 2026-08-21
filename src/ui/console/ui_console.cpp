@@ -62,6 +62,7 @@ static int ui_pal = 0;
 /* Keyboard state for input mapping */
 static struct {
   int up, down, left, right, start, a, b, c;
+  int x, y, z, mode;
 } pads[2];
 
 
@@ -134,6 +135,7 @@ static void update_input(void)
 {
   pads[0].up = pads[0].down = pads[0].left = pads[0].right = 0;
   pads[0].start = pads[0].a = pads[0].b = pads[0].c = 0;
+  pads[0].x = pads[0].y = pads[0].z = pads[0].mode = 0;
   pads[1].up = pads[1].down = pads[1].left = pads[1].right = 0;
   pads[1].start = pads[1].a = pads[1].b = pads[1].c = 0;
 
@@ -154,12 +156,22 @@ static void update_input(void)
     pads[0].b = 1;
   if (keys[SDL_SCANCODE_D])
     pads[0].c = 1;
+  /* six-button: Q/W/E for X/Y/Z, Tab for mode */
+  if (keys[SDL_SCANCODE_Q])
+    pads[0].x = 1;
+  if (keys[SDL_SCANCODE_W])
+    pads[0].y = 1;
+  if (keys[SDL_SCANCODE_E])
+    pads[0].z = 1;
+  if (keys[SDL_SCANCODE_TAB])
+    pads[0].mode = 1;
 
   if (console_core) {
     console_core->set_input(0, pads[0].up, pads[0].down, pads[0].left,
                             pads[0].right, pads[0].start, pads[0].a, pads[0].b,
-                            pads[0].c);
-    console_core->set_input(1, 0, 0, 0, 0, 0, 0, 0, 0);
+                            pads[0].c, pads[0].x, pads[0].y, pads[0].z,
+                            pads[0].mode);
+    console_core->set_input(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
   }
 }
 

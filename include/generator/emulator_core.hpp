@@ -69,7 +69,8 @@ public:
 
   void set_input(int player, unsigned int up, unsigned int down,
                  unsigned int left, unsigned int right, unsigned int start,
-                 unsigned int a, unsigned int b, unsigned int c);
+                 unsigned int a, unsigned int b, unsigned int c, unsigned int x,
+                 unsigned int y, unsigned int z, unsigned int mode);
 
   // --- Audio platform control ---
 

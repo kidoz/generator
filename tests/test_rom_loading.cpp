@@ -7,6 +7,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -56,6 +57,18 @@ std::vector<uint8_t> make_rom(size_t size, uint32_t pc)
   std::copy_n("SEGA", 4, rom.begin() + 0x100);
   rom[pc] = 0x60; /* BRA.S -2: stable boot loop */
   rom[pc + 1] = 0xFE;
+  return rom;
+}
+
+/* Country flags live at 0x1F0 (space padded); they pick the machine the
+ * cartridge boots on: E-only is PAL, J-only domestic NTSC, anything else
+ * an overseas NTSC machine. */
+std::vector<uint8_t> make_region_rom(const char *region)
+{
+  auto rom = make_rom(0x4000, 0x200);
+  const size_t n = std::strlen(region);
+  std::copy_n(region, n, rom.begin() + 0x1F0);
+  rom[0x1F0 + n] = ' ';
   return rom;
 }
 
@@ -380,4 +393,30 @@ TEST_CASE("a machine with no cartridge still feeds the sound device",
   }
   CHECK(a->fields == 10);
   CHECK(a->samples >= 10 * (std::size_t)(SOUND_SAMPLERATE / 60));
+}
+
+TEST_CASE("an europe-only cartridge boots the PAL machine", "[rom_loading]")
+{
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_region_rom("E")));
+  machine.run_frame();
+
+  CHECK(machine.video_mode() == 1);
+  CHECK(machine.framerate() == 50);
+  /* Version register: PAL bit set, overseas machine (bit 7), I/O
+   * version nibble. */
+  CHECK(machine.io_debug_read(0xA10000) == 0xE1);
+  /* VDP status bit 0 is the PAL flag. */
+}
+
+TEST_CASE("a japan-only cartridge boots the domestic NTSC machine",
+          "[rom_loading]")
+{
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_region_rom("J")));
+  machine.run_frame();
+
+  CHECK(machine.video_mode() == 0);
+  CHECK(machine.framerate() == 60);
+  CHECK(machine.io_debug_read(0xA10000) == 0x21);
 }

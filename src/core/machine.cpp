@@ -25,6 +25,11 @@ namespace {
  * in game code are written against. */
 constexpr uint64_t kResetHoldMclk = 693132;
 
+/* Six-button pad TH idle reset. The pad lets go of its toggle counter
+ * when TH stays high for more than ~1.5ms; 25 scanlines of 3420 master
+ * clocks is the legacy core's measured equivalent (1.59ms NTSC). */
+constexpr uint64_t kPadThIdleResetMclk = 25 * 3420;
+
 /* Master clocks in one second of emulated time: 3420 per line, 262 lines
  * at 60 fields NTSC and 312 at 50 PAL. Deriving the audio rate from the
  * same numbers the VDP counts keeps the sample stream locked to the
@@ -216,6 +221,11 @@ void Machine::power_on()
   m_ram.fill(0);
   m_z80bus.reset();
   m_io_ctrl = {};
+  m_io_data = {};
+  m_input = {};
+  m_pad_counter = {};
+  m_pad_th = {1, 1};
+  m_pad_edge_mclk = {};
   m_z80_busreq = false;
   m_z80_resume_delay = 0;
   m_z80.power_on_reset(); /* held from power-on; the ROM's boot code
@@ -417,6 +427,128 @@ void Machine::vdp_write(uint32_t addr, uint16_t data, bool, bool lower)
   m_vdp.port_write(addr, data);
 }
 
+void Machine::update_pad_th(int port, bool th)
+{
+  if (port >= 2) {
+    return;
+  }
+  const bool previous = m_pad_th[port] != 0;
+  m_pad_th[port] = th ? 1 : 0;
+  if (!th || previous) {
+    return; /* only rising edges advance the handshake */
+  }
+
+  /* The pad counts TH rising edges ((c+2)&6: 0,2,4,6). An edge that
+   * arrives after the line has been quiet for the idle timeout starts
+   * a fresh count instead of continuing one — the real pad resets its
+   * counter when TH stays high for more than ~1.5ms. */
+  if (m_mclk_total - m_pad_edge_mclk[port] > kPadThIdleResetMclk) {
+    m_pad_counter[port] = 2;
+  } else {
+    m_pad_counter[port] = (uint8_t)((m_pad_counter[port] + 2) & 6);
+  }
+  m_pad_edge_mclk[port] = m_mclk_total;
+}
+
+uint16_t Machine::read_port(int port)
+{
+  const uint8_t ctrl = m_io_ctrl[port];
+  const uint8_t out = m_io_data[port];
+
+  /* 3-button pad protocol. The console
+   * drives TH (data bit 6) as an output and the pad multiplexes its six
+   * buttons + start over the TL/TR/data lines, active low:
+   *   TH=1: D0=up D1=down D2=left D3=right D4=B D5=C
+   *   TH=0: D0=up D1=down D2=0  D3=0    D4=A D5=start
+   * With TH set as an input the line is pulled high, so the pad sits in
+   * the TH=1 phase. Port C has nothing attached; its input lines float
+   * high (all released).
+   *
+   * A six-button pad keeps the same phases during a normal poll. After
+   * three quick TH toggle pairs (counter==6, the legacy ControllerPorts
+   * model: rising edges walk 0,2,4,6) it answers one extra pair instead
+   * — the phase a game reads to detect and drive the shoulder buttons:
+   *   TH=1: D0=z   D1=y   D2=x   D3=mode D4=B D5=C
+   *   TH=0: D0-D3 = 0 (the six-button signature), D4=A D5=start
+   * Counter==4 (one toggle pair into the burst) holds A/start without
+   * the direction lines, matching the legacy table. */
+  const bool th = (ctrl & 0x40) != 0 ? (out & 0x40) != 0 : true;
+  uint8_t counter = 0;
+  if (port < 2) {
+    if (m_mclk_total - m_pad_edge_mclk[port] > kPadThIdleResetMclk) {
+      m_pad_counter[port] = 0; /* quiet line: the pad has let go */
+    }
+    counter = m_pad_counter[port];
+  }
+
+  uint8_t pad = 0x3F; /* bits 0-5 released */
+  if (port < 2) {
+    const InputState &in = m_input[port];
+    if (in.up) {
+      pad &= (uint8_t)~0x01;
+    }
+    if (in.down) {
+      pad &= (uint8_t)~0x02;
+    }
+    if (th) {
+      if (counter == 6) { /* six-button extra phase */
+        if (in.z) {
+          pad &= (uint8_t)~0x01;
+        }
+        if (in.y) {
+          pad &= (uint8_t)~0x02;
+        }
+        if (in.x) {
+          pad &= (uint8_t)~0x04;
+        }
+        if (in.mode) {
+          pad &= (uint8_t)~0x08;
+        }
+      } else {
+        if (in.left) {
+          pad &= (uint8_t)~0x04;
+        }
+        if (in.right) {
+          pad &= (uint8_t)~0x08;
+        }
+      }
+      if (in.b) {
+        pad &= (uint8_t)~0x10;
+      }
+      if (in.c) {
+        pad &= (uint8_t)~0x20;
+      }
+    } else {
+      if (counter == 6) { /* six-button signature: low nibble forced 0 */
+        pad &= (uint8_t)~0x0F;
+      } else if (counter == 4) {
+        pad &= (uint8_t)~0x0F; /* A/start only, no direction lines */
+      } else {
+        pad &= (uint8_t)~0x0C; /* left/right lines forced low */
+      }
+      if (in.a) {
+        pad &= (uint8_t)~0x10;
+      }
+      if (in.start) {
+        pad &= (uint8_t)~0x20;
+      }
+    }
+  }
+
+  /* Lines the console drives as outputs read back the written level;
+   * input lines read the pad. TH as an input reads its pull-up. */
+  uint8_t v = 0;
+  for (int bit = 0; bit < 7; bit++) {
+    const uint8_t mask = (uint8_t)(1u << bit);
+    if ((ctrl & mask) != 0) {
+      v |= out & mask;
+    } else {
+      v |= (bit < 6 ? pad : 0x40) & mask;
+    }
+  }
+  return v; /* bit 7: no line, reads 0 */
+}
+
 uint16_t Machine::io_read(uint32_t addr, bool, bool)
 {
   const uint32_t page = addr & 0x1F00;
@@ -435,42 +567,15 @@ uint16_t Machine::io_read(uint32_t addr, bool, bool)
        * reporting the cartridge's own flags here sends a Japan-only
        * cartridge down its foreign-machine path. */
       return (uint16_t)(0x21 | (m_pal ? 0x40 : 0) | (m_domestic ? 0x00 : 0x80));
-    case 1: {
-      /* port A data: 3-button pad protocol
-       * bits: 0=up 1=down 2=left 3=right 4=TL(start) 5=TR 6=TH
-       * lines are active-low (0 = pressed) */
-      const InputState &in = m_input[0];
-      uint8_t v = 0x7F; /* all released */
-      if (in.up)
-        v &= ~0x01;
-      if (in.down)
-        v &= ~0x02;
-      if (in.left)
-        v &= ~0x04;
-      if (in.right)
-        v &= ~0x08;
-      if (in.start)
-        v &= ~0x10;
-      return v;
-    }
-    case 2: {
-      /* port B data */
-      const InputState &in = m_input[1];
-      uint8_t v = 0x7F;
-      if (in.up)
-        v &= ~0x01;
-      if (in.down)
-        v &= ~0x02;
-      if (in.left)
-        v &= ~0x04;
-      if (in.right)
-        v &= ~0x08;
-      if (in.start)
-        v &= ~0x10;
-      return v;
-    }
+    case 1:
+      /* port A data: player 1 pad through the TH multiplexer */
+      return read_port(0);
+    case 2:
+      /* port B data: player 2 pad */
+      return read_port(1);
     case 3:
-      return 0x00;
+      /* port C data: unattached, lines float high */
+      return read_port(2);
     default:
       return m_io_ctrl[((addr >> 1) & 7) - 4];
     }
@@ -487,8 +592,23 @@ uint16_t Machine::io_read(uint32_t addr, bool, bool)
 void Machine::io_write(uint32_t addr, uint16_t data, bool, bool)
 {
   const uint32_t page = addr & 0x1F00;
-  if (page == 0x0000 && ((addr >> 1) & 7) >= 4) {
-    m_io_ctrl[((addr >> 1) & 7) - 4] = (uint8_t)(data & 0xFF);
+  if (page == 0x0000) {
+    const uint32_t reg = (addr >> 1) & 7;
+    if (reg >= 1 && reg <= 3) {
+      /* Data register: latches the output level of every line the ctrl
+       * register has as an output. Games drive TH from here (bit 6) to
+       * step the pad multiplexer through its phases; a driven TH edge
+       * feeds the six-button handshake. Byte writes arrive normalised
+       * into both halves by the CPU core. */
+      const int port = (int)reg - 1;
+      const uint8_t value = (uint8_t)(data & 0xFF);
+      if (port < 2 && (m_io_ctrl[port] & 0x40) != 0) {
+        update_pad_th(port, (value & 0x40) != 0);
+      }
+      m_io_data[port] = value;
+    } else if (reg >= 4) {
+      m_io_ctrl[reg - 4] = (uint8_t)(data & 0xFF);
+    }
   } else if (page == 0x1100) {
     const bool was_requested = m_z80_busreq;
     m_z80_busreq = (data & 0x0100) != 0;
@@ -777,17 +897,25 @@ int Machine::load_state(const char *filename)
 void Machine::set_input(int player, unsigned int up, unsigned int down,
                         unsigned int left, unsigned int right,
                         unsigned int start, unsigned int a, unsigned int b,
-                        unsigned int c)
+                        unsigned int c, unsigned int x, unsigned int y,
+                        unsigned int z, unsigned int mode)
 {
-  (void)player;
-  (void)up;
-  (void)down;
-  (void)left;
-  (void)right;
-  (void)start;
-  (void)a;
-  (void)b;
-  (void)c; /* controller ports land with the IO phase */
+  if (player < 0 || player > 1) {
+    return;
+  }
+  InputState &in = m_input[player];
+  in.up = up != 0;
+  in.down = down != 0;
+  in.left = left != 0;
+  in.right = right != 0;
+  in.start = start != 0;
+  in.a = a != 0;
+  in.b = b != 0;
+  in.c = c != 0;
+  in.x = x != 0;
+  in.y = y != 0;
+  in.z = z != 0;
+  in.mode = mode != 0;
 }
 
 void Machine::set_video_mode(int pal, int autodetect)

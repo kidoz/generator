@@ -99,6 +99,22 @@ test('rom_loading', test_rom_loading,
   suite: 'catch2'
 )
 
+# Controller-port protocol: the 3-button pad multiplexer behind the IO
+# chip data/ctrl registers, driven through the debug IO seam.
+test_io_ports = executable('test_io_ports',
+  'test_io_ports.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('io_ports', test_io_ports,
+  timeout: 30,
+  suite: 'catch2'
+)
+
 # 68K core tests. The core links only against its own bus + the VDP (DMA
 # tests) + a null clock sink, so the test stays self-contained.
 m68k_test_inc = include_directories('../include/generator', '../src',

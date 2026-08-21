@@ -46,10 +46,8 @@ constexpr int kAxisDeadzone = 8000;
  *
  * The machine takes input through EmulatorCore::set_input rather than
  * exposing its controller ports, so the backend holds what is currently
- * pressed and republishes both pads whenever anything changes. The core
- * reads a 3-button pad today; x/y/z/mode are tracked because the key map
- * already binds them, and go nowhere until it grows the 6-button
- * handshake. */
+ * pressed and republishes both pads whenever anything changes. All six
+ * face buttons plus mode reach the core's six-button handshake. */
 struct PadState {
   unsigned int up = 0, down = 0, left = 0, right = 0;
   unsigned int a = 0, b = 0, c = 0, start = 0;
@@ -66,7 +64,8 @@ void publish_pads()
   for (int player = 0; player < 2; player++) {
     const PadState &pad = g_pads[player];
     g_emulator_core->set_input(player, pad.up, pad.down, pad.left, pad.right,
-                               pad.start, pad.a, pad.b, pad.c);
+                               pad.start, pad.a, pad.b, pad.c, pad.x, pad.y,
+                               pad.z, pad.mode);
   }
 }
 

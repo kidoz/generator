@@ -68,7 +68,8 @@ public:
   virtual void set_input(int player, unsigned int up, unsigned int down,
                          unsigned int left, unsigned int right,
                          unsigned int start, unsigned int a, unsigned int b,
-                         unsigned int c) = 0;
+                         unsigned int c, unsigned int x, unsigned int y,
+                         unsigned int z, unsigned int mode) = 0;
 
   // --- Audio platform control ---
 

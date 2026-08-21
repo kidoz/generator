@@ -72,11 +72,12 @@ public:
   int save_sram(const char *filename);
   int load_sram(const char *filename);
 
-  // --- Input (stored; consumed once controllers land) ---
+  // --- Input (3-button protocol plus the 6-button TH burst) ---
 
   void set_input(int player, unsigned int up, unsigned int down,
                  unsigned int left, unsigned int right, unsigned int start,
-                 unsigned int a, unsigned int b, unsigned int c);
+                 unsigned int a, unsigned int b, unsigned int c, unsigned int x,
+                 unsigned int y, unsigned int z, unsigned int mode);
 
   // --- Video mode ---
 
@@ -128,6 +129,21 @@ public:
   {
     return m_halted;
   }
+  /* Debug/diagnostic seam (tests, cross-core comparisons): IO chip
+     register access without a CPU driving the bus, and raw scheduler
+     time for protocol timeout tests. */
+  uint16_t io_debug_read(uint32_t addr)
+  {
+    return io_read(addr, true, true);
+  }
+  void io_debug_write(uint32_t addr, uint16_t data)
+  {
+    io_write(addr, data, true, true);
+  }
+  void debug_advance_mclk(uint64_t ticks)
+  {
+    advance_mclk(ticks);
+  }
 
   // --- Backends ---
 
@@ -158,6 +174,8 @@ private:
   void advance_mclk(uint64_t ticks) override;
 
   void parse_rom_header();
+  void update_pad_th(int port, bool th);
+  uint16_t read_port(int port);
   void mix_audio_sample();
   void flush_audio();
   void setup_sram();
@@ -181,12 +199,23 @@ private:
 
   std::array<uint8_t, 0x10000> m_ram{};
   std::array<uint8_t, 7> m_io_ctrl{}; /* direction registers A/B/C */
+  std::array<uint8_t, 3> m_io_data{}; /* data output latches A/B/C */
   bool m_z80_busreq = false;
   struct InputState {
     unsigned int up = 0, down = 0, left = 0, right = 0, start = 0, a = 0, b = 0,
                  c = 0;
+    unsigned int x = 0, y = 0, z = 0, mode = 0;
   };
   std::array<InputState, 2> m_input{};
+  /* Six-button handshake state per pad port. The pad counts TH rising
+   * edges ((c+2)&6 so it walks 0,2,4,6); three quick toggles past the
+   * normal poll reach counter==6, where the extra phase answers with
+   * Z/Y/X/Mode instead of the direction lines. TH quiet for more than
+   * the idle timeout resets the counter, so a game polling normally
+   * always sees the plain 3-button phases. */
+  std::array<uint8_t, 2> m_pad_counter{};
+  std::array<uint8_t, 2> m_pad_th{1, 1}; /* line level; idles high */
+  std::array<uint64_t, 2> m_pad_edge_mclk{};
   std::vector<uint8_t> m_sram; /* 8K save RAM */
   /* BUSACK resume latency: after the 68K releases BUSREQ, the Z80
    * takes ~3 68K cycles to actually resume (clock synchronisation).

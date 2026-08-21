@@ -97,9 +97,11 @@ public:
 
   void set_input(int player, unsigned int up, unsigned int down,
                  unsigned int left, unsigned int right, unsigned int start,
-                 unsigned int a, unsigned int b, unsigned int c) override
+                 unsigned int a, unsigned int b, unsigned int c, unsigned int x,
+                 unsigned int y, unsigned int z, unsigned int mode) override
   {
-    m_machine.set_input(player, up, down, left, right, start, a, b, c);
+    m_machine.set_input(player, up, down, left, right, start, a, b, c, x, y, z,
+                        mode);
   }
 
   int audio_start() override

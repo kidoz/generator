@@ -33,7 +33,8 @@ void publish_pads()
   for (int player = 0; player < 2; player++) {
     const PadState &pad = g_pads[player];
     g_emulator_core->set_input(player, pad.up, pad.down, pad.left, pad.right,
-                               pad.start, pad.a, pad.b, pad.c);
+                               pad.start, pad.a, pad.b, pad.c, pad.x, pad.y,
+                               pad.z, pad.mode);
   }
 }
 
