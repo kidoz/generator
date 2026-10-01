@@ -5,14 +5,8 @@
 #include "screen_geometry.hpp"
 #include "ui_bridge.hpp"
 
-
 #include <gdkmm/memorytexture.h>
 #include <glibmm/bytes.h>
-
-// Forward declarations for UI pixel buffers managed in ui_bridge.cpp
-extern uint8_t *g_screen0;
-extern uint8_t *g_screen1;
-extern std::atomic<int> g_whichbank;
 
 EmulatorView::EmulatorView(EmulatorThread &emu_thread)
     : m_emu_thread(emu_thread)
@@ -45,42 +39,27 @@ bool EmulatorView::on_tick(
     m_frames_since_sample.fetch_add(1, std::memory_order_relaxed);
   }
 
-  // Always request the next frame at the GTK vsync tick rate
-  m_emu_thread.request_frame();
+  // Always request the next frame, but only while emulation is allowed to
+  // run; while paused the nudges would just wake the thread for nothing.
+  if (m_emu_thread.emulation_running()) {
+    m_emu_thread.request_frame();
+  }
 
   return true;  // Continue ticking
 }
 
 void EmulatorView::update_texture()
 {
-  if (!g_screen0 || !g_screen1 || !g_emulator_core)
+  // The bridge hands over a private snapshot of the most recently
+  // completed field, already copy-safe against the emulation thread.
+  int width = 0;
+  int height = 0;
+  auto bytes = ui_take_frame(&width, &height);
+  if (!bytes || width <= 0 || height <= 0)
     return;
-
-  // The core pushes each field flush to the top-left of the buffer, so the
-  // displayed region starts at the origin and is exactly as large as the
-  // VDP's current mode.
-  int core_width = 0;
-  int core_height = 0;
-  g_emulator_core->screen_size(&core_width, &core_height);
-  if (core_width <= 0 || core_height <= 0)
-    return;
-
-  // Default no-scale; xBRZ/scale integrations to come later
-  int scale = 1;
-  unsigned int display_width = static_cast<unsigned int>(core_width) * scale;
-  unsigned int display_height = static_cast<unsigned int>(core_height) * scale;
-
-  int current_bank = g_whichbank.load();
-  uint8_t *screen_data = (current_bank == 0) ? g_screen0 : g_screen1;
-
-  uint8_t *display_start = screen_data;
-
-  auto bytes =
-      Glib::Bytes::create(display_start, display_height * HMAXSIZE * 4);
 
   auto texture = Gdk::MemoryTexture::create(
-      display_width, display_height, Gdk::MemoryTexture::Format::B8G8R8X8,
-      bytes, HMAXSIZE * 4);
+      width, height, Gdk::MemoryTexture::Format::B8G8R8X8, bytes, HMAXSIZE * 4);
 
   set_paintable(texture);
 }

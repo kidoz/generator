@@ -22,6 +22,13 @@ public:
   // Set to true to allow emulation, false to pause
   void set_emulation_running(bool running);
 
+  // UI-thread read; whether nudging the thread with request_frame() can
+  // currently achieve anything
+  bool emulation_running() const
+  {
+    return m_emulation_running.load(std::memory_order_relaxed);
+  }
+
 private:
   void thread_loop();
 

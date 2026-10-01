@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <iostream>
+#include <mutex>
 #include <span>
 
 #include "generator.h"
@@ -30,13 +31,23 @@ std::unique_ptr<EmulatorCore> g_emulator_core;
 static int g_argc = 0;
 static char **g_argv = nullptr;
 
-// Pixel buffers (geometry in screen_geometry.hpp)
-uint8_t *g_screen_buffers[3] = {nullptr, nullptr, nullptr};
-uint8_t *g_screen0 = nullptr;
-uint8_t *g_screen1 = nullptr;
-uint8_t *g_newscreen = nullptr;
-std::atomic<int> g_whichbank{0};
-bool g_plotfield = true;
+/* Pixel buffers (geometry in screen_geometry.hpp). The bank pointers stay
+ * private to this file: the emulation thread rotates them in
+ * present_field() and the UI thread reads them only through
+ * ui_take_frame(), which holds g_frame_mutex so a snapshot can never
+ * overlap the rotation or the next field's rendering into g_newscreen. */
+static uint8_t *g_screen_buffers[3] = {nullptr, nullptr, nullptr};
+static uint8_t *g_screen0 = nullptr;
+static uint8_t *g_screen1 = nullptr;
+static uint8_t *g_newscreen = nullptr;
+static int g_whichbank = 0;
+static bool g_plotfield = true;
+
+/* Guards the bank rotation and the published field size below. Contended
+ * only for the span of one memcpy out of a bank, well under a field. */
+static std::mutex g_frame_mutex;
+static int g_frame_width = 0;
+static int g_frame_height = 0;
 
 /* Audio and logging come from src/ui/common; only the video path is
    specific to this backend, and only because of how it publishes fields. */
@@ -61,14 +72,23 @@ public:
 
   void present_field() override
   {
-    /* Always end the field, even when not plotting, so the width latch
-       does not carry over into the next one. */
-    renderer_.end_field();
+    /* Read the width before ending the field: end_field() resets the
+       latch, so reading it afterwards always yields 0. Always end the
+       field, even when not plotting, so the latch does not carry over
+       into the next one. */
+    const unsigned int width = renderer_.field_width();
+    const int lines = renderer_.end_field();
 
     if (!g_plotfield)
       return;
 
-    int current_bank = g_whichbank.load();
+    /* Publish under the frame lock: rotate the finished field into a
+       display bank and record what it contains. Publishing only the
+       lines actually rendered keeps a field the VDP cut short from
+       showing stale rows out of the previous one. */
+    std::lock_guard<std::mutex> lock(g_frame_mutex);
+
+    int current_bank = g_whichbank;
     int next_bank = current_bank ^ 1;
 
     uint8_t *temp = g_newscreen;
@@ -79,13 +99,38 @@ public:
       g_newscreen = g_screen1;
       g_screen1 = temp;
     }
+    g_whichbank = next_bank;
 
-    g_whichbank.store(next_bank);
+    if (lines > 0) {
+      g_frame_width = static_cast<int>(width);
+      g_frame_height = lines;
+    }
   }
 
 private:
   generator::ui::VdpFrameRenderer renderer_;
 };
+
+Glib::RefPtr<Glib::Bytes> ui_take_frame(int *width, int *height)
+{
+  *width = 0;
+  *height = 0;
+
+  std::lock_guard<std::mutex> lock(g_frame_mutex);
+  if (g_frame_width <= 0 || g_frame_height <= 0)
+    return {};
+
+  const uint8_t *bank = (g_whichbank == 0) ? g_screen0 : g_screen1;
+  if (!bank)
+    return {};
+
+  /* Glib::Bytes::create copies, so the snapshot stays coherent even after
+     the emulation thread rotates this bank back under the writer. */
+  *width = g_frame_width;
+  *height = g_frame_height;
+  return Glib::Bytes::create(bank,
+                             static_cast<gsize>(g_frame_height) * HMAXSIZE * 4);
+}
 
 /*** ui_init - called by main() in generator.c ***/
 int ui_init(int argc, char *argv[])
