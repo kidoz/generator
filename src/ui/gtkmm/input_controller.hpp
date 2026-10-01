@@ -5,6 +5,23 @@
 
 #define MAX_GAMEPADS 4
 
+/* The twelve pad lines EmulatorCore::set_input consumes, in call order. */
+enum PadButton {
+  PAD_UP,
+  PAD_DOWN,
+  PAD_LEFT,
+  PAD_RIGHT,
+  PAD_A,
+  PAD_B,
+  PAD_C,
+  PAD_START,
+  PAD_X,
+  PAD_Y,
+  PAD_Z,
+  PAD_MODE,
+  PAD_BUTTON_COUNT
+};
+
 struct GamepadSlot {
   SDL_Gamepad *gamepad{nullptr};
   SDL_JoystickID id{0};
@@ -29,7 +46,8 @@ private:
   bool on_key_pressed(guint keyval, guint keycode, Gdk::ModifierType state);
   void on_key_released(guint keyval, guint keycode, Gdk::ModifierType state);
 
-  void update_keyboard_controller(int player, guint keyval, bool pressed);
+  // A keysym drives exactly one pad: the first player whose map claims it
+  void handle_key(guint keyval, bool pressed);
 
   // SDL3 Gamepad handling
   void open_gamepad(SDL_JoystickID id);
@@ -42,4 +60,9 @@ private:
 
   GamepadSlot m_gamepads[MAX_GAMEPADS];
   int m_num_gamepads{0};
+  bool m_sdl_gamepad_ready{false};
+
+  /* Resolved keysym per pad line: m_keys[player][PadButton]. Built from
+   * the key1_x / key2_x gtkopts entries with built-in fallbacks. */
+  guint m_keys[2][PAD_BUTTON_COUNT]{};
 };

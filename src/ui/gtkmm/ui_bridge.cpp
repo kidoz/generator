@@ -12,8 +12,12 @@
 #include <iostream>
 #include <mutex>
 #include <span>
+#include <string>
+
+#include <SDL3/SDL.h>
 
 #include "generator.h"
+#include "gtkopts.h"
 #include "ui.h"
 #include "uiplot.h"
 #include "gensoundp.h"
@@ -132,11 +136,34 @@ Glib::RefPtr<Glib::Bytes> ui_take_frame(int *width, int *height)
                              static_cast<gsize>(g_frame_height) * HMAXSIZE * 4);
 }
 
+/* Path of the persisted option file; the directory is created on demand. */
+static std::string gtkopts_conf_path()
+{
+  const char *base = g_get_user_config_dir();
+  const std::string dir =
+      std::string(base && *base ? base : g_get_home_dir()) + "/generator";
+  g_mkdir_with_parents(dir.c_str(), 0700);
+  return dir + "/generator.conf";
+}
+
 /*** ui_init - called by main() in generator.c ***/
 int ui_init(int argc, char *argv[])
 {
   g_argc = argc;
   g_argv = argv;
+
+  /* Load persisted options before anything reads them: the input map and
+     the preferences dialog both do. On a first run there is no file and
+     the documented defaults apply. */
+  static const std::string conf_path = gtkopts_conf_path();
+  if (g_file_test(conf_path.c_str(), G_FILE_TEST_EXISTS))
+    gtkopts_load(conf_path.c_str());
+
+  /* The preferred SDL audio backend has to be set before the audio
+     subsystem is initialized, which happens in soundp_start() below. */
+  const char *driver = gtkopts_getvalue("audio_driver");
+  if (driver && g_strcmp0(driver, "auto") != 0)
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, driver);
 
   // Allocate pixel buffers
   g_screen_buffers[0] = (uint8_t *)calloc(1, 4 * HMAXSIZE * VMAXSIZE);
@@ -189,6 +216,8 @@ int ui_loop(void)
 /*** ui_final - graceful shutdown ***/
 void ui_final(void)
 {
+  gtkopts_save(gtkopts_conf_path().c_str());
+
   g_emulator_core.reset();
   soundp_stop();
 

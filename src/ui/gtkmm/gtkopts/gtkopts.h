@@ -1,3 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
+
+#pragma once
+
 int gtkopts_load(const char *file);
 int gtkopts_save(const char *file);
 const char *gtkopts_getvalue(const char *key);

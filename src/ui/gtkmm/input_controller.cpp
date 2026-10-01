@@ -1,8 +1,10 @@
 #include "input_controller.hpp"
 
 #include <iostream>
+#include <string>
 
 #include "ui_bridge.hpp"
+#include "gtkopts.h"
 
 #include "emulator_core.hpp"
 #include "generator.h"
@@ -11,16 +13,13 @@
  *
  * The machine takes input through EmulatorCore::set_input rather than
  * exposing its controller ports, so the backend holds what is currently
- * pressed and republishes both pads whenever anything changes. The core
- * reads a 3-button pad today; x/y/z/mode are tracked because the key map
- * already binds them, and go nowhere until it grows the 6-button
- * handshake. */
+ * pressed and republishes both pads whenever anything changes. All twelve
+ * pad lines are tracked; the core answers to the directions, A/B/C and
+ * start today and grows into x/y/z/mode through its six-button handshake. */
 namespace {
 
 struct PadState {
-  unsigned int up = 0, down = 0, left = 0, right = 0;
-  unsigned int a = 0, b = 0, c = 0, start = 0;
-  unsigned int x = 0, y = 0, z = 0, mode = 0;
+  unsigned int b[PAD_BUTTON_COUNT] = {};
 };
 
 PadState g_pads[2];
@@ -32,34 +31,74 @@ void publish_pads()
 
   for (int player = 0; player < 2; player++) {
     const PadState &pad = g_pads[player];
-    g_emulator_core->set_input(player, pad.up, pad.down, pad.left, pad.right,
-                               pad.start, pad.a, pad.b, pad.c, pad.x, pad.y,
-                               pad.z, pad.mode);
+    g_emulator_core->set_input(player, pad.b[PAD_UP], pad.b[PAD_DOWN],
+                               pad.b[PAD_LEFT], pad.b[PAD_RIGHT],
+                               pad.b[PAD_START], pad.b[PAD_A], pad.b[PAD_B],
+                               pad.b[PAD_C], pad.b[PAD_X], pad.b[PAD_Y],
+                               pad.b[PAD_Z], pad.b[PAD_MODE]);
   }
+}
+
+/* Keyboard fallbacks for a slot the gtkopts table has no usable keysym
+ * for. Player 1: arrows + z/x/c (A/B/C) + a/s/d (X/Y/Z) + Return + Tab.
+ * Player 2 mirrors the documented gtkopts defaults on the keypad cluster,
+ * which keeps the two maps disjoint and leaves Space free for pause. */
+constexpr guint kFallbackKeys[2][PAD_BUTTON_COUNT] = {
+    {GDK_KEY_Up, GDK_KEY_Down, GDK_KEY_Left, GDK_KEY_Right, GDK_KEY_z,
+     GDK_KEY_x, GDK_KEY_c, GDK_KEY_Return, GDK_KEY_a, GDK_KEY_s, GDK_KEY_d,
+     GDK_KEY_Tab},
+    {GDK_KEY_KP_8, GDK_KEY_KP_5, GDK_KEY_KP_4, GDK_KEY_KP_6, GDK_KEY_KP_Divide,
+     GDK_KEY_KP_Multiply, GDK_KEY_KP_Subtract, GDK_KEY_KP_Enter, GDK_KEY_u,
+     GDK_KEY_i, GDK_KEY_o, GDK_KEY_Shift_R}};
+
+/* gtkopts key names for the first eight slots; x/y/z/mode have no conf
+ * slots and always use the fallbacks. */
+const char *const kConfSlotNames[PAD_BUTTON_COUNT] = {
+    "up", "down",  "left",  "right", "a",     "b",
+    "c",  "start", nullptr, nullptr, nullptr, nullptr};
+
+guint conf_keyval(int player, int button)
+{
+  if (!kConfSlotNames[button])
+    return GDK_KEY_VoidSymbol;
+
+  const std::string key = std::string("key") + std::to_string(player + 1) +
+                          "_" + kConfSlotNames[button];
+  const char *value = gtkopts_getvalue(key.c_str());
+  if (!value || !*value)
+    return GDK_KEY_VoidSymbol;
+
+  return gdk_keyval_from_name(value);
 }
 
 }  // namespace
 
-// Default keyboard mappings for two players (6-button mode)
-// Player 1: Arrow keys + Z/X/C/Enter + A/S/D/Tab
-// Player 2: WASD + J/K/L/Space + U/I/O/RShift
-static const struct {
-  guint up, down, left, right, a, b, c, start;
-  guint x, y, z, mode;
-} default_keys[2] = {{GDK_KEY_Up, GDK_KEY_Down, GDK_KEY_Left, GDK_KEY_Right,
-                      GDK_KEY_z, GDK_KEY_x, GDK_KEY_c, GDK_KEY_Return,
-                      GDK_KEY_a, GDK_KEY_s, GDK_KEY_d, GDK_KEY_Tab},
-                     {GDK_KEY_w, GDK_KEY_s, GDK_KEY_a, GDK_KEY_d, GDK_KEY_j,
-                      GDK_KEY_k, GDK_KEY_l, GDK_KEY_space, GDK_KEY_u, GDK_KEY_i,
-                      GDK_KEY_o, GDK_KEY_Shift_R}};
-
 InputController::InputController()
 {
+  /* Resolve every slot from the loaded configuration, falling back to the
+     built-in map where the keysym is missing or unrecognized. */
+  for (int player = 0; player < 2; player++) {
+    for (int button = 0; button < PAD_BUTTON_COUNT; button++) {
+      guint keyval = conf_keyval(player, button);
+      if (keyval == GDK_KEY_VoidSymbol)
+        keyval = kFallbackKeys[player][button];
+      m_keys[player][button] = keyval;
+    }
+  }
+
   m_key_controller = Gtk::EventControllerKey::create();
   m_key_controller->signal_key_pressed().connect(
       sigc::mem_fun(*this, &InputController::on_key_pressed), false);
   m_key_controller->signal_key_released().connect(
       sigc::mem_fun(*this, &InputController::on_key_released), false);
+
+  /* No gamepad event ever arrives unless the subsystem is up, and the
+     audio backend only brings SDL_INIT_AUDIO, so this is ours to start. */
+  m_sdl_gamepad_ready = SDL_InitSubSystem(SDL_INIT_GAMEPAD);
+  if (!m_sdl_gamepad_ready) {
+    std::cerr << "SDL gamepad support unavailable: " << SDL_GetError()
+              << std::endl;
+  }
 }
 
 InputController::~InputController()
@@ -70,6 +109,8 @@ InputController::~InputController()
       m_gamepads[i].gamepad = nullptr;
     }
   }
+  if (m_sdl_gamepad_ready)
+    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
 }
 
 void InputController::attach_to_widget(Gtk::Widget &widget)
@@ -102,51 +143,30 @@ void InputController::poll_sdl_events()
 bool InputController::on_key_pressed(guint keyval, guint /*keycode*/,
                                      Gdk::ModifierType /*state*/)
 {
-  update_keyboard_controller(0, keyval, true);
-  update_keyboard_controller(1, keyval, true);
+  handle_key(keyval, true);
   return false;  // Let the event propagate
 }
 
 void InputController::on_key_released(guint keyval, guint /*keycode*/,
                                       Gdk::ModifierType /*state*/)
 {
-  update_keyboard_controller(0, keyval, false);
-  update_keyboard_controller(1, keyval, false);
+  handle_key(keyval, false);
 }
 
-void InputController::update_keyboard_controller(int player, guint keyval,
-                                                 bool pressed)
+void InputController::handle_key(guint keyval, bool pressed)
 {
-  if (player < 0 || player > 1)
-    return;
-
-  PadState &controller = g_pads[player];
-  if (keyval == default_keys[player].up)
-    controller.up = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].down)
-    controller.down = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].left)
-    controller.left = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].right)
-    controller.right = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].a)
-    controller.a = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].b)
-    controller.b = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].c)
-    controller.c = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].start)
-    controller.start = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].x)
-    controller.x = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].y)
-    controller.y = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].z)
-    controller.z = pressed ? 1 : 0;
-  else if (keyval == default_keys[player].mode)
-    controller.mode = pressed ? 1 : 0;
-
-  publish_pads();
+  /* A key drives exactly one pad: the first player whose map claims it.
+     The default maps are disjoint, so this only arbitrates when a custom
+     configuration binds one keysym to both. */
+  for (int player = 0; player < 2; player++) {
+    for (int button = 0; button < PAD_BUTTON_COUNT; button++) {
+      if (m_keys[player][button] == keyval) {
+        g_pads[player].b[button] = pressed ? 1u : 0u;
+        publish_pads();
+        return;
+      }
+    }
+  }
 }
 
 void InputController::open_gamepad(SDL_JoystickID id)
@@ -206,40 +226,40 @@ void InputController::handle_gamepad_button(const SDL_GamepadButtonEvent &event)
   PadState &controller = g_pads[player];
   switch (event.button) {
   case SDL_GAMEPAD_BUTTON_DPAD_UP:
-    controller.up = pressed;
+    controller.b[PAD_UP] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_DOWN:
-    controller.down = pressed;
+    controller.b[PAD_DOWN] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_LEFT:
-    controller.left = pressed;
+    controller.b[PAD_LEFT] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_DPAD_RIGHT:
-    controller.right = pressed;
+    controller.b[PAD_RIGHT] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_SOUTH:
-    controller.a = pressed;
+    controller.b[PAD_A] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_EAST:
-    controller.b = pressed;
+    controller.b[PAD_B] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_WEST:
-    controller.c = pressed;
+    controller.b[PAD_C] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_START:
-    controller.start = pressed;
+    controller.b[PAD_START] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER:
-    controller.x = pressed;
+    controller.b[PAD_X] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER:
-    controller.y = pressed;
+    controller.b[PAD_Y] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_LEFT_STICK:
-    controller.z = pressed;
+    controller.b[PAD_Z] = pressed;
     break;
   case SDL_GAMEPAD_BUTTON_RIGHT_STICK:
-    controller.mode = pressed;
+    controller.b[PAD_MODE] = pressed;
     break;
   }
 
@@ -257,25 +277,25 @@ void InputController::handle_gamepad_axis(const SDL_GamepadAxisEvent &event)
 
   if (event.axis == SDL_GAMEPAD_AXIS_LEFTX) {
     if (event.value < -DEADZONE) {
-      controller.left = 1;
-      controller.right = 0;
+      controller.b[PAD_LEFT] = 1;
+      controller.b[PAD_RIGHT] = 0;
     } else if (event.value > DEADZONE) {
-      controller.left = 0;
-      controller.right = 1;
+      controller.b[PAD_LEFT] = 0;
+      controller.b[PAD_RIGHT] = 1;
     } else {
-      controller.left = 0;
-      controller.right = 0;
+      controller.b[PAD_LEFT] = 0;
+      controller.b[PAD_RIGHT] = 0;
     }
   } else if (event.axis == SDL_GAMEPAD_AXIS_LEFTY) {
     if (event.value < -DEADZONE) {
-      controller.up = 1;
-      controller.down = 0;
+      controller.b[PAD_UP] = 1;
+      controller.b[PAD_DOWN] = 0;
     } else if (event.value > DEADZONE) {
-      controller.up = 0;
-      controller.down = 1;
+      controller.b[PAD_UP] = 0;
+      controller.b[PAD_DOWN] = 1;
     } else {
-      controller.up = 0;
-      controller.down = 0;
+      controller.b[PAD_UP] = 0;
+      controller.b[PAD_DOWN] = 0;
     }
   }
 

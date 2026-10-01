@@ -233,7 +233,9 @@ void Machine::power_on()
   m_z80bus.reset();
   m_io_ctrl = {};
   m_io_data = {};
-  m_input = {};
+  for (auto &in : m_input) {
+    in.clear();
+  }
   m_pad_counter = {};
   m_pad_th = {1, 1};
   m_pad_edge_mclk = {};
@@ -535,38 +537,38 @@ uint16_t Machine::read_port(int port)
   uint8_t pad = 0x3F; /* bits 0-5 released */
   if (port < 2) {
     const InputState &in = m_input[port];
-    if (in.up) {
+    if (in.up.load(std::memory_order_relaxed) != 0) {
       pad &= (uint8_t)~0x01;
     }
-    if (in.down) {
+    if (in.down.load(std::memory_order_relaxed) != 0) {
       pad &= (uint8_t)~0x02;
     }
     if (th) {
       if (counter == 6) { /* six-button extra phase */
-        if (in.z) {
+        if (in.z.load(std::memory_order_relaxed) != 0) {
           pad &= (uint8_t)~0x01;
         }
-        if (in.y) {
+        if (in.y.load(std::memory_order_relaxed) != 0) {
           pad &= (uint8_t)~0x02;
         }
-        if (in.x) {
+        if (in.x.load(std::memory_order_relaxed) != 0) {
           pad &= (uint8_t)~0x04;
         }
-        if (in.mode) {
+        if (in.mode.load(std::memory_order_relaxed) != 0) {
           pad &= (uint8_t)~0x08;
         }
       } else {
-        if (in.left) {
+        if (in.left.load(std::memory_order_relaxed) != 0) {
           pad &= (uint8_t)~0x04;
         }
-        if (in.right) {
+        if (in.right.load(std::memory_order_relaxed) != 0) {
           pad &= (uint8_t)~0x08;
         }
       }
-      if (in.b) {
+      if (in.b.load(std::memory_order_relaxed) != 0) {
         pad &= (uint8_t)~0x10;
       }
-      if (in.c) {
+      if (in.c.load(std::memory_order_relaxed) != 0) {
         pad &= (uint8_t)~0x20;
       }
     } else {
@@ -577,10 +579,10 @@ uint16_t Machine::read_port(int port)
       } else {
         pad &= (uint8_t)~0x0C; /* left/right lines forced low */
       }
-      if (in.a) {
+      if (in.a.load(std::memory_order_relaxed) != 0) {
         pad &= (uint8_t)~0x10;
       }
-      if (in.start) {
+      if (in.start.load(std::memory_order_relaxed) != 0) {
         pad &= (uint8_t)~0x20;
       }
     }
@@ -955,18 +957,18 @@ void Machine::set_input(int player, unsigned int up, unsigned int down,
     return;
   }
   InputState &in = m_input[player];
-  in.up = up != 0;
-  in.down = down != 0;
-  in.left = left != 0;
-  in.right = right != 0;
-  in.start = start != 0;
-  in.a = a != 0;
-  in.b = b != 0;
-  in.c = c != 0;
-  in.x = x != 0;
-  in.y = y != 0;
-  in.z = z != 0;
-  in.mode = mode != 0;
+  in.up.store(up != 0, std::memory_order_relaxed);
+  in.down.store(down != 0, std::memory_order_relaxed);
+  in.left.store(left != 0, std::memory_order_relaxed);
+  in.right.store(right != 0, std::memory_order_relaxed);
+  in.start.store(start != 0, std::memory_order_relaxed);
+  in.a.store(a != 0, std::memory_order_relaxed);
+  in.b.store(b != 0, std::memory_order_relaxed);
+  in.c.store(c != 0, std::memory_order_relaxed);
+  in.x.store(x != 0, std::memory_order_relaxed);
+  in.y.store(y != 0, std::memory_order_relaxed);
+  in.z.store(z != 0, std::memory_order_relaxed);
+  in.mode.store(mode != 0, std::memory_order_relaxed);
 }
 
 void Machine::debug_log_zram_to(const char *path)

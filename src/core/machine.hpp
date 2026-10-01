@@ -26,6 +26,7 @@
 #include "generator.h" /* t_cartinfo */
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <expected>
@@ -215,9 +216,28 @@ private:
   std::array<uint8_t, 3> m_io_data{}; /* data output latches A/B/C */
   bool m_z80_busreq = false;
   struct InputState {
-    unsigned int up = 0, down = 0, left = 0, right = 0, start = 0, a = 0, b = 0,
-                 c = 0;
-    unsigned int x = 0, y = 0, z = 0, mode = 0;
+    /* Atomic because the UI thread writes these from key and gamepad
+     * events while the emulation thread reads them mid-frame; each line
+     * is independent, so relaxed ordering is enough. */
+    std::atomic<unsigned int> up{0}, down{0}, left{0}, right{0}, start{0}, a{0},
+        b{0}, c{0};
+    std::atomic<unsigned int> x{0}, y{0}, z{0}, mode{0};
+
+    void clear()
+    {
+      up.store(0, std::memory_order_relaxed);
+      down.store(0, std::memory_order_relaxed);
+      left.store(0, std::memory_order_relaxed);
+      right.store(0, std::memory_order_relaxed);
+      start.store(0, std::memory_order_relaxed);
+      a.store(0, std::memory_order_relaxed);
+      b.store(0, std::memory_order_relaxed);
+      c.store(0, std::memory_order_relaxed);
+      x.store(0, std::memory_order_relaxed);
+      y.store(0, std::memory_order_relaxed);
+      z.store(0, std::memory_order_relaxed);
+      mode.store(0, std::memory_order_relaxed);
+    }
   };
   std::array<InputState, 2> m_input{};
   /* Six-button handshake state per pad port. The pad counts TH rising

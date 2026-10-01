@@ -57,7 +57,11 @@ int main(int argc, char *argv[])
   signal(SIGTERM, gen_sighandler); /* kill command / systemd stop */
 
   /* enter user interface loop */
-  return ui_loop();
+  retval = ui_loop();
+
+  /* release what ui_init() and the loop acquired */
+  ui_final();
+  return retval;
 }
 
 #endif /* GENERATOR_LIB_ONLY */
