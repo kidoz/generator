@@ -3,12 +3,15 @@
 namespace {
 
 constexpr const char *UI_CSS = R"(
+/* Chrome follows the libadwaita theme so light and dark both read well;
+   only the screen area stays near-black, because it is a TV image. */
+
 window.generator-window {
-  background: #111214;
+  background: @window_bg_color;
 }
 
 .generator-shell {
-  background: #111214;
+  background: @window_bg_color;
 }
 
 .generator-title {
@@ -16,7 +19,7 @@ window.generator-window {
 }
 
 .generator-subtitle {
-  color: rgba(238, 241, 246, 0.62);
+  color: alpha(@window_fg_color, 0.62);
   font-size: 0.82em;
 }
 
@@ -25,10 +28,10 @@ window.generator-window {
   padding: 8px;
   border-radius: 8px;
   background: #050607;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid alpha(@window_fg_color, 0.12);
   box-shadow:
     inset 0 0 0 1px rgba(0, 0, 0, 0.75),
-    0 12px 28px rgba(0, 0, 0, 0.36);
+    0 12px 28px rgba(0, 0, 0, 0.25);
 }
 
 .emulator-screen {
@@ -37,32 +40,30 @@ window.generator-window {
 
 .generator-status-bar {
   padding: 7px 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background: #191b1f;
+  border-top: 1px solid alpha(@window_fg_color, 0.1);
 }
 
 .status-pill {
   min-height: 22px;
   padding: 0 9px;
   border-radius: 999px;
-  color: #eef1f6;
-  background: rgba(255, 255, 255, 0.08);
+  background: alpha(@window_fg_color, 0.1);
   font-size: 0.88em;
 }
 
 .status-pill.accent-red {
-  background: rgba(224, 64, 73, 0.18);
-  color: #ffc7cc;
+  background: alpha(@destructive_color, 0.18);
+  color: @destructive_color;
 }
 
 .status-pill.accent-cyan {
-  background: rgba(63, 191, 202, 0.18);
-  color: #c7fbff;
+  background: alpha(@accent_color, 0.15);
+  color: @accent_color;
 }
 
 .status-pill.accent-amber {
-  background: rgba(232, 181, 75, 0.18);
-  color: #ffedbd;
+  background: alpha(@warning_color, 0.18);
+  color: @warning_color;
 }
 )";
 
@@ -153,6 +154,24 @@ MainWindow::MainWindow(EmulatorThread &emu_thread) : m_emu_thread(emu_thread)
 MainWindow::~MainWindow()
 {
   m_fps_timer.disconnect();
+  /* The wrapper owns the header bar's initial reference; the window's
+     own reference from set_titlebar() is already gone by the time this
+     runs, so this is what finally frees the header bar. */
+  delete m_header_bar;
+  m_header_bar = nullptr;
+}
+
+void MainWindow::set_runtime_state(const Glib::ustring &text, bool running)
+{
+  m_state_label.set_text(text);
+  m_state_label.remove_css_class("accent-red");
+  m_state_label.remove_css_class("accent-cyan");
+  m_state_label.add_css_class(running ? "accent-cyan" : "accent-red");
+}
+
+void MainWindow::set_audio_backend(const Glib::ustring &name)
+{
+  m_audio_label.set_text(name);
 }
 
 void MainWindow::setup_ui()

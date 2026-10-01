@@ -18,6 +18,11 @@ public:
     return m_input;
   }
 
+  // Bottom status bar: emulation state pill (cyan running, red otherwise)
+  void set_runtime_state(const Glib::ustring &text, bool running);
+  // Bottom status bar: name of the active audio output
+  void set_audio_backend(const Glib::ustring &name);
+
 private:
   void setup_ui();
   bool on_fps_tick();
@@ -25,7 +30,9 @@ private:
   // The root layout container
   Gtk::Box m_vbox{Gtk::Orientation::VERTICAL};
 
-  // The Adwaita HeaderBar (managed via raw pointer wrapped in Glib::wrap)
+  // The Adwaita HeaderBar. The Glib::wrap() C++ wrapper owns the header
+  // bar's initial reference and is deleted in the destructor; the window
+  // holds its own reference from set_titlebar().
   Gtk::Widget *m_header_bar{nullptr};
 
   // Framed emulator display area.

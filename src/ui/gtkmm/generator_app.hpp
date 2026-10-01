@@ -4,6 +4,7 @@
 #include <adwaita.h>
 
 #include <memory>
+#include <string>
 
 #include "emulator_thread.hpp"
 #include "preferences_dialog.hpp"
@@ -40,6 +41,13 @@ private:
   void on_action_preferences();
   void on_action_about();
   void on_action_quit();
+
+  // Stop the thread, load, report failures, resume; shared by on_open and
+  // the file dialog
+  void load_rom_from_path(const std::string &path);
+  // AdwMessageDialog on the main window; the text also goes to stderr
+  void show_error_dialog(const Glib::ustring &heading,
+                         const Glib::ustring &body);
 
   Glib::RefPtr<Gio::SimpleAction> m_pause_action;
 

@@ -42,4 +42,8 @@ void soundp_output(const uint16 *left, const uint16 *right,
                    unsigned int samples);
 int soundp_reset(void); /* Full audio subsystem restart */
 
+/* Human-readable name of the audio output the backend is using, for UI
+ * display. Returns a placeholder when no device was opened. */
+const char *soundp_backend_name(void);
+
 #endif /* GENERATOR_GENSOUNDP_H */

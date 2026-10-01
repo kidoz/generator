@@ -241,6 +241,15 @@ int soundp_samplesbuffered(void)
   return queued_bytes / 4;
 }
 
+/*** soundp_backend_name - active output for UI display ***/
+
+const char *soundp_backend_name(void)
+{
+  if (soundp_dev == 0)
+    return "No audio device";
+  return soundp_detect_audio_backend();
+}
+
 /*** soundp_output - output samples to SDL3 ***/
 /* Thread Safety: SDL3 audio streams are internally synchronized.
    SDL_PutAudioStreamData() and SDL_GetAudioStreamQueued() are thread-safe

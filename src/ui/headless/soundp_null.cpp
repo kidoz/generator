@@ -57,3 +57,10 @@ int soundp_reset(void)
   /* No audio in headless mode */
   return 0;
 }
+
+/*** soundp_backend_name - display name (nothing to display) ***/
+
+const char *soundp_backend_name(void)
+{
+  return "no audio";
+}

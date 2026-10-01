@@ -81,7 +81,7 @@ static t_opts gtkopts_opts[] = {
     {"lowpassfilter", "0-100", "50",
      "Low-pass sound filter - 0 turns it off, 100 filters too much"},
     {"scaler", "none, scale2x, scale3x, scale4x, xbrz2x, xbrz3x, xbrz4x",
-     "scale2x", "Video upscaling filter (xBRZ is higher quality but slower)"},
+     "none", "Video upscaling filter (xBRZ is higher quality but slower)"},
     {"audio_samplerate", "44100, 48000, 96000", "48000",
      "Audio output sample rate in Hz (higher = better quality)"},
     {"audio_oversampling", "1, 2, 4", "2",
