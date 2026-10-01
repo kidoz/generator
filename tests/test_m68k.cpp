@@ -406,6 +406,109 @@ TEST_CASE("not.l postincrement updates its address register once", "[m68k]")
   CHECK(rig.ram[0x2003] == 0x87);
 }
 
+/* M68000PRM 2.2.3-2.2.4: (A7)+ and -(A7) step by two for a byte operand so
+ * the stack stays word-aligned; every other address register steps by one.
+ * An odd A7 turns the next word push or RTE into a double address error. */
+TEST_CASE("byte accesses through a7 keep the stack pointer even", "[m68k]")
+{
+  SECTION("move.b pushes and pops a byte in a whole word")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x1F00); /* MOVE.B D0,-(A7) */
+    rig.w(0x0102, 0x121F); /* MOVE.B (A7)+,D1 */
+    rig.cpu.set_d(0, 0x5A);
+    rig.boot();
+    rig.cpu.set_a(7, 0xE02000);
+    rig.cpu.step();
+    CHECK(rig.cpu.a(7) == 0xE01FFE);
+    CHECK(rig.ram[0x1FFE] == 0x5A);
+    rig.cpu.step();
+    CHECK(rig.cpu.a(7) == 0xE02000);
+    CHECK((rig.cpu.d(1) & 0xFF) == 0x5A);
+  }
+
+  SECTION("read-modify-write postincrement")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x521F); /* ADDQ.B #1,(A7)+ */
+    rig.boot();
+    rig.cpu.set_a(7, 0xE02000);
+    rig.ram[0x2000] = 0x41;
+    rig.cpu.step();
+    CHECK(rig.cpu.a(7) == 0xE02002);
+    CHECK(rig.ram[0x2000] == 0x42);
+  }
+
+  SECTION("abcd predecrements a7 by two")
+  {
+    Rig rig;
+    rig.w(0x0100, 0xCF0F); /* ABCD -(A7),-(A7) */
+    rig.boot();
+    rig.cpu.set_a(7, 0xE02004);
+    rig.ram[0x2002] = 0x12; /* source, the first predecrement */
+    rig.ram[0x2000] = 0x34; /* destination */
+    rig.cpu.step();
+    CHECK(rig.cpu.a(7) == 0xE02000);
+    CHECK(rig.ram[0x2000] == 0x46);
+  }
+
+  SECTION("other address registers still step by one")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x1100); /* MOVE.B D0,-(A0) */
+    rig.cpu.set_a(0, 0xE02000);
+    rig.cpu.set_d(0, 0x5A);
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.a(0) == 0xE01FFF);
+    CHECK(rig.ram[0x1FFF] == 0x5A);
+  }
+}
+
+/* JSR (An) has no extension word, so when the instruction was reached by a
+ * jump or return (which prefetch two words) the word after it is still
+ * queued when the return address is taken; counting that word returns two
+ * bytes late, into the middle of the next instruction. */
+TEST_CASE("jsr pushes the address of the following instruction", "[m68k]")
+{
+  SECTION("jsr (a0) after a jump")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x4ED1); /* JMP (A1): refills the queue with two words */
+    rig.w(0x0180, 0x4E90); /* JSR (A0) */
+    rig.w(0x0182, 0x4E71); /* NOP, queued behind the JSR */
+    rig.cpu.set_a(0, 0x0200);
+    rig.cpu.set_a(1, 0x0180);
+    rig.boot();
+    rig.cpu.set_a(7, 0xE02000);
+    rig.cpu.step();
+    REQUIRE(rig.cpu.pc() == 0x0180);
+    rig.cpu.step();
+    CHECK(rig.cpu.pc() == 0x0200);
+    CHECK(rig.cpu.a(7) == 0xE01FFC);
+    CHECK(rig.ram[0x1FFC] == 0x00);
+    CHECK(rig.ram[0x1FFD] == 0x00);
+    CHECK(rig.ram[0x1FFE] == 0x01);
+    CHECK(rig.ram[0x1FFF] == 0x82);
+  }
+
+  SECTION("jsr abs.l after a jump")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x4ED1); /* JMP (A1) */
+    rig.w(0x0180, 0x4EB9); /* JSR $00000200 */
+    rig.lw(0x0182, 0x00000200);
+    rig.cpu.set_a(1, 0x0180);
+    rig.boot();
+    rig.cpu.set_a(7, 0xE02000);
+    rig.cpu.step();
+    rig.cpu.step();
+    CHECK(rig.cpu.pc() == 0x0200);
+    CHECK(rig.ram[0x1FFE] == 0x01);
+    CHECK(rig.ram[0x1FFF] == 0x86);
+  }
+}
+
 TEST_CASE("moveq loads sign-extended immediate", "[m68k]")
 {
   Rig rig;

@@ -300,10 +300,15 @@ void Machine::run_frame()
       break;
     }
     if (m_cpu.stopped()) {
-      /* STOP: hold until an interrupt or the field ends. */
+      /* STOP: the CPU is idle, so nothing here consumes 68K cycles --
+       * step the rest of the machine on so the VDP can reach the line
+       * that raises the interrupt. The step() below is what releases
+       * the stop: it is the only place that takes a pending interrupt,
+       * so skipping it while stopped leaves the CPU asleep for good. */
       const uint64_t before = m_vdp.frame_index();
       advance_mclk(64);
-      if (m_vdp.frame_index() != before) {
+      m_cpu.step();
+      if (m_cpu.stopped() && m_vdp.frame_index() != before) {
         break;
       }
       continue;

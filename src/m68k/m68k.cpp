@@ -58,6 +58,14 @@ uint8_t bcd_adjust(uint32_t dst, uint32_t src, bool is_add, bool x, bool &carry)
   return (uint8_t)((hi << 4) | lo);
 }
 
+/* (An)+ and -(An) step by the operand size, except that a byte access
+ * through A7 steps by two so the stack pointer stays word-aligned
+ * (M68000PRM 2.2.3-2.2.4). */
+constexpr uint32_t an_step(int reg, int size)
+{
+  return (reg == 7 && size == 1) ? 2U : (uint32_t)size;
+}
+
 }  // namespace
 
 M68k::M68k(M68kBus &bus, MasterClockSink &clock) : m_bus(bus), m_clock(clock)
@@ -460,7 +468,7 @@ uint32_t M68k::ea_addr(const Ea &ea, int size)
   case 3:
     return m_a[ea.reg];
   case 4:
-    m_a[ea.reg] -= (uint32_t)size;
+    m_a[ea.reg] -= an_step(ea.reg, size);
     return m_a[ea.reg];
   case 5:
     return m_a[ea.reg] + (uint32_t)(int32_t)(int16_t)fetch_stream_word();
@@ -527,7 +535,7 @@ uint32_t M68k::ea_read(const Ea &ea, int size)
     return fetch_stream_word();
   }
   if (ea.mode == 4) { /* -(An): predecrement */
-    m_a[ea.reg] -= (uint32_t)size;
+    m_a[ea.reg] -= an_step(ea.reg, size);
     const uint32_t addr = m_a[ea.reg];
     return read_mem(addr, size);
   }
@@ -537,7 +545,7 @@ uint32_t M68k::ea_read(const Ea &ea, int size)
   }
   const uint32_t value = read_mem(addr, size);
   if (ea.mode == 3) { /* (An)+ */
-    m_a[ea.reg] += (uint32_t)size;
+    m_a[ea.reg] += an_step(ea.reg, size);
   }
   return value;
 }
@@ -555,7 +563,7 @@ void M68k::ea_write(const Ea &ea, int size, uint32_t value)
     return;
   }
   if (ea.mode == 4) {
-    m_a[ea.reg] -= (uint32_t)size;
+    m_a[ea.reg] -= an_step(ea.reg, size);
     write_mem(m_a[ea.reg], size, value, size == 4);
     return;
   }
@@ -565,7 +573,7 @@ void M68k::ea_write(const Ea &ea, int size, uint32_t value)
   }
   write_mem(addr, size, value, size == 4);
   if (ea.mode == 3) {
-    m_a[ea.reg] += (uint32_t)size;
+    m_a[ea.reg] += an_step(ea.reg, size);
   }
 }
 
@@ -799,7 +807,7 @@ void M68k::exec_move(uint16_t op)
      * down, so the lower address is written second. */
     write_mem(addr, size, value, dst.mode == 4 && size == 4);
     if (dst.mode == 3) { /* (An)+: post-increment the destination */
-      m_a[dst.reg] += (uint32_t)size;
+      m_a[dst.reg] += an_step(dst.reg, size);
     }
     flags_logic(value, size);
     prefetch_fill(1); /* write hides the trailing refill */
@@ -850,10 +858,10 @@ void M68k::exec_move(uint16_t op)
     flags_logic(v, size);
   }
   if (src.mode == 3) {
-    m_a[src.reg] += (uint32_t)size;
+    m_a[src.reg] += an_step(src.reg, size);
   }
   if (dst.mode == 3) {
-    m_a[dst.reg] += (uint32_t)size;
+    m_a[dst.reg] += an_step(dst.reg, size);
   }
   prefetch_fill(2);
 }
@@ -1049,12 +1057,12 @@ void M68k::exec_alu(uint16_t op, int op_kind)
     if (aborted()) {
       return;
     }
-    m_a[op & 7] += (uint32_t)size;
+    m_a[op & 7] += an_step(op & 7, size);
     const uint32_t dst = read_mem(m_a[reg], size);
     if (aborted()) {
       return;
     }
-    m_a[reg] += (uint32_t)size;
+    m_a[reg] += an_step(reg, size);
     flags_cmp(dst, src, dst - src, size);
     prefetch_fill(1);
     return;
@@ -1098,7 +1106,7 @@ void M68k::exec_alu(uint16_t op, int op_kind)
   }
   write_mem(addr, size, res, size == 4);
   if (ea.mode == 3) {
-    m_a[ea.reg] += (uint32_t)size;
+    m_a[ea.reg] += an_step(ea.reg, size);
   }
   prefetch_fill(1);
 }
@@ -1141,12 +1149,12 @@ void M68k::exec_x_op(uint16_t op, bool is_add)
 
   /* -(Ay),-(Ax): fetch source, fetch destination, write back low word
    * first like every read-modify-write. unverified */
-  m_a[ry] -= (uint32_t)size;
+  m_a[ry] -= an_step(ry, size);
   const uint32_t src = read_mem(m_a[ry], size);
   if (aborted()) {
     return;
   }
-  m_a[rx] -= (uint32_t)size;
+  m_a[rx] -= an_step(rx, size);
   const uint32_t dst = read_mem(m_a[rx], size);
   if (aborted()) {
     return;
@@ -1185,12 +1193,12 @@ void M68k::exec_bcd(uint16_t op, bool is_add)
     prefetch_fill(1);
   } else {
     /* -(Ay),-(Ax): one byte each way, predecrement by one. unverified */
-    m_a[ry] -= 1;
+    m_a[ry] -= an_step(ry, 1);
     const uint32_t src = bus_read_byte(m_a[ry]);
     if (aborted()) {
       return;
     }
-    m_a[rx] -= 1;
+    m_a[rx] -= an_step(rx, 1);
     dst = bus_read_byte(m_a[rx]);
     if (aborted()) {
       return;
@@ -1232,7 +1240,7 @@ void M68k::exec_nbcd(uint16_t op)
     res = bcd_adjust(0, dst, false, x, carry);
     bus_write_byte(addr, (uint8_t)res);
     if (ea.mode == 3) { /* (An)+ */
-      m_a[ea.reg] += 1;
+      m_a[ea.reg] += an_step(ea.reg, 1);
     }
     prefetch_fill(1);
   }
@@ -1280,7 +1288,7 @@ void M68k::exec_negx(uint16_t op)
   }
   write_mem(addr, size, res, size == 4);
   if (ea.mode == 3) { /* (An)+ */
-    m_a[ea.reg] += (uint32_t)size;
+    m_a[ea.reg] += an_step(ea.reg, size);
   }
   prefetch_fill(1);
 }
@@ -1460,7 +1468,7 @@ void M68k::exec_immediate(uint16_t op)
       write_mem(addr, size, res, size == 4);
     }
     if (ea.mode == 3) { /* (An)+ post-increment */
-      m_a[ea.reg] += (uint32_t)size;
+      m_a[ea.reg] += an_step(ea.reg, size);
     }
     prefetch_fill(1);
   }
@@ -1516,7 +1524,7 @@ void M68k::exec_addq_subq(uint16_t op)
   }
   write_mem(addr, size, res, size == 4);
   if (ea.mode == 3) {
-    m_a[ea.reg] += (uint32_t)size;
+    m_a[ea.reg] += an_step(ea.reg, size);
   }
   prefetch_fill(1);
 }
@@ -1549,7 +1557,7 @@ void M68k::exec_scc(uint16_t op)
     bus_write_byte(addr, 0xFF);
   }
   if (ea.mode == 3) { /* (An)+ post-increment */
-    m_a[ea.reg] += ea.reg == 7 ? 2U : 1U;
+    m_a[ea.reg] += an_step(ea.reg, 1);
   }
   prefetch_fill(1);
 }
@@ -1653,7 +1661,10 @@ void M68k::exec_jsr_jmp(uint16_t op)
     return;
   }
   if (jsr) {
-    const uint32_t return_pc = m_prefetch_addr;
+    /* The next instruction starts after the last consumed stream word.
+     * JSR (An) has no extension word, so a prefetched word can still be
+     * queued here; the prefetch address alone would return two bytes late. */
+    const uint32_t return_pc = m_prefetch_addr - 2 * (uint32_t)m_queue_len;
     uint32_t sp = m_a[7] - 4;
     bus_write_word(sp, (uint16_t)(return_pc >> 16));
     if (aborted()) {
@@ -1921,7 +1932,7 @@ void M68k::exec_clr_neg_not_tst(uint16_t op)
       }
       write_mem(addr, size, 0, size == 4);
       if (ea.mode == 3) {
-        m_a[ea.reg] += (uint32_t)size;
+        m_a[ea.reg] += an_step(ea.reg, size);
       }
     }
     m_sr = (uint16_t)(m_sr & ~(SR_C | SR_V | SR_N));
@@ -1980,7 +1991,7 @@ void M68k::exec_clr_neg_not_tst(uint16_t op)
   if (ea_is_memory(ea)) {
     write_mem(addr, size, res, size == 4 && ea.mode == 4);
     if (ea.mode == 3) {
-      m_a[ea.reg] += (uint32_t)size;
+      m_a[ea.reg] += an_step(ea.reg, size);
     }
   } else {
     ea_write(ea, size, res);
@@ -2306,7 +2317,7 @@ void M68k::exec_movem(uint16_t op)
         if ((mask & (1u << (15 - i))) == 0) {
           continue;
         }
-        m_a[ea.reg] -= (uint32_t)size;
+        m_a[ea.reg] -= an_step(ea.reg, size);
         const uint32_t addr = m_a[ea.reg];
         /* On a 68000, including the effective-address register stores its
          * value from before the MOVEM, not the value after this transfer's
