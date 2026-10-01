@@ -270,33 +270,35 @@ void soundp_output(const uint16 *left, const uint16 *right,
                    unsigned int samples)
 {
   int16_t interleaved[SOUND_BUFFER_SAMPLES * 2];
-  unsigned int i;
 
   if (!soundp_stream || samples == 0) {
     return;
   }
 
-  if (samples > SOUND_BUFFER_SAMPLES) {
-    static int overflow_count = 0;
-    if (overflow_count < 3) {
-      LOG_CRITICAL("Dropping oversized audio buffer: %u samples", samples);
-      overflow_count++;
+  /* A field is normally well under one buffer, but it is not bounded by
+   * one: a long DMA bills the 68K for several fields' worth of master
+   * clocks in a single advance, and the core hands over every sample it
+   * generated during it. Feeding the stream in buffer-sized pieces keeps
+   * that audio; dropping the whole field, as this did, punched a quarter
+   * of a second of silence into the start of every game that clears VRAM
+   * with the display on. */
+  unsigned int offset = 0;
+  while (offset < samples) {
+    const unsigned int chunk = samples - offset > SOUND_BUFFER_SAMPLES
+                                   ? (unsigned int)SOUND_BUFFER_SAMPLES
+                                   : samples - offset;
+    for (unsigned int i = 0; i < chunk; i++) {
+      interleaved[i * 2] = (int16_t)left[offset + i];
+      interleaved[i * 2 + 1] = (int16_t)right[offset + i];
     }
-    return;
-  }
-
-  /* Interleave left and right channels */
-  for (i = 0; i < samples; i++) {
-    interleaved[i * 2] = (int16_t)left[i];
-    interleaved[i * 2 + 1] = (int16_t)right[i];
-  }
-
-  /* Push audio data to the stream */
-  if (!SDL_PutAudioStreamData(soundp_stream, interleaved, samples * 4)) {
-    static int err_count = 0;
-    if (err_count < 3) {
-      LOG_CRITICAL("SDL_PutAudioStreamData failed: %s", SDL_GetError());
-      err_count++;
+    if (!SDL_PutAudioStreamData(soundp_stream, interleaved, (int)chunk * 4)) {
+      static int err_count = 0;
+      if (err_count < 3) {
+        LOG_CRITICAL("SDL_PutAudioStreamData failed: %s", SDL_GetError());
+        err_count++;
+      }
+      return;
     }
+    offset += chunk;
   }
 }

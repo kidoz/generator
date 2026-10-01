@@ -404,14 +404,17 @@ void Machine::advance_mclk(uint64_t ticks)
   const uint64_t per_second = m_pal ? kMclkPerSecondPal : kMclkPerSecondNtsc;
   constexpr uint64_t kSampleRate = SOUND_SAMPLERATE;
 
-  /* Large bus-steal advances must be split at host-sample boundaries.
-   * Otherwise one DMA can integrate a stale chip value over thousands of
-   * samples, emit it once, and fill the rest with zeroes. */
+  /* Integrate the held mix only until a chip changes output or a host
+   * sample is due. A long DMA can span several chip updates per host
+   * sample; holding the old output across those updates distorts the
+   * waveform. Use each chip's phase, not the absolute machine clock. */
   while (ticks != 0) {
     const uint64_t scaled_remaining = per_second - m_audio_acc;
     const uint64_t to_sample =
         (scaled_remaining + kSampleRate - 1) / kSampleRate;
-    const uint64_t chunk = std::min(ticks, to_sample);
+    const uint64_t chunk =
+        std::min({ticks, to_sample, m_z80bus.ym().mclk_until_output(),
+                  m_z80bus.psg().mclk_until_output()});
 
     const int32_t psg = m_z80bus.psg().output();
     m_mix_acc_l +=

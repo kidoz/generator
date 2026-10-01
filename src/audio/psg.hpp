@@ -26,6 +26,12 @@ public:
   /* Advance by master clocks; returns true if output changed. */
   void advance_mclk(uint64_t ticks);
 
+  /* Positive master-clock interval until the next output update. */
+  [[nodiscard]] uint64_t mclk_until_output() const
+  {
+    return kMclkPerPsgTick - m_mclk_acc;
+  }
+
   /* Current mixed output (-1.0..1.0 scaled). */
   int16_t output() const;
 
@@ -36,6 +42,9 @@ public:
   }
 
 private:
+  /* Master/15 input clock, followed by the PSG's internal /16 divider. */
+  static constexpr uint64_t kMclkPerPsgTick = 15 * 16;
+
   void step();
 
   /* 4 channels: 3 tone + 1 noise */
@@ -50,7 +59,7 @@ private:
 
   /* noise */
   uint16_t m_lfsr = 0;
-  uint8_t m_noise_mode = 0; /* 0 = white, 1 = periodic */
+  uint8_t m_noise_mode = 0; /* $E bit 2 (FB): 1 = white, 0 = periodic */
   uint8_t m_noise_rate = 0; /* 0-3 */
 
   /* output */

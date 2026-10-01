@@ -351,7 +351,105 @@ public:
   int fields = 0;
 };
 
+class CapturingAudio final : public IAudioBackend {
+public:
+  void output_samples(std::span<const uint16_t> left,
+                      std::span<const uint16_t> right) override
+  {
+    REQUIRE(left.size() == right.size());
+    samples_left.insert(samples_left.end(), left.begin(), left.end());
+    samples_right.insert(samples_right.end(), right.begin(), right.end());
+  }
+  std::vector<uint16_t> samples_left;
+  std::vector<uint16_t> samples_right;
+};
+
+CapturingAudio capture_tone(uint64_t step, bool pal, bool fm,
+                            uint64_t reset_offset)
+{
+  auto audio = std::make_unique<CapturingAudio>();
+  auto *captured = audio.get();
+  Machine machine(std::move(audio), std::make_unique<NullVideo>(),
+                  std::make_shared<NullLogger>());
+  machine.set_video_mode(pal, 0);
+  machine.io_debug_write(0xA11200, 0); /* Hold Z80 in reset. */
+
+  /* The diagnostic accessor exposes a const view of this mutable machine.
+   * Program the chips directly so CPU execution cannot alter the tone. */
+  auto &bus = const_cast<Z80Bus &>(machine.z80_bus_debug());
+  bus.reset();
+  machine.debug_advance_mclk(reset_offset);
+  bus.reset(); /* Chip phase need not match the machine's absolute clock. */
+  if (fm) {
+    auto write = [&](uint8_t addr, uint8_t value) {
+      bus.ym().write_address(addr);
+      bus.ym().write_data(value);
+    };
+    write(0xB0, 7);    /* All four operators are carriers. */
+    write(0xB4, 0x80); /* Left only: also check stereo routing. */
+    for (uint8_t op = 0; op < 4; op++) {
+      write(0x30 + op * 4, 1);
+      write(0x40 + op * 4, 0);
+      write(0x50 + op * 4, 0x1F); /* Fast attack, then sustain. */
+      write(0x60 + op * 4, 0);
+      write(0x70 + op * 4, 0);
+      write(0x80 + op * 4, 0x0F);
+    }
+    write(0xA4, 0x22);
+    write(0xA0, 0x69);
+    write(0x28, 0xF0);
+  } else {
+    bus.psg().write(0x84); /* Tone 0, period 20, full volume. */
+    bus.psg().write(0x01);
+    bus.psg().write(0x90);
+  }
+
+  /* Two fields in one advance exercises the long-DMA path. A one-clock
+   * advance is the reference integration, independent of chip periods. */
+  const uint64_t duration = 2ULL * 3420 * (pal ? 313 : 262);
+  for (uint64_t elapsed = 0; elapsed < duration;) {
+    const uint64_t chunk = std::min(step, duration - elapsed);
+    machine.debug_advance_mclk(chunk);
+    elapsed += chunk;
+  }
+  machine.run_frame(); /* No ROM: flush audio without advancing time. */
+  REQUIRE(machine.master_clock() == reset_offset + duration);
+  const uint64_t expected = (reset_offset + duration) * SOUND_SAMPLERATE /
+                            (pal ? 53203424 : 53693175);
+  REQUIRE(captured->samples_left.size() == expected);
+  return *captured;
+}
+
 }  // namespace
+
+TEST_CASE("audio integration is independent of clock advance size",
+          "[rom_loading][audio]")
+{
+  for (bool pal : {false, true}) {
+    for (bool fm : {false, true}) {
+      for (uint64_t offset : {0ULL, 137ULL}) {
+        INFO("PAL=" << pal << ", FM=" << fm << ", reset offset=" << offset);
+        const auto reference = capture_tone(1, pal, fm, offset);
+        const auto [lo, hi] = std::minmax_element(
+            reference.samples_left.begin(), reference.samples_left.end());
+        REQUIRE(*lo != *hi); /* Do not pass by comparing silence. */
+        if (fm) {
+          REQUIRE(std::all_of(reference.samples_right.begin(),
+                              reference.samples_right.end(),
+                              [](uint16_t s) { return s == 0; }));
+        } else {
+          REQUIRE(reference.samples_left == reference.samples_right);
+        }
+        for (uint64_t step : {28ULL, 64ULL, 2140920ULL}) {
+          INFO("advance=" << step);
+          const auto actual = capture_tone(step, pal, fm, offset);
+          CHECK(actual.samples_left == reference.samples_left);
+          CHECK(actual.samples_right == reference.samples_right);
+        }
+      }
+    }
+  }
+}
 
 TEST_CASE("the machine produces a field of audio every frame", "[rom_loading]")
 {

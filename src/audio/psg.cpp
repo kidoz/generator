@@ -4,11 +4,6 @@
 namespace generator {
 
 namespace {
-/* The PSG receives master/15 and its tone divider advances once per 16
- * input clocks. Omitting the internal divider raises every tone by four
- * octaves. */
-constexpr int kMclkPerPsgTick = 15 * 16;
-
 /* Volume table: attenuation 0-15, 2 dB per step, 0 = full */
 constexpr int16_t kVolumeTable[16] = {
     32767, 26072, 20732, 16460, 13069, 10379, 8243, 6546,
