@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 #include <getopt.h>
 #include <ctime>
 #include <fstream>
@@ -412,6 +414,16 @@ static void print_usage(const char *progname)
   printf("  -T, --tap-input B   Tap buttons 8 frames of every 40 so "
          "edge-detected\n");
   printf("                      menus advance (same button names)\n");
+  printf("  -P, --press-input S Press buttons on a bounded schedule, as\n");
+  printf("                      BUTTONS:FRAME:COUNT[:PERIOD:REPEATS] — e.g.\n");
+  printf("                      start:120:8 holds start for frames 120..127, "
+         "and\n");
+  printf("                      start:0:8:40:6 taps it six times then stops, "
+         "so\n");
+  printf("                      a menu is driven to a known screen and "
+         "playback\n");
+  printf("                      then runs undisturbed for a matched A/B "
+         "capture\n");
   printf("  --dump-video-hash   Fingerprint the rendered video (per-line VDP "
          "output)\n");
   printf("                      and print FNV-1a checksums after the run\n");
@@ -447,6 +459,7 @@ int main(int argc, char *argv[])
   const char *dump_audio_file = nullptr;
   const char *hold_input = nullptr;
   const char *tap_input = nullptr;
+  const char *press_input = nullptr;
   const char *dump_frames = nullptr;
   const char *zram_log = nullptr;
   int dump_video_hash = 0;
@@ -467,6 +480,7 @@ int main(int argc, char *argv[])
       {"dump-audio", required_argument, 0, 'D'},
       {"hold-input", required_argument, 0, 'I'},
       {"tap-input", required_argument, 0, 'T'},
+      {"press-input", required_argument, 0, 'P'},
       {"dump-frames", required_argument, 0, 'F'},
       {"zram-log", required_argument, 0, 'Z'},
       {"dump-video-hash", no_argument, &dump_video_hash, 1},
@@ -475,7 +489,7 @@ int main(int argc, char *argv[])
       {"hash-state-per-frame", no_argument, &hash_state_per_frame, 1},
       {0, 0, 0, 0}};
 
-  while ((opt = getopt_long(argc, argv, "hvf:Vql:s:D:I:T:F:Z:", long_options,
+  while ((opt = getopt_long(argc, argv, "hvf:Vql:s:D:I:T:P:F:Z:", long_options,
                             nullptr)) != -1) {
     switch (opt) {
     case 'h':
@@ -505,6 +519,9 @@ int main(int argc, char *argv[])
       break;
     case 'T':
       tap_input = optarg;
+      break;
+    case 'P':
+      press_input = optarg;
       break;
     case 'F':
       dump_frames = optarg;
@@ -610,12 +627,6 @@ int main(int argc, char *argv[])
         printf("Z80-RAM write log: %s\n", zram_log);
     }
 
-    if (!quiet_mode)
-      if (zram_log != nullptr) {
-        core->debug_log_zram_to(zram_log);
-        printf("Z80-RAM write log: %s\n", zram_log);
-      }
-
     printf("\nRunning %u frames...\n", num_frames);
 
     clock_t start_time = clock();
@@ -624,7 +635,9 @@ int main(int argc, char *argv[])
     /* Scripted input for automated runs, so audio/video comparisons can
      * reach gameplay: --hold-input keeps the buttons down from frame 0
      * (no press edges — games with edge detection never see these fire),
-     * --tap-input presses them 8 frames of every 40 so menus advance.
+     * --tap-input presses them 8 frames of every 40 so menus advance, and
+     * --press-input presses them once over a named frame window so two cores
+     * can be driven to the same place for a matched capture.
      * Buttons: u,d,l,r,start,a,b,c,x,y,z,mode, comma separated. */
     unsigned int hold_up = 0, hold_down = 0, hold_left = 0, hold_right = 0;
     unsigned int hold_start = 0, hold_a = 0, hold_b = 0, hold_c = 0;
@@ -632,23 +645,61 @@ int main(int argc, char *argv[])
     unsigned int tap_up = 0, tap_down = 0, tap_left = 0, tap_right = 0;
     unsigned int tap_start = 0, tap_a = 0, tap_b = 0, tap_c = 0;
     unsigned int tap_x = 0, tap_y = 0, tap_z = 0, tap_mode = 0;
-    for (int mode = 0; mode < 2; mode++) {
-      const char *spec = mode == 0 ? hold_input : tap_input;
+    unsigned int press_up = 0, press_down = 0, press_left = 0, press_right = 0;
+    unsigned int press_start = 0, press_a = 0, press_b = 0, press_c = 0;
+    unsigned int press_x = 0, press_y = 0, press_z = 0, press_mode = 0;
+
+    /* BUTTONS:FRAME:COUNT[:PERIOD:REPEATS] — the button list is split off
+     * here so the shared name parser below sees only the names. PERIOD and
+     * REPEATS turn one press into a bounded burst, which is what drives a
+     * menu to a known screen and then stops, leaving playback undisturbed. */
+    std::string press_buttons;
+    unsigned int press_at = 0, press_len = 0;
+    unsigned int press_period = 0, press_times = 1;
+    if (press_input != nullptr) {
+      char names[400];
+      const int got =
+          std::sscanf(press_input, "%399[^:]:%u:%u:%u:%u", names, &press_at,
+                      &press_len, &press_period, &press_times);
+      if (got < 3 || press_len == 0) {
+        std::cerr << "Error: --press-input wants "
+                     "BUTTONS:FRAME:COUNT[:PERIOD:REPEATS] with a non-zero "
+                     "COUNT\n";
+        return 1;
+      }
+      if (got == 3) {
+        press_period = 0;
+        press_times = 1;
+      } else if (got == 4 || press_times == 0 || press_period < press_len) {
+        std::cerr << "Error: --press-input repeats need both PERIOD and "
+                     "REPEATS, with PERIOD >= COUNT and REPEATS > 0\n";
+        return 1;
+      }
+      press_buttons = names;
+    }
+
+    for (int mode = 0; mode < 3; mode++) {
+      const char *spec = mode == 0               ? hold_input
+                         : mode == 1             ? tap_input
+                         : press_buttons.empty() ? nullptr
+                                                 : press_buttons.c_str();
       if (spec == nullptr) {
         continue;
       }
-      unsigned int *const dst[12] = {mode == 0 ? &hold_up : &tap_up,
-                                     mode == 0 ? &hold_down : &tap_down,
-                                     mode == 0 ? &hold_left : &tap_left,
-                                     mode == 0 ? &hold_right : &tap_right,
-                                     mode == 0 ? &hold_start : &tap_start,
-                                     mode == 0 ? &hold_a : &tap_a,
-                                     mode == 0 ? &hold_b : &tap_b,
-                                     mode == 0 ? &hold_c : &tap_c,
-                                     mode == 0 ? &hold_x : &tap_x,
-                                     mode == 0 ? &hold_y : &tap_y,
-                                     mode == 0 ? &hold_z : &tap_z,
-                                     mode == 0 ? &hold_mode : &tap_mode};
+      unsigned int *const hold_dst[12] = {&hold_up,    &hold_down,  &hold_left,
+                                          &hold_right, &hold_start, &hold_a,
+                                          &hold_b,     &hold_c,     &hold_x,
+                                          &hold_y,     &hold_z,     &hold_mode};
+      unsigned int *const tap_dst[12] = {
+          &tap_up, &tap_down, &tap_left, &tap_right, &tap_start, &tap_a,
+          &tap_b,  &tap_c,    &tap_x,    &tap_y,     &tap_z,     &tap_mode};
+      unsigned int *const press_dst[12] = {
+          &press_up,    &press_down, &press_left, &press_right,
+          &press_start, &press_a,    &press_b,    &press_c,
+          &press_x,     &press_y,    &press_z,    &press_mode};
+      unsigned int *const *const dst = mode == 0   ? hold_dst
+                                       : mode == 1 ? tap_dst
+                                                   : press_dst;
       for (const char *p = spec; *p != '\0'; p++) {
         if (*p == ',' || *p == ' ' || *p == '+') {
           continue;
@@ -697,13 +748,30 @@ int main(int argc, char *argv[])
 
     for (; frame < num_frames; frame++) {
       const unsigned int tap = (frame % 40) < 8 ? 1u : 0u;
-      core->set_input(0, hold_up | (tap_up & tap), hold_down | (tap_down & tap),
-                      hold_left | (tap_left & tap),
-                      hold_right | (tap_right & tap),
-                      hold_start | (tap_start & tap), hold_a | (tap_a & tap),
-                      hold_b | (tap_b & tap), hold_c | (tap_c & tap),
-                      hold_x | (tap_x & tap), hold_y | (tap_y & tap),
-                      hold_z | (tap_z & tap), hold_mode | (tap_mode & tap));
+      /* Inside one of the REPEATS windows of PERIOD frames starting at
+       * FRAME, each window holding the buttons down for COUNT frames. */
+      unsigned int hit = 0u;
+      if (frame >= press_at) {
+        const unsigned int since = frame - press_at;
+        if (press_period == 0) {
+          hit = since < press_len ? 1u : 0u;
+        } else if (since / press_period < press_times &&
+                   since % press_period < press_len) {
+          hit = 1u;
+        }
+      }
+      core->set_input(0, hold_up | (tap_up & tap) | (press_up & hit),
+                      hold_down | (tap_down & tap) | (press_down & hit),
+                      hold_left | (tap_left & tap) | (press_left & hit),
+                      hold_right | (tap_right & tap) | (press_right & hit),
+                      hold_start | (tap_start & tap) | (press_start & hit),
+                      hold_a | (tap_a & tap) | (press_a & hit),
+                      hold_b | (tap_b & tap) | (press_b & hit),
+                      hold_c | (tap_c & tap) | (press_c & hit),
+                      hold_x | (tap_x & tap) | (press_x & hit),
+                      hold_y | (tap_y & tap) | (press_y & hit),
+                      hold_z | (tap_z & tap) | (press_z & hit),
+                      hold_mode | (tap_mode & tap) | (press_mode & hit));
       core->run_frame();
 
       if (gen_quit) { /* signal-safe shutdown flag */
