@@ -1,13 +1,19 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
-/* YM3438 (CMOS YM2612) — the bus interface, timers, status/busy
- * behavior and the IRQ line that unblock sound-driver handshakes, plus
- * the operator pipeline (EG/PG/LFO/DAC).
+/* YM3438 (CMOS YM2612) — OPN2 synthesis core.
+ *
+ * Rebuilt around the Nuked-OPN2 / MAME envelope-generator semantics that
+ * the driver ecosystem is tuned against: a 16.16 fixed-point attenuation
+ * accumulator stepped from a per-rate delta table at the native FM
+ * sample rate, exponential attack shaping, and
+ * full SSG-EG cycling (threshold at half scale, inversion, hold and
+ * alternate modes, phase reset on non-alternate loops).
  *
  * Bus (Z80 view, also reachable from the 68K window):
  *   A0=0 address, A0=1 data, A1=0 bank 0, A1=1 bank 1
  *
- * Clock: master / 7 (same as the 68K). Timer periods in YM clocks:
- *   A = 12 * (1024 - NA), B = 192 * (256 - NB).
+ * Clock: master / 7 (same as the 68K); one operator sample per 144 chip
+ * clocks. Timer periods in YM clocks:
+ *   A = 144 * (1024 - NA), B = 2304 * (256 - NB).
  * Busy flag lasts ~17 FM clock cycles after a register write. */
 
 #pragma once
@@ -23,49 +29,121 @@ public:
 
   /* Z80-side / 68K-window access: address for A0=0 and data for A0=1;
    * A1 selects register bank 0/1. */
-  uint8_t read_status() const;
+  [[nodiscard]] uint8_t read_status() const;
   void write_address(uint8_t addr, uint8_t bank = 0); /* A0 = 0 */
   void write_data(uint8_t data, uint8_t bank = 0);    /* A0 = 1 */
-  uint8_t read_data() const; /* A0 = 1 (unused on HW) */
+  [[nodiscard]] uint8_t read_data() const;            /* A0 = 1 (floats high) */
 
   /* Advance by master clocks; returns the IRQ level toward the Z80
    * (true = assert). */
   bool advance_mclk(uint64_t ticks);
 
+  /* Positive master-clock interval until the next output update. */
+  [[nodiscard]] uint64_t mclk_until_output() const
+  {
+    return kMclkPerFmSample - m_sample_timer;
+  }
+
   /* --- state --- */
-  bool irq_line() const
+  [[nodiscard]] bool irq_line() const
   {
     return m_irq;
   }
-  uint8_t status() const
+  [[nodiscard]] uint8_t status() const
   {
     return m_status;
   }
 
   /* Register access for tests / the operator pipeline. */
-  uint8_t reg(uint8_t bank, uint8_t addr) const
+  [[nodiscard]] uint8_t reg(uint8_t bank, uint8_t addr) const
   {
     return m_regs[bank & 1][addr];
   }
 
   /* Audio output: call advance_mclk first, then read the mixed sample. */
-  int16_t sample_left() const
+  [[nodiscard]] int16_t sample_left() const
   {
     return m_sample_l;
   }
-  int16_t sample_right() const
+  [[nodiscard]] int16_t sample_right() const
   {
     return m_sample_r;
   }
 
 private:
+  /* One sample per 144 chip clocks, with the chip clock at master/7. */
+  static constexpr uint64_t kMclkPerFmSample = 144ULL * 7;
+
+  /* Envelope generator phase. The numeric order (off < release <
+   * sustain < decay < attack) lets key-off drop to release with one
+   * comparison, the way the chip walks its states. */
+  enum class EgState : uint8_t {
+    off,
+    release,
+    sustain,
+    decay,
+    attack
+  };
+
+  /* One operator (slot): phase generator + envelope generator state. */
+  struct Slot {
+    /* Phase generator */
+    uint32_t phase = 0; /* 20-bit accumulator */
+    int32_t incr = 0;   /* per-sample increment, fnum/block/mul/detune */
+    bool incr_dirty = true;
+
+    /* Envelope generator: 16.16 attenuation, 0 = loudest */
+    int32_t volume = (1024 << 16) - 1;
+    EgState state = EgState::off;
+    int32_t delta_attack = 0;
+    int32_t delta_decay = 0;
+    int32_t delta_sustain = 0;
+    int32_t delta_release = 0;
+    int32_t sustain_level = (1024 << 16) - 1;
+    int32_t total_level = 0; /* register $40-$4F, << 3, applied at output */
+    uint8_t key_scale = 0;   /* cached ksr the rate deltas were built for */
+
+    /* SSG-EG ($90) */
+    uint8_t ssg_control = 0;
+    uint8_t ssg_inverted = 0;
+
+    /* Key and amplitude modulation */
+    bool keyed = false;
+    bool am_enabled = false; /* register $60-$6F bit 7 */
+    uint32_t am_depth = 0;   /* channel AMS depth gated by am_enabled */
+  };
+
+  /* One of the six output channels. */
+  struct Channel {
+    std::array<Slot, 4> slots{};
+    uint8_t algorithm = 0;
+    uint8_t feedback = 0;
+    std::array<int32_t, 2> op1_history = {};
+    uint8_t key_code = 0; /* block/fnum key code for EG rates and detune */
+    uint8_t pms = 0;      /* phase-modulation depth, pre-scaled */
+    uint32_t ams = 0;     /* amplitude-modulation depth */
+    uint8_t pan_left = 1;
+    uint8_t pan_right = 1;
+    bool pitch_dirty = true;
+  };
+
   void write_register(uint8_t bank, uint8_t addr, uint8_t data);
   void update_irq();
+  void render_sample();
+  void refresh_pitch(int ch);
+  void refresh_rates(int ch, int op);
+  void key_set(int ch, int op, bool on);
+  void ssg_cycle_complete(Slot &slot);
+  void envelope_step(Slot &slot);
+  [[nodiscard]] int32_t envelope_output(const Slot &slot) const;
+  [[nodiscard]] int16_t operator_output(uint32_t phase, int32_t mod,
+                                        uint32_t attenuation) const;
 
   std::array<std::array<uint8_t, 0x100>, 2> m_regs{};
   uint8_t m_latch_addr[2] = {};
+  std::array<Channel, 6> m_channels{};
 
-  /* status: bit 7 busy, bit 6 timer A, bit 5 timer B */
+  /* status: bit 7 busy, bit 0 timer A, bit 1 timer B */
   uint8_t m_status = 0;
   uint32_t m_busy_mclk = 0;
 
@@ -74,72 +152,19 @@ private:
   int64_t m_timer_b = 0;
   bool m_irq = false;
 
-  /* FM operator pipeline (sample-accurate) */
-  /* FM operator pipeline — proper YM2612 structure.
-   * Envelope: 10-bit level (0 = loudest, 0x3FF = silence).
-   * Phase: 20-bit accumulator per operator. */
-  struct Operator {
-    uint32_t phase = 0;
-    uint32_t freq = 0;
-    uint16_t block = 0;
-    uint16_t fnum = 0;
-    uint32_t eg_level = 0x3FF;
-    uint8_t eg_state = 3;
-    bool key_on = false;
-    bool key_on_prev = false;
-    uint8_t eg_rate_attack = 0;
-    uint8_t eg_rate_decay = 0;
-    uint8_t eg_rate_sustain = 0;
-    uint8_t eg_rate_release = 0;
-    uint8_t eg_total_level = 0;
-    uint8_t eg_sustain_level = 0;
-    uint8_t eg_ks = 0;
-    bool ssg_enable = false;
-    uint8_t ssg_mode = 0;
-    int16_t output = 0;
-    int32_t mod_input = 0; /* phase modulation from previous operators */
-  };
-  std::array<Operator, 6 * 4> m_ops{};
-
-  /* Per-channel state */
-  struct Channel {
-    uint8_t algorithm = 0;             /* from $B0-$BF bits 0-2 */
-    uint8_t feedback = 0;              /* from $B0-$BF bits 3-5 */
-    uint8_t pms = 0;                   /* phase modulation sensitivity */
-    uint8_t ams = 0;                   /* amplitude modulation sensitivity */
-    uint8_t pan_left = 1;              /* from $B4-$BF bit 7 */
-    uint8_t pan_right = 1;             /* from $B4-$BF bit 6 */
-    int32_t feedback_hist[2] = {0, 0}; /* OP1 feedback delay */
-  };
-  std::array<Channel, 6> m_channels{};
-
   /* LFO */
-  bool m_lfo_enabled = false;
-  uint8_t m_lfo_freq = 0; /* 0-7 from $22 bits 0-2 */
-  uint32_t m_lfo_counter = 0;
-  uint8_t m_lfo_am_value = 0; /* 0-255 AM LFO output */
-  int8_t m_lfo_pm_value = 0;  /* signed PM LFO output */
-
-  void update_lfo();
-  int32_t apply_feedback(int ch);
-  int32_t apply_operator(int ch, int op, int32_t mod);
+  uint32_t m_lfo_count = 0;
+  uint32_t m_lfo_incr = 0;
+  uint32_t m_lfo_am = 0; /* 0..0x10000, tremolo depth for the next sample */
+  int32_t m_lfo_pm = 0;  /* -0x8000..0x8000, vibrato source */
 
   /* DAC (channel 6 in DAC mode, register $2B enable, $2A data) */
   bool m_dac_enabled = false;
-  uint8_t m_dac_value = 0x80;
-  int16_t m_dac_output = 0;
+  int32_t m_dac_output = 0;
+
   int16_t m_sample_l = 0;
   int16_t m_sample_r = 0;
   uint64_t m_sample_timer = 0;
-  uint32_t m_eg_timer = 0;
-  uint32_t m_eg_prescaler = 0;
-
-  void update_operators();
-  void update_phase(int ch, int op);
-  void update_envelope(int ch, int op);
-  int16_t calculate_output();
-  static int16_t sine_table(int phase, int envelope);
-  static uint8_t eg_rate_compute(uint8_t rate, uint8_t ksv);
 };
 
 }  // namespace generator
