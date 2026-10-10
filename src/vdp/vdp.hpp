@@ -137,6 +137,37 @@ public:
   {
     return m_cram_dirty;
   }
+
+  /* Savestate v3 payload (chunk VDP0). The rendered line buffer and the
+   * DMA reader callback are not machine state: lines re-render as the
+   * raster advances and the machine re-attaches the callback. */
+  struct SavedState {
+    uint8_t reg[0x18];
+    uint8_t vram[0x10000];
+    uint16_t cram[64];
+    uint8_t cram_dirty[64];
+    uint16_t vsram[40];
+    uint32_t address;
+    uint32_t cd;
+    uint8_t latch_second;
+    uint8_t pending_read;
+    uint16_t read_buffer;
+    uint8_t dma_pending;
+    uint8_t pal;
+    uint64_t mclk;
+    uint32_t dot;
+    uint32_t line;
+    uint64_t frames;
+    uint8_t hint_counter;
+    uint8_t vint_pending;
+    uint8_t vint_flag;
+    uint8_t hint_pending;
+    uint64_t dma_debt_mclk;
+    uint8_t dma_busy;
+    uint8_t dma_fill_armed;
+  };
+  SavedState save() const;
+  void restore(const SavedState &state);
   struct Px {
     uint8_t value; /* palette<<4 | color, 0 = transparent */
     uint8_t prio;  /* priority bit */

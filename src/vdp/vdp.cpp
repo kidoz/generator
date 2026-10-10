@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "vdp.hpp"
 
+#include <algorithm>
+
 namespace generator {
 
 namespace {
@@ -68,6 +70,65 @@ void Vdp::reset(bool pal)
   m_dma_debt_mclk = 0;
   m_dma_busy = false;
   m_dma_fill_armed = false;
+  m_frame.assign((size_t)kMaxVisibleLines * kLineBufferWidth, 0);
+}
+
+Vdp::SavedState Vdp::save() const
+{
+  SavedState state{};
+  std::copy_n(m_reg, 0x18, state.reg);
+  std::copy_n(m_vram, 0x10000, state.vram);
+  std::copy_n(m_cram, 64, state.cram);
+  std::copy_n(m_cram_dirty, 64, state.cram_dirty);
+  std::copy_n(m_vsram, 40, state.vsram);
+  state.address = m_address;
+  state.cd = m_cd;
+  state.latch_second = m_latch_second ? 1 : 0;
+  state.pending_read = m_pending_read ? 1 : 0;
+  state.read_buffer = m_read_buffer;
+  state.dma_pending = m_dma_pending ? 1 : 0;
+  state.pal = m_pal ? 1 : 0;
+  state.mclk = m_mclk;
+  state.dot = m_dot;
+  state.line = m_line;
+  state.frames = m_frames;
+  state.hint_counter = m_hint_counter;
+  state.vint_pending = m_vint_pending ? 1 : 0;
+  state.vint_flag = m_vint_flag ? 1 : 0;
+  state.hint_pending = m_hint_pending ? 1 : 0;
+  state.dma_debt_mclk = m_dma_debt_mclk;
+  state.dma_busy = m_dma_busy ? 1 : 0;
+  state.dma_fill_armed = m_dma_fill_armed ? 1 : 0;
+  return state;
+}
+
+void Vdp::restore(const SavedState &state)
+{
+  std::copy_n(state.reg, 0x18, m_reg);
+  std::copy_n(state.vram, 0x10000, m_vram);
+  std::copy_n(state.cram, 64, m_cram);
+  std::copy_n(state.cram_dirty, 64, m_cram_dirty);
+  std::copy_n(state.vsram, 40, m_vsram);
+  m_address = state.address & 0xFFFF;
+  m_cd = state.cd & 0x3F;
+  m_latch_second = state.latch_second != 0;
+  m_pending_read = state.pending_read != 0;
+  m_read_buffer = state.read_buffer;
+  m_dma_pending = state.dma_pending != 0;
+  m_pal = state.pal != 0;
+  m_mclk = state.mclk;
+  m_dot = state.dot;
+  m_line = state.line;
+  m_frames = state.frames;
+  m_hint_counter = state.hint_counter;
+  m_vint_pending = state.vint_pending != 0;
+  m_vint_flag = state.vint_flag != 0;
+  m_hint_pending = state.hint_pending != 0;
+  m_dma_debt_mclk = state.dma_debt_mclk;
+  m_dma_busy = state.dma_busy != 0;
+  m_dma_fill_armed = state.dma_fill_armed != 0;
+  /* A restore can land on a machine that never ran a frame: size the line
+   * buffer for the tallest field before visible_lines() reaches it. */
   m_frame.assign((size_t)kMaxVisibleLines * kLineBufferWidth, 0);
 }
 
