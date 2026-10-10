@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "psg.hpp"
 
+#include <algorithm>
+
 namespace generator {
 
 namespace {
@@ -79,12 +81,11 @@ void Psg::write(uint8_t value)
       /* noise channel: mode and rate */
       m_noise_mode = (data >> 2) & 1;
       m_noise_rate = data & 3;
-      /* rate 3 uses channel 2's output as the clock */
-      if (m_noise_rate == 3) {
-        m_period[3] = m_period[2];
-      } else {
-        m_period[3] = 0x10 << m_noise_rate;
-      }
+      /* A write to the noise control register restarts the LFSR from its
+       * seed (MAME sn76496.cpp: any register-6 write resets m_RNG for the
+       * non-NCR parts), so repeated hits are deterministic. */
+      m_lfsr = kNoiseSeed;
+      m_period[3] = noise_period();
     } else {
       /* Tone latch supplies period bits 3..0. */
       m_period[m_latch_channel] = (m_period[m_latch_channel] & 0x3F0) | data;
@@ -129,13 +130,8 @@ void Psg::step()
     }
   }
 
-  /* Noise channel: LFSR shifts on its period */
-  if (m_noise_rate == 3) {
-    /* clocked by channel 2's output toggle */
-    m_period[3] = m_period[2];
-  } else {
-    m_period[3] = 0x10 << m_noise_rate;
-  }
+  /* Noise channel: LFSR shifts on its period (see noise_period) */
+  m_period[3] = noise_period();
   if (m_period[3] > 0) {
     if (++m_counter[3] >= m_period[3]) {
       m_counter[3] = 0;
@@ -149,14 +145,18 @@ void Psg::step()
     }
   }
 
-  /* Mix output */
+  /* Mix output: each tone/noise channel drives a square wave that swings
+   * ±half its attenuation level around zero, the way the chip's output
+   * leaves the die (a silent channel, level 0, contributes nothing).
+   * Emitting 0..level instead put a DC pedestal of half the instantaneous
+   * amplitude into the mix — +907 counts measured in Comix Zone, with
+   * 1.8:1 positive/negative peak asymmetry and no DC block downstream. */
   int32_t mix = 0;
   for (int ch = 0; ch < 4; ch++) {
-    if (m_output_bit[ch]) {
-      mix += kVolumeTable[m_atten[ch]];
-    }
+    const int32_t v = kVolumeTable[m_atten[ch]];
+    mix += m_output_bit[ch] ? v : -v;
   }
-  m_output_value = (int16_t)(mix >> 2); /* avoid clipping */
+  m_output_value = (int16_t)(mix >> 3); /* avoid clipping */
 }
 
 void Psg::advance_mclk(uint64_t ticks)

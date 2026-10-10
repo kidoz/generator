@@ -1022,8 +1022,8 @@ bool Ym3438::advance_mclk(uint64_t ticks)
 void Ym3438::update_irq()
 {
   const uint8_t mode = m_regs[0][0x27];
-  m_irq = ((m_status & kStTimerA) != 0 && (mode & 0x40) != 0) ||
-          ((m_status & kStTimerB) != 0 && (mode & 0x80) != 0);
+  m_irq = ((m_status & kStTimerA) != 0 && (mode & kModeEnableA) != 0) ||
+          ((m_status & kStTimerB) != 0 && (mode & kModeEnableB) != 0);
 }
 
 }  // namespace generator

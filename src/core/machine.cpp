@@ -419,11 +419,21 @@ void Machine::advance_mclk(uint64_t ticks)
         std::min({ticks, to_sample, m_z80bus.ym().mclk_until_output(),
                   m_z80bus.psg().mclk_until_output()});
 
-    const int32_t psg = m_z80bus.psg().output();
+    /* Cross-chip gain stage. Each core normalises internally for its own
+     * headroom (the FM channel sum is /3, the PSG sum >>3), and those
+     * constants do not encode the console's analog mix — summing them raw
+     * left the FM section ~10 dB below and the PSG ~14 dB above a hardware
+     * recording of Comix Zone's intro. Calibrated 2026-10-10 against that
+     * recording (tmp/sound-ab-20261010/REPORT.md): the FM gain undoes the
+     * core's /3 so the chip's own full scale reaches the mix, and the PSG
+     * sits under it the way the console's mixing network puts it there. */
+    constexpr int32_t kFmGain = 3;     /* +9.5 dB */
+    constexpr int32_t kPsgGainDiv = 5; /* -14.0 dB */
+    const int32_t psg = m_z80bus.psg().output() / kPsgGainDiv;
     m_mix_acc_l +=
-        (int64_t)(m_z80bus.ym().sample_left() + psg) * (int64_t)chunk;
-    m_mix_acc_r +=
-        (int64_t)(m_z80bus.ym().sample_right() + psg) * (int64_t)chunk;
+        (int64_t)(m_z80bus.ym().sample_left() * kFmGain + psg) * (int64_t)chunk;
+    m_mix_acc_r += (int64_t)(m_z80bus.ym().sample_right() * kFmGain + psg) *
+                   (int64_t)chunk;
     m_mix_ticks += chunk;
     m_mclk_total += chunk;
 

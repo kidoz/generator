@@ -53,6 +53,9 @@ struct Rig {
   {
     m68kbus.attach_rom(rom.data(), rom.size());
     bus.attach_68k(&m68kbus);
+    /* Power-on state: the PSG's attenuation defaults to full volume until
+     * reset, which a bipolar output turns into a DC level per idle channel. */
+    bus.reset();
   }
 };
 
@@ -116,6 +119,28 @@ TEST_CASE("psg latch protocol and internal divider set tone rate", "[z80_acc]")
   CHECK(rig.bus.psg().output() == 0);
   rig.bus.psg().advance_mclk(1);
   CHECK(rig.bus.psg().output() > 0);
+}
+
+TEST_CASE("psg noise shifts on alternate expiries and reseeds on write", "[z80_acc]")
+{
+  Rig rig;
+  /* latch channel 3 noise control: white mode (FB), rate 0 */
+  rig.bus.write_byte(0x7F11, 0xE4);
+  /* channel 3 volume = loudest */
+  rig.bus.write_byte(0x7F11, 0xF0);
+  CHECK(rig.bus.psg().save().lfsr == 0x8000);
+
+  /* rate 0 reloads the counter with 32 ticks of master/240: 31 ticks must
+   * not shift the LFSR, the 32nd must. */
+  rig.bus.psg().advance_mclk(31 * 15 * 16);
+  CHECK(rig.bus.psg().save().lfsr == 0x8000);
+  rig.bus.psg().advance_mclk(15 * 16);
+  CHECK(rig.bus.psg().save().lfsr == 0x4000); /* one shift, feedback 0 */
+
+  /* a noise-control write restarts the LFSR, so repeated hits on a driver
+   * that rewrites the register are deterministic */
+  rig.bus.write_byte(0x7F11, 0xE4);
+  CHECK(rig.bus.psg().save().lfsr == 0x8000);
 }
 
 TEST_CASE("z80 executes a program at master/15", "[z80_acc]")
