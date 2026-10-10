@@ -230,7 +230,8 @@ static void client_process_message(kaillera_client_t *client,
         if (strcmp(name, client->username) == 0) {
           client->player_number = player_num;
         }
-        client->num_players++;
+        if (client->num_players < KAILLERA_MAX_PLAYERS)
+          client->num_players++;
       }
     }
     break;
@@ -253,7 +254,8 @@ static void client_process_message(kaillera_client_t *client,
           client->callbacks.on_player_leave(player_num, name,
                                             client->callbacks.user_data);
         }
-        client->num_players--;
+        if (client->num_players > 0)
+          client->num_players--;
       }
     }
     break;
@@ -704,8 +706,13 @@ int kaillera_client_modify_play_values(kaillera_client_t *client, void *input,
   if (client->state != KAILLERA_STATE_PLAYING)
     return -1;
 
-  if (client->num_players <= 0 || client->num_players > KAILLERA_MAX_PLAYERS ||
-      size > 16)
+  if (client->num_players <= 0 || client->num_players > KAILLERA_MAX_PLAYERS)
+    return -1;
+
+  /* size covers every player's slot in the caller's buffer; only this
+   * client's share goes out on the wire */
+  int data_size = size / client->num_players;
+  if (data_size <= 0 || data_size > 16)
     return -1;
 
   /* Build game data packet with only this client's input. */
@@ -713,9 +720,9 @@ int kaillera_client_modify_play_values(kaillera_client_t *client, void *input,
   memset(&gd, 0, sizeof(gd));
   gd.frame_count = client->frame_count++;
   gd.player_count = 1;
-  gd.data_size = (uint8_t)size;
+  gd.data_size = (uint8_t)data_size;
 
-  memcpy(gd.player_data, input, (size_t)size);
+  memcpy(gd.player_data, input, (size_t)data_size);
 
   /* Serialize and send */
   uint8_t buf[256];

@@ -279,12 +279,20 @@ int netplay_sync_frame(const netplay_input_t *local, netplay_input_t *players,
   /* Serialize local input */
   uint16_t local_input = netplay_serialize_input(local);
 
+  int num_players = kaillera_client_get_num_players(netplay_ctx.client);
+  if (num_players < 1 || num_players > KAILLERA_MAX_PLAYERS) {
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
+             "Invalid player count");
+    netplay_ctx.state = NETPLAY_ERROR;
+    return -1;
+  }
+
   /* Exchange inputs with server (blocking) */
-  uint16_t inputs[KAILLERA_MAX_PLAYERS];
+  uint16_t inputs[KAILLERA_MAX_PLAYERS] = {};
   inputs[0] = local_input;
 
-  int result = kaillera_client_modify_play_values(netplay_ctx.client, inputs,
-                                                  sizeof(uint16_t));
+  int result = kaillera_client_modify_play_values(
+      netplay_ctx.client, inputs, num_players * (int)sizeof(uint16_t));
 
   if (result < 0) {
     /* Connection lost or error */
@@ -296,7 +304,6 @@ int netplay_sync_frame(const netplay_input_t *local, netplay_input_t *players,
   }
 
   /* Hand every player's input back to the caller */
-  int num_players = kaillera_client_get_num_players(netplay_ctx.client);
   for (int i = 0; i < num_players && i < max_players; i++) {
     netplay_deserialize_input(inputs[i], &players[i]);
   }

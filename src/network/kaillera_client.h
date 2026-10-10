@@ -136,6 +136,10 @@ int kaillera_client_ready(kaillera_client_t *client);
  * This is the core input sync function - it sends local input and
  * blocks until it receives all players' inputs for the frame.
  *
+ * input carries the local player's data on entry and every player's data
+ * on return; size is the buffer's total size (num_players slots of equal
+ * per-player size).
+ *
  * Returns the total number of bytes of input data received (all players),
  * or -1 on error/disconnect.
  */
