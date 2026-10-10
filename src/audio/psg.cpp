@@ -21,11 +21,49 @@ void Psg::reset()
   m_output_bit = {};
   m_latch_channel = 0;
   m_latch_volume = false;
-  m_lfsr = 0x8000; /* seed: bit 15 set */
+  m_lfsr = kNoiseSeed;
   m_noise_mode = 0;
   m_noise_rate = 0;
   m_output_value = 0;
   m_mclk_acc = 0;
+}
+
+Psg::SavedState Psg::save() const
+{
+  SavedState state{};
+  std::copy_n(m_counter.data(), 4, state.counter);
+  std::copy_n(m_period.data(), 4, state.period);
+  std::copy_n(m_atten.data(), 4, state.atten);
+  std::copy_n(m_output_bit.data(), 4, state.output_bit);
+  state.latch_channel = m_latch_channel;
+  state.latch_volume = m_latch_volume ? 1 : 0;
+  state.lfsr = m_lfsr;
+  state.noise_mode = m_noise_mode;
+  state.noise_rate = m_noise_rate;
+  state.output_value = m_output_value;
+  state.mclk_acc = m_mclk_acc;
+  return state;
+}
+
+void Psg::restore(const SavedState &state)
+{
+  std::copy_n(state.counter, 4, m_counter.data());
+  std::copy_n(state.period, 4, m_period.data());
+  std::copy_n(state.atten, 4, m_atten.data());
+  for (auto &a : m_atten) {
+    a &= 0x0F; /* volume table index */
+  }
+  std::copy_n(state.output_bit, 4, m_output_bit.data());
+  for (auto &b : m_output_bit) {
+    b &= 1;
+  }
+  m_latch_channel = state.latch_channel & 3;
+  m_latch_volume = state.latch_volume != 0;
+  m_lfsr = state.lfsr;
+  m_noise_mode = state.noise_mode & 1;
+  m_noise_rate = state.noise_rate & 3;
+  m_output_value = state.output_value;
+  m_mclk_acc = state.mclk_acc % kMclkPerPsgTick;
 }
 
 void Psg::write(uint8_t value)
@@ -61,6 +99,20 @@ void Psg::write(uint8_t value)
           (m_period[m_latch_channel] & 0x00F) | ((uint16_t)data << 4);
     }
   }
+}
+
+uint16_t Psg::noise_period() const
+{
+  /* The noise register selects N/512, N/1024 or N/2048 of the PSG clock, or
+   * channel 2's tone as the clock. The chip toggles a flip-flop at that rate
+   * and shifts the LFSR on alternate toggles, so the counter reload is twice
+   * the programmed rate — shifting on every expiry (which this used to do)
+   * ran noise percussion an octave high. MAME models the doubling directly
+   * (sn76496.cpp: `1 << (5 + rate)`, rate 3 = `m_period[2] << 1`). */
+  if (m_noise_rate == 3) {
+    return (uint16_t)(m_period[2] << 1);
+  }
+  return (uint16_t)(0x20 << m_noise_rate);
 }
 
 void Psg::step()

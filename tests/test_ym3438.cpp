@@ -166,16 +166,41 @@ TEST_CASE("ym3438 irq asserts when timer overflow and irq enable", "[ym]")
   ym.write_data(0x00);
   ym.write_address(0x25);
   ym.write_data(0x00);
-  /* load + enable + IRQ enable (no reset bit): $27 = $45 */
+  /* load + enable (bits 0 and 2): $27 = $05 */
   ym.write_address(0x27);
-  ym.write_data(0x45);
+  ym.write_data(0x05);
   ym.advance_mclk(1024 * 144 * 7 + 1000);
   CHECK((ym.read_status() & 0x01) != 0);
   CHECK(ym.irq_line()); /* IRQ asserted */
 
   /* write with the reset bit -> IRQ deasserts immediately */
   ym.write_address(0x27);
-  ym.write_data(0x55);
+  ym.write_data(0x15);
+  CHECK_FALSE(ym.irq_line());
+
+  /* the flag sets again on the next overflow, but clearing the enable
+   * bit while it is still set drops the line just the same */
+  ym.advance_mclk(1024 * 144 * 7 + 1000);
+  CHECK((ym.read_status() & 0x01) != 0);
+  CHECK(ym.irq_line());
+  ym.write_address(0x27);
+  ym.write_data(0x01);
+  CHECK_FALSE(ym.irq_line());
+}
+
+TEST_CASE("ym3438 ch3 and csm mode bits do not raise the irq line", "[ym]")
+{
+  Ym3438 ym;
+  ym.reset();
+  ym.write_address(0x24);
+  ym.write_data(0x00);
+  ym.write_address(0x25);
+  ym.write_data(0x00);
+  /* CH3 multi-frequency + CSM + load, no enable bits: $27 = $C1 */
+  ym.write_address(0x27);
+  ym.write_data(0xC1);
+  ym.advance_mclk(1024 * 144 * 7 + 1000);
+  CHECK((ym.read_status() & 0x01) == 0);
   CHECK_FALSE(ym.irq_line());
 }
 

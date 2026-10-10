@@ -273,6 +273,122 @@ uint8_t Ym3438::read_status() const
   return m_status;
 }
 
+Ym3438::SavedState Ym3438::save() const
+{
+  SavedState state{};
+  std::copy_n(&m_regs[0][0], 0x200, &state.regs[0][0]);
+  state.latch_addr[0] = m_latch_addr[0];
+  state.latch_addr[1] = m_latch_addr[1];
+  for (int ch = 0; ch < 6; ch++) {
+    const Channel &chan = m_channels[ch];
+    ChannelState &cs = state.channels[ch];
+    for (int op = 0; op < 4; op++) {
+      const Slot &slot = chan.slots[op];
+      SlotState &ss = cs.slots[op];
+      ss.phase = slot.phase;
+      ss.incr = slot.incr;
+      ss.incr_dirty = slot.incr_dirty ? 1 : 0;
+      ss.volume = slot.volume;
+      ss.eg_state = (uint8_t)slot.state;
+      ss.delta_attack = slot.delta_attack;
+      ss.delta_decay = slot.delta_decay;
+      ss.delta_sustain = slot.delta_sustain;
+      ss.delta_release = slot.delta_release;
+      ss.sustain_level = slot.sustain_level;
+      ss.total_level = slot.total_level;
+      ss.key_scale = slot.key_scale;
+      ss.ssg_control = slot.ssg_control;
+      ss.ssg_inverted = slot.ssg_inverted;
+      ss.keyed = slot.keyed ? 1 : 0;
+      ss.am_enabled = slot.am_enabled ? 1 : 0;
+      ss.am_depth = slot.am_depth;
+    }
+    cs.algorithm = chan.algorithm;
+    cs.feedback = chan.feedback;
+    cs.op1_history[0] = chan.op1_history[0];
+    cs.op1_history[1] = chan.op1_history[1];
+    cs.key_code = chan.key_code;
+    cs.pms = chan.pms;
+    cs.ams = chan.ams;
+    cs.pan_left = chan.pan_left;
+    cs.pan_right = chan.pan_right;
+    cs.pitch_dirty = chan.pitch_dirty ? 1 : 0;
+  }
+  state.status = m_status;
+  state.busy_mclk = m_busy_mclk;
+  state.timer_a = m_timer_a;
+  state.timer_b = m_timer_b;
+  state.irq = m_irq ? 1 : 0;
+  state.lfo_count = m_lfo_count;
+  state.lfo_incr = m_lfo_incr;
+  state.lfo_am = m_lfo_am;
+  state.lfo_pm = m_lfo_pm;
+  state.dac_enabled = m_dac_enabled ? 1 : 0;
+  state.dac_output = m_dac_output;
+  state.sample_l = m_sample_l;
+  state.sample_r = m_sample_r;
+  state.sample_timer = m_sample_timer;
+  return state;
+}
+
+void Ym3438::restore(const SavedState &state)
+{
+  std::copy_n(&state.regs[0][0], 0x200, &m_regs[0][0]);
+  m_latch_addr[0] = state.latch_addr[0];
+  m_latch_addr[1] = state.latch_addr[1];
+  for (int ch = 0; ch < 6; ch++) {
+    Channel &chan = m_channels[ch];
+    const ChannelState &cs = state.channels[ch];
+    for (int op = 0; op < 4; op++) {
+      Slot &slot = chan.slots[op];
+      const SlotState &ss = cs.slots[op];
+      slot.phase = ss.phase & 0xFFFFF;
+      slot.incr = ss.incr;
+      slot.incr_dirty = ss.incr_dirty != 0;
+      slot.volume = ss.volume;
+      slot.state = ss.eg_state <= (uint8_t)EgState::attack
+                       ? (EgState)ss.eg_state
+                       : EgState::off;
+      slot.delta_attack = ss.delta_attack;
+      slot.delta_decay = ss.delta_decay;
+      slot.delta_sustain = ss.delta_sustain;
+      slot.delta_release = ss.delta_release;
+      slot.sustain_level = ss.sustain_level;
+      slot.total_level = ss.total_level;
+      slot.key_scale = ss.key_scale;
+      slot.ssg_control = ss.ssg_control & 0x0F;
+      slot.ssg_inverted = ss.ssg_inverted != 0 ? 1 : 0;
+      slot.keyed = ss.keyed != 0;
+      slot.am_enabled = ss.am_enabled != 0;
+      slot.am_depth = ss.am_depth;
+    }
+    chan.algorithm = cs.algorithm & 0x07;
+    chan.feedback = cs.feedback & 0x07;
+    chan.op1_history[0] = cs.op1_history[0];
+    chan.op1_history[1] = cs.op1_history[1];
+    chan.key_code = cs.key_code;
+    chan.pms = cs.pms;
+    chan.ams = cs.ams;
+    chan.pan_left = cs.pan_left != 0 ? 1 : 0;
+    chan.pan_right = cs.pan_right != 0 ? 1 : 0;
+    chan.pitch_dirty = cs.pitch_dirty != 0;
+  }
+  m_status = state.status;
+  m_busy_mclk = state.busy_mclk;
+  m_timer_a = state.timer_a;
+  m_timer_b = state.timer_b;
+  m_irq = state.irq != 0;
+  m_lfo_count = state.lfo_count;
+  m_lfo_incr = state.lfo_incr;
+  m_lfo_am = state.lfo_am;
+  m_lfo_pm = state.lfo_pm;
+  m_dac_enabled = state.dac_enabled != 0;
+  m_dac_output = state.dac_output;
+  m_sample_l = state.sample_l;
+  m_sample_r = state.sample_r;
+  m_sample_timer = state.sample_timer % kMclkPerFmSample;
+}
+
 void Ym3438::write_address(uint8_t addr, uint8_t bank)
 {
   m_latch_addr[bank & 1] = addr;
@@ -332,10 +448,14 @@ void Ym3438::write_register(uint8_t bank, uint8_t addr, uint8_t data)
     return;
   }
   if (bank == 0 && addr == 0x2A) {
-    /* The DAC output replaces channel 6's slot in the mix, at the same
-     * scale as an operator sum: 8-bit unsigned around 0x80, shifted
-     * into the 13-bit operator range. */
-    m_dac_output = (int(data) - 0x80) << 5;
+    /* The DAC output replaces channel 6's slot in the mix at the full
+     * scale of a channel output, which is one 14-bit operator peak
+     * (±8192 here — the same domain the pow table is scaled to, and the
+     * range a hardware channel sum saturates at): 8-bit unsigned around
+     * 0x80, ±128 * 64. Reference cores (GPX ym2612.c, jsgroth ym2612.rs,
+     * Nuked-OPN2) all place the DAC at this scale; `<< 5` left the PCM
+     * drums 6 dB low (measured against a hardware recording, 2026-10-10). */
+    m_dac_output = (int(data) - 0x80) << 6;
     return;
   }
   if (bank == 0 && addr == 0x2B) {

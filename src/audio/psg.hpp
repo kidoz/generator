@@ -41,11 +41,32 @@ public:
     return m_atten[ch & 3];
   }
 
+  /* Savestate v3 payload (chunk PSG0). */
+  struct SavedState {
+    uint16_t counter[4];
+    uint16_t period[4];
+    uint8_t atten[4];
+    uint8_t output_bit[4];
+    uint8_t latch_channel;
+    uint8_t latch_volume;
+    uint16_t lfsr;
+    uint8_t noise_mode;
+    uint8_t noise_rate;
+    int16_t output_value;
+    uint64_t mclk_acc;
+  };
+  SavedState save() const;
+  void restore(const SavedState &state);
+
 private:
   /* Master/15 input clock, followed by the PSG's internal /16 divider. */
   static constexpr uint64_t kMclkPerPsgTick = 15 * 16;
 
+  /* Noise LFSR power-on seed (also restored by a noise-control write). */
+  static constexpr uint16_t kNoiseSeed = 0x8000;
+
   void step();
+  [[nodiscard]] uint16_t noise_period() const;
 
   /* 4 channels: 3 tone + 1 noise */
   std::array<uint16_t, 4> m_counter{};

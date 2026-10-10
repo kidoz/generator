@@ -70,6 +70,62 @@ public:
     return m_sample_r;
   }
 
+  /* Savestate v3 payload (chunk YM34): the full chip state, including the
+   * register-derived caches, so a restore reproduces the saved instance
+   * bit for bit. */
+  struct SlotState {
+    uint32_t phase;
+    int32_t incr;
+    uint8_t incr_dirty;
+    int32_t volume;
+    uint8_t eg_state;
+    int32_t delta_attack;
+    int32_t delta_decay;
+    int32_t delta_sustain;
+    int32_t delta_release;
+    int32_t sustain_level;
+    int32_t total_level;
+    uint8_t key_scale;
+    uint8_t ssg_control;
+    uint8_t ssg_inverted;
+    uint8_t keyed;
+    uint8_t am_enabled;
+    uint32_t am_depth;
+  };
+  struct ChannelState {
+    SlotState slots[4];
+    uint8_t algorithm;
+    uint8_t feedback;
+    int32_t op1_history[2];
+    uint8_t key_code;
+    uint8_t pms;
+    uint32_t ams;
+    uint8_t pan_left;
+    uint8_t pan_right;
+    uint8_t pitch_dirty;
+  };
+  struct SavedState {
+    uint8_t regs[2][0x100];
+    uint8_t latch_addr[2];
+    ChannelState channels[6];
+    uint8_t status;
+    uint32_t busy_mclk;
+    int64_t timer_a;
+    int64_t timer_b;
+    uint8_t irq;
+    uint32_t lfo_count;
+    uint32_t lfo_incr;
+    uint32_t lfo_am;
+    int32_t lfo_pm;
+    uint8_t dac_enabled;
+    int32_t dac_output;
+    int16_t sample_l;
+    int16_t sample_r;
+    uint64_t sample_timer;
+  };
+  SavedState save() const;
+  void restore(const SavedState &state);
+
 private:
   /* One sample per 144 chip clocks, with the chip clock at master/7. */
   static constexpr uint64_t kMclkPerFmSample = 144ULL * 7;
