@@ -61,6 +61,7 @@ static uint8_t ui_info_wrapper = 0;
 static int ui_running = 1;
 static unsigned int ui_frame_count = 0;
 static int ui_pal = 0;
+static t_uipinfo uip_info;
 
 /* Keyboard state for input mapping */
 static struct {
@@ -92,7 +93,13 @@ public:
 
   void present_field() override
   {
-    if (lines_rendered_ > 0) {
+    if (lines_rendered_ > 0 && uip_info.screenmem_w != nullptr) {
+      const unsigned int linewidth = uip_info.linewidth;
+      for (int line = 0; line < lines_rendered_; line++) {
+        uiplot_render16_x2(gfx_ + line * 320, nullptr,
+                           uip_info.screenmem_w + line * 2 * linewidth,
+                           linewidth, 320);
+      }
       uip_displaybank(0);
       lines_rendered_ = 0;
     }
@@ -182,9 +189,7 @@ static void update_input(void)
 
 int ui_init(int argc, char *argv[])
 {
-  t_uipinfo uip_info;
-
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
     fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
     return -1;
   }
@@ -215,7 +220,12 @@ int ui_init(int argc, char *argv[])
   }
 
   uip_initjoysticks();
-  uip_textmode();
+  if (uip_vgamode() != 0) {
+    fprintf(stderr, "uip_vgamode failed\n");
+    return -1;
+  }
+  uiplot_setshifts(uip_info.redshift, uip_info.greenshift, uip_info.blueshift);
+  uiplot_setmasks(uip_info.redmask, uip_info.greenmask, uip_info.bluemask);
 
   return 0;
 }
@@ -233,7 +243,7 @@ int ui_loop(void)
    * 0.13%/0.6% fast, which the audio queue then has to shed. */
   auto next_field = std::chrono::steady_clock::now();
 
-  while (ui_running) {
+  while (ui_running && !gen_quit) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_EVENT_QUIT) {
