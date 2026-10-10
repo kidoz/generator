@@ -9,6 +9,8 @@ namespace generator {
 namespace {
 
 constexpr int kVecIllegal = 4;
+constexpr int kVecTrapV = 7;
+constexpr int kVecPrivilege = 8;
 constexpr int kVecTrap0 = 32;
 constexpr int kAutovectorBase = 25; /* vectors 25..31 = levels 1..7 */
 
@@ -1340,23 +1342,26 @@ void M68k::exec_immediate(uint16_t op)
       return;
     }
     if ((m_sr & SR_S) == 0) {
-      exception(kVecIllegal, m_pc, 4);
+      exception(kVecPrivilege, m_pc, 4);
       return;
     }
     const uint16_t imm = fetch_stream_word();
+    uint16_t new_sr = m_sr;
     switch (line_kind) {
     case 0: /* ORI */
-      m_sr |= imm;
+      new_sr = (uint16_t)(new_sr | imm);
       break;
     case 1: /* ANDI */
-      m_sr &= imm;
+      new_sr = (uint16_t)(new_sr & imm);
       break;
     case 5: /* EORI */
-      m_sr ^= imm;
+      new_sr = (uint16_t)(new_sr ^ imm);
       break;
     default:
       break;
     }
+    switch_supervisor((new_sr & SR_S) != 0);
+    m_sr = new_sr;
     advance_clk(4);
     prefetch_fill(1);
     return;
@@ -1764,7 +1769,7 @@ void M68k::exec_single(uint16_t op)
   }
   if (sub == 0x4E72) { /* STOP #imm */
     if ((m_sr & SR_S) == 0) {
-      exception(kVecIllegal, m_pc, 4);
+      exception(kVecPrivilege, m_pc, 4);
       return;
     }
     const uint16_t imm = fetch_stream_word();
@@ -1777,7 +1782,7 @@ void M68k::exec_single(uint16_t op)
   }
   if (sub == 0x4E76) { /* TRAPV */
     if ((m_sr & SR_V) != 0) {
-      exception(kVecTrap0 + 6, m_pc, 4);
+      exception(kVecTrapV, m_pc, 4);
     } else {
       prefetch_fill(1);
     }
@@ -1806,7 +1811,7 @@ void M68k::exec_single(uint16_t op)
   }
   if ((op & 0xFFF8) == 0x4E60) { /* MOVE Ay,USP */
     if ((m_sr & SR_S) == 0) {
-      exception(kVecIllegal, m_pc, 4);
+      exception(kVecPrivilege, m_pc, 4);
       return;
     }
     m_usp = m_a[op & 7];
@@ -1815,7 +1820,7 @@ void M68k::exec_single(uint16_t op)
   }
   if ((op & 0xFFF8) == 0x4E68) { /* MOVE USP,Ax */
     if ((m_sr & SR_S) == 0) {
-      exception(kVecIllegal, m_pc, 4);
+      exception(kVecPrivilege, m_pc, 4);
       return;
     }
     m_a[op & 7] = m_usp;
@@ -2270,7 +2275,7 @@ void M68k::exec_move_sr(uint16_t op)
   }
   /* to SR */
   if ((m_sr & SR_S) == 0) {
-    exception(kVecIllegal, m_pc, 4);
+    exception(kVecPrivilege, m_pc, 4);
     return;
   }
   const uint32_t v = ea_read(ea, 2);

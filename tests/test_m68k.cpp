@@ -958,6 +958,96 @@ TEST_CASE("illegal opcode 4AFC traps through vector 4", "[m68k]")
   CHECK(rig.cpu.fault().kind == M68k::Fault::Kind::None);
 }
 
+TEST_CASE("trapv traps through vector 7 when V is set", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x44FC);      /* MOVE #imm,CCR */
+  rig.w(0x0102, 0x0002);      /* V set */
+  rig.w(0x0104, 0x4E76);      /* TRAPV */
+  rig.lw(0x001C, 0x000000F0); /* vector 7 -> 0xF0 */
+  rig.boot();
+  rig.cpu.step();
+  REQUIRE((rig.cpu.sr() & 0x02) != 0);
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0xF0);
+
+  /* V clear: TRAPV falls through to the next opcode */
+  rig.w(0x0102, 0x0000);
+  rig.reset();
+  rig.cpu.step();
+  rig.cpu.step();
+  CHECK(rig.cpu.pc() == 0x106);
+}
+
+TEST_CASE("privileged instructions in user mode trap through vector 8",
+          "[m68k]")
+{
+  SECTION("stop")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x46FC); /* MOVE #imm,SR */
+    rig.w(0x0102, 0x0000); /* drop to user mode */
+    rig.w(0x0104, 0x4E72); /* STOP #imm */
+    rig.w(0x0106, 0x2700);
+    rig.lw(0x0020, 0x000000F0); /* vector 8 -> 0xF0 */
+    rig.boot();
+    rig.cpu.step();
+    REQUIRE((rig.cpu.sr() & 0x2000) == 0);
+    rig.cpu.step();
+    CHECK(rig.cpu.pc() == 0xF0);
+    CHECK((rig.cpu.sr() & 0x2000) != 0); /* the exception enters supervisor */
+    CHECK_FALSE(rig.cpu.stopped());
+  }
+
+  SECTION("ori to sr")
+  {
+    Rig rig;
+    rig.w(0x0100, 0x46FC); /* MOVE #imm,SR */
+    rig.w(0x0102, 0x0000); /* drop to user mode */
+    rig.w(0x0104, 0x007C); /* ORI #imm,SR */
+    rig.w(0x0106, 0x2000);
+    rig.lw(0x0020, 0x000000F0); /* vector 8 -> 0xF0 */
+    rig.boot();
+    rig.cpu.step();
+    rig.cpu.step();
+    CHECK(rig.cpu.pc() == 0xF0);
+    CHECK((rig.cpu.sr() & 0x2000) != 0);
+  }
+}
+
+TEST_CASE("andi to sr re-banks a7 when the s bit changes", "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x4E60);      /* MOVE A0,USP */
+  rig.w(0x0102, 0x027C);      /* ANDI #imm,SR */
+  rig.w(0x0104, 0xDFFF);      /* clear S: drop to user mode */
+  rig.w(0x0106, 0x4E40);      /* TRAP #0: a user-mode exception re-banks */
+  rig.w(0x0108, 0x4E71);      /* NOP, the trap return target */
+  rig.w(0x0150, 0x4E73);      /* RTE */
+  rig.lw(0x0080, 0x00000150); /* vector 32 -> 0x150 */
+  rig.cpu.set_a(0, 0x00E03000);
+  rig.boot();
+  rig.cpu.set_a(7, 0x00E02000); /* supervisor stack */
+
+  rig.cpu.step(); /* MOVE A0,USP */
+  rig.cpu.step(); /* ANDI #imm,SR */
+  CHECK((rig.cpu.sr() & 0x2000) == 0);
+  CHECK(rig.cpu.a(7) == 0x00E03000);       /* A7 is the USP now */
+  CHECK(rig.cpu.save().ssp == 0x00E02000); /* supervisor SP banked away */
+
+  rig.cpu.step(); /* TRAP #0 */
+  CHECK(rig.cpu.pc() == 0x0150);
+  CHECK((rig.cpu.sr() & 0x2000) != 0);
+  CHECK(rig.cpu.a(7) == 0x00E01FFA);       /* frame on the supervisor stack */
+  CHECK(rig.cpu.save().usp == 0x00E03000); /* user SP banked away */
+
+  rig.cpu.step(); /* RTE back to user mode */
+  CHECK(rig.cpu.pc() == 0x0108);
+  CHECK((rig.cpu.sr() & 0x2000) == 0);
+  CHECK(rig.cpu.a(7) == 0x00E03000);
+  CHECK(rig.cpu.save().ssp == 0x00E02000);
+}
+
 TEST_CASE("prefetch queue makes extensions free after memory forms",
           "[m68k][cycles]")
 {
