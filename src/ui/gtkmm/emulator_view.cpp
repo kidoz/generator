@@ -5,6 +5,8 @@
 #include "screen_geometry.hpp"
 #include "ui_bridge.hpp"
 
+#include "generator.h"
+
 #include <gdkmm/memorytexture.h>
 #include <glibmm/bytes.h>
 
@@ -29,6 +31,16 @@ bool EmulatorView::on_tick(
     const Glib::RefPtr<Gdk::FrameClock> & /* frame_clock */)
 {
   extern Glib::RefPtr<GeneratorApp> g_app;
+
+  if (gen_quit) {
+    if (g_app) {
+      if (auto *window = g_app->get_main_window())
+        window->close();
+      g_app->quit();
+    }
+    return false;
+  }
+
   if (g_app && g_app->get_main_window()) {
     g_app->get_main_window()->get_input_controller().poll_sdl_events();
   }
