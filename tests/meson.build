@@ -99,6 +99,22 @@ test('rom_loading', test_rom_loading,
   suite: 'catch2'
 )
 
+# Machine-level save-state round-trip: save, mutate, load, then the re-save
+# must match the original blob byte-for-byte.
+test_state_machine = executable('test_state_machine',
+  'test_state_machine.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('state_machine', test_state_machine,
+  timeout: 30,
+  suite: 'catch2'
+)
+
 # Controller-port protocol: the 3-button pad multiplexer behind the IO
 # chip data/ctrl registers, driven through the debug IO seam.
 test_io_ports = executable('test_io_ports',

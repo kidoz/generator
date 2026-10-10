@@ -7,6 +7,7 @@
 #include "uiplot_cram.h"
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -805,9 +806,158 @@ int Machine::save_state(const char *filename)
     z80_chunk.data = w.take_payload();
   }
 
-  const StateChunk chunks[] = {std::move(board_chunk), std::move(rom_chunk),
-                               std::move(cpu_chunk),   std::move(ram_chunk),
-                               std::move(zram_chunk),  std::move(z80_chunk)};
+  StateChunk z80bus_chunk{fourcc("ZBNK"), {}};
+  {
+    ChunkWriter w;
+    w.u32(m_z80bus.bank());
+    w.u8(m_z80.reset_line() ? 1 : 0);
+    z80bus_chunk.data = w.take_payload();
+  }
+
+  StateChunk vdp_chunk{fourcc("VDP0"), {}};
+  {
+    const Vdp::SavedState v = m_vdp.save();
+    ChunkWriter w;
+    w.bytes(v.reg);
+    w.bytes(v.vram);
+    for (const uint16_t entry : v.cram) {
+      w.u16(entry);
+    }
+    w.bytes(v.cram_dirty);
+    for (const uint16_t entry : v.vsram) {
+      w.u16(entry);
+    }
+    w.u32(v.address);
+    w.u32(v.cd);
+    w.u8(v.latch_second);
+    w.u8(v.pending_read);
+    w.u16(v.read_buffer);
+    w.u8(v.dma_pending);
+    w.u8(v.pal);
+    w.u64(v.mclk);
+    w.u32(v.dot);
+    w.u32(v.line);
+    w.u64(v.frames);
+    w.u8(v.hint_counter);
+    w.u8(v.vint_pending);
+    w.u8(v.vint_flag);
+    w.u8(v.hint_pending);
+    w.u64(v.dma_debt_mclk);
+    w.u8(v.dma_busy);
+    w.u8(v.dma_fill_armed);
+    vdp_chunk.data = w.take_payload();
+  }
+
+  StateChunk ym_chunk{fourcc("YM34"), {}};
+  {
+    const Ym3438::SavedState y = m_z80bus.ym().save();
+    ChunkWriter w;
+    w.bytes(std::span<const uint8_t>{&y.regs[0][0], 0x200});
+    w.u8(y.latch_addr[0]);
+    w.u8(y.latch_addr[1]);
+    for (const Ym3438::ChannelState &c : y.channels) {
+      for (const Ym3438::SlotState &s : c.slots) {
+        w.u32(s.phase);
+        w.u32((uint32_t)s.incr);
+        w.u8(s.incr_dirty);
+        w.u32((uint32_t)s.volume);
+        w.u8(s.eg_state);
+        w.u32((uint32_t)s.delta_attack);
+        w.u32((uint32_t)s.delta_decay);
+        w.u32((uint32_t)s.delta_sustain);
+        w.u32((uint32_t)s.delta_release);
+        w.u32((uint32_t)s.sustain_level);
+        w.u32((uint32_t)s.total_level);
+        w.u8(s.key_scale);
+        w.u8(s.ssg_control);
+        w.u8(s.ssg_inverted);
+        w.u8(s.keyed);
+        w.u8(s.am_enabled);
+        w.u32(s.am_depth);
+      }
+      w.u8(c.algorithm);
+      w.u8(c.feedback);
+      w.u32((uint32_t)c.op1_history[0]);
+      w.u32((uint32_t)c.op1_history[1]);
+      w.u8(c.key_code);
+      w.u8(c.pms);
+      w.u32(c.ams);
+      w.u8(c.pan_left);
+      w.u8(c.pan_right);
+      w.u8(c.pitch_dirty);
+    }
+    w.u8(y.status);
+    w.u32(y.busy_mclk);
+    w.u64((uint64_t)y.timer_a);
+    w.u64((uint64_t)y.timer_b);
+    w.u8(y.irq);
+    w.u32(y.lfo_count);
+    w.u32(y.lfo_incr);
+    w.u32(y.lfo_am);
+    w.u32((uint32_t)y.lfo_pm);
+    w.u8(y.dac_enabled);
+    w.u32((uint32_t)y.dac_output);
+    w.u16((uint16_t)y.sample_l);
+    w.u16((uint16_t)y.sample_r);
+    w.u64(y.sample_timer);
+    ym_chunk.data = w.take_payload();
+  }
+
+  StateChunk psg_chunk{fourcc("PSG0"), {}};
+  {
+    const Psg::SavedState p = m_z80bus.psg().save();
+    ChunkWriter w;
+    for (const uint16_t v : p.counter) {
+      w.u16(v);
+    }
+    for (const uint16_t v : p.period) {
+      w.u16(v);
+    }
+    w.bytes(p.atten);
+    w.bytes(p.output_bit);
+    w.u8(p.latch_channel);
+    w.u8(p.latch_volume);
+    w.u16(p.lfsr);
+    w.u8(p.noise_mode);
+    w.u8(p.noise_rate);
+    w.u16((uint16_t)p.output_value);
+    w.u64(p.mclk_acc);
+    psg_chunk.data = w.take_payload();
+  }
+
+  StateChunk io_chunk{fourcc("IOCH"), {}};
+  {
+    ChunkWriter w;
+    w.bytes(m_io_ctrl);
+    w.bytes(m_io_data);
+    w.u8(m_pad_counter[0]);
+    w.u8(m_pad_counter[1]);
+    w.u8(m_pad_th[0]);
+    w.u8(m_pad_th[1]);
+    w.u64(m_pad_edge_mclk[0]);
+    w.u64(m_pad_edge_mclk[1]);
+    w.u8(m_z80_busreq ? 1 : 0);
+    w.u32(m_z80_resume_delay);
+    io_chunk.data = w.take_payload();
+  }
+
+  StateChunk audio_chunk{fourcc("AUD0"), {}};
+  {
+    ChunkWriter w;
+    w.u64(m_audio_acc);
+    w.u64((uint64_t)m_mix_acc_l);
+    w.u64((uint64_t)m_mix_acc_r);
+    w.u64(m_mix_ticks);
+    w.u64(std::bit_cast<uint64_t>(m_lp_l));
+    w.u64(std::bit_cast<uint64_t>(m_lp_r));
+    audio_chunk.data = w.take_payload();
+  }
+
+  const StateChunk chunks[] = {
+      std::move(board_chunk), std::move(rom_chunk),  std::move(cpu_chunk),
+      std::move(ram_chunk),   std::move(zram_chunk), std::move(z80bus_chunk),
+      std::move(z80_chunk),   std::move(vdp_chunk),  std::move(ym_chunk),
+      std::move(psg_chunk),   std::move(io_chunk),   std::move(audio_chunk)};
   const std::vector<uint8_t> blob = StateV3::serialize(chunks);
 
   std::ofstream out{filename, std::ios::binary};
@@ -837,6 +987,7 @@ int Machine::load_state(const char *filename)
   }
 
   bool board_seen = false, rom_matches = false, cpu_seen = false;
+  bool vdp_seen = false;
   for (const StateChunk &chunk : *chunks) {
     if (chunk.id == fourcc("BORD")) {
       ChunkReader r{chunk.data};
@@ -929,12 +1080,194 @@ int Machine::load_state(const char *filename)
         m_z80.restore(snap);
         m_z80.restore_tstates(tstates);
       }
+    } else if (chunk.id == fourcc("ZBNK")) {
+      ChunkReader r{chunk.data};
+      const uint32_t bank = r.u32();
+      const uint8_t reset_asserted = r.u8();
+      if (r.ok()) {
+        m_z80bus.set_bank(bank);
+        /* Ordered ahead of Z80C: a rising reset edge clears the core, and
+         * the snapshot restore then overwrites it with the saved one. */
+        m_z80.reset_line(reset_asserted != 0);
+      }
+    } else if (chunk.id == fourcc("VDP0")) {
+      Vdp::SavedState v{};
+      ChunkReader r{chunk.data};
+      const std::span<const uint8_t> reg = r.bytes(sizeof(v.reg));
+      if (!reg.empty()) {
+        std::memcpy(v.reg, reg.data(), sizeof(v.reg));
+      }
+      const std::span<const uint8_t> vram = r.bytes(sizeof(v.vram));
+      if (!vram.empty()) {
+        std::memcpy(v.vram, vram.data(), sizeof(v.vram));
+      }
+      for (uint16_t &entry : v.cram) {
+        entry = r.u16();
+      }
+      const std::span<const uint8_t> cram_dirty = r.bytes(sizeof(v.cram_dirty));
+      if (!cram_dirty.empty()) {
+        std::memcpy(v.cram_dirty, cram_dirty.data(), sizeof(v.cram_dirty));
+      }
+      for (uint16_t &entry : v.vsram) {
+        entry = r.u16();
+      }
+      v.address = r.u32();
+      v.cd = r.u32();
+      v.latch_second = r.u8();
+      v.pending_read = r.u8();
+      v.read_buffer = r.u16();
+      v.dma_pending = r.u8();
+      v.pal = r.u8();
+      v.mclk = r.u64();
+      v.dot = r.u32();
+      v.line = r.u32();
+      v.frames = r.u64();
+      v.hint_counter = r.u8();
+      v.vint_pending = r.u8();
+      v.vint_flag = r.u8();
+      v.hint_pending = r.u8();
+      v.dma_debt_mclk = r.u64();
+      v.dma_busy = r.u8();
+      v.dma_fill_armed = r.u8();
+      if (r.ok()) {
+        m_vdp.restore(v);
+        vdp_seen = true;
+      }
+    } else if (chunk.id == fourcc("YM34")) {
+      Ym3438::SavedState y{};
+      ChunkReader r{chunk.data};
+      const std::span<const uint8_t> regs = r.bytes(sizeof(y.regs));
+      if (!regs.empty()) {
+        std::memcpy(&y.regs[0][0], regs.data(), sizeof(y.regs));
+      }
+      y.latch_addr[0] = r.u8();
+      y.latch_addr[1] = r.u8();
+      for (Ym3438::ChannelState &c : y.channels) {
+        for (Ym3438::SlotState &s : c.slots) {
+          s.phase = r.u32();
+          s.incr = (int32_t)r.u32();
+          s.incr_dirty = r.u8();
+          s.volume = (int32_t)r.u32();
+          s.eg_state = r.u8();
+          s.delta_attack = (int32_t)r.u32();
+          s.delta_decay = (int32_t)r.u32();
+          s.delta_sustain = (int32_t)r.u32();
+          s.delta_release = (int32_t)r.u32();
+          s.sustain_level = (int32_t)r.u32();
+          s.total_level = (int32_t)r.u32();
+          s.key_scale = r.u8();
+          s.ssg_control = r.u8();
+          s.ssg_inverted = r.u8();
+          s.keyed = r.u8();
+          s.am_enabled = r.u8();
+          s.am_depth = r.u32();
+        }
+        c.algorithm = r.u8();
+        c.feedback = r.u8();
+        c.op1_history[0] = (int32_t)r.u32();
+        c.op1_history[1] = (int32_t)r.u32();
+        c.key_code = r.u8();
+        c.pms = r.u8();
+        c.ams = r.u32();
+        c.pan_left = r.u8();
+        c.pan_right = r.u8();
+        c.pitch_dirty = r.u8();
+      }
+      y.status = r.u8();
+      y.busy_mclk = r.u32();
+      y.timer_a = (int64_t)r.u64();
+      y.timer_b = (int64_t)r.u64();
+      y.irq = r.u8();
+      y.lfo_count = r.u32();
+      y.lfo_incr = r.u32();
+      y.lfo_am = r.u32();
+      y.lfo_pm = (int32_t)r.u32();
+      y.dac_enabled = r.u8();
+      y.dac_output = (int32_t)r.u32();
+      y.sample_l = (int16_t)r.u16();
+      y.sample_r = (int16_t)r.u16();
+      y.sample_timer = r.u64();
+      if (r.ok()) {
+        m_z80bus.ym().restore(y);
+      }
+    } else if (chunk.id == fourcc("PSG0")) {
+      Psg::SavedState p{};
+      ChunkReader r{chunk.data};
+      for (uint16_t &v : p.counter) {
+        v = r.u16();
+      }
+      for (uint16_t &v : p.period) {
+        v = r.u16();
+      }
+      const std::span<const uint8_t> atten = r.bytes(sizeof(p.atten));
+      if (!atten.empty()) {
+        std::memcpy(p.atten, atten.data(), sizeof(p.atten));
+      }
+      const std::span<const uint8_t> output_bit = r.bytes(sizeof(p.output_bit));
+      if (!output_bit.empty()) {
+        std::memcpy(p.output_bit, output_bit.data(), sizeof(p.output_bit));
+      }
+      p.latch_channel = r.u8();
+      p.latch_volume = r.u8();
+      p.lfsr = r.u16();
+      p.noise_mode = r.u8();
+      p.noise_rate = r.u8();
+      p.output_value = (int16_t)r.u16();
+      p.mclk_acc = r.u64();
+      if (r.ok()) {
+        m_z80bus.psg().restore(p);
+      }
+    } else if (chunk.id == fourcc("IOCH")) {
+      ChunkReader r{chunk.data};
+      const std::span<const uint8_t> io_ctrl = r.bytes(m_io_ctrl.size());
+      const std::span<const uint8_t> io_data = r.bytes(m_io_data.size());
+      const uint8_t pad_counter0 = r.u8();
+      const uint8_t pad_counter1 = r.u8();
+      const uint8_t pad_th0 = r.u8();
+      const uint8_t pad_th1 = r.u8();
+      const uint64_t pad_edge0 = r.u64();
+      const uint64_t pad_edge1 = r.u64();
+      const uint8_t busreq = r.u8();
+      const uint32_t resume_delay = r.u32();
+      if (r.ok()) {
+        std::memcpy(m_io_ctrl.data(), io_ctrl.data(), m_io_ctrl.size());
+        std::memcpy(m_io_data.data(), io_data.data(), m_io_data.size());
+        m_pad_counter[0] = pad_counter0;
+        m_pad_counter[1] = pad_counter1;
+        m_pad_th[0] = pad_th0;
+        m_pad_th[1] = pad_th1;
+        m_pad_edge_mclk[0] = pad_edge0;
+        m_pad_edge_mclk[1] = pad_edge1;
+        m_z80_busreq = busreq != 0;
+        m_z80_resume_delay = resume_delay;
+      }
+    } else if (chunk.id == fourcc("AUD0")) {
+      ChunkReader r{chunk.data};
+      const uint64_t audio_acc = r.u64();
+      const uint64_t mix_acc_l = r.u64();
+      const uint64_t mix_acc_r = r.u64();
+      const uint64_t mix_ticks = r.u64();
+      const uint64_t lp_l = r.u64();
+      const uint64_t lp_r = r.u64();
+      if (r.ok()) {
+        m_audio_acc = audio_acc;
+        m_mix_acc_l = (int64_t)mix_acc_l;
+        m_mix_acc_r = (int64_t)mix_acc_r;
+        m_mix_ticks = mix_ticks;
+        m_lp_l = std::bit_cast<double>(lp_l);
+        m_lp_r = std::bit_cast<double>(lp_r);
+      }
     }
     /* Unknown chunk ids are skipped: forward compatibility within v3. */
   }
 
   if (!board_seen || !rom_matches || !cpu_seen) {
     return -1;
+  }
+  if (!vdp_seen) {
+    /* States written before the VDP0 chunk existed carry no video state;
+     * re-sync at least the field timing with the board's standard. */
+    m_vdp.reset(m_pal);
   }
   m_powered = true;
   m_bus.reset();
