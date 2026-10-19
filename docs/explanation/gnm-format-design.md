@@ -1,50 +1,10 @@
-# GNM Log Format
+# Why Generator has its own GNM format
 
-Generator's own sound log format. Unlike [GYM](GYM_FORMAT.md), it records PCM
-sample data with sub-field timing accuracy.
+This page explains the reasoning and design behind GNM, Generator's sound log
+format, and how Generator writes it. For the byte-level specification, see
+[GNM sound log format](../reference/gnm-format.md).
 
-## Header
-
-| Offset | Value                                  |
-| ------ | -------------------------------------- |
-| 0      | `'G'`                                  |
-| 1      | `'N'`                                  |
-| 2      | `'M'`                                  |
-| 3      | Fields per second (e.g. 50 or 60)      |
-
-## Stream decoding
-
-```c
-interval = 0;
-while (!EOF) {
-  data = readbyte(); // readbyte() reads the next byte from the file
-  if ((data & 0xF0) == 0) {
-    switch (data) {
-      case 0: /* start of field marker (1/50th or 1/60th second elapsed) */
-              sampsperfield = (readbyte() << 8) + readbyte();
-      case 1: /* FM port 0 */
-              ymport = 0; ymreg = readbyte(); ymdata = readbyte();
-      case 2: /* FM port 1 */
-              ymport = 1; ymreg = readbyte(); ymdata = readbyte();
-      case 3: /* PSG */
-              write readbyte() to psg port;
-      case 4: /* escaped sample data and mark of interval */
-              ymport = 0; ymreg = 0x2A; ymdata = readbyte(); interval = 1;
-      case 5: /* no sample data this interval */
-              interval = 1; /* no change of register 0x2A */
-    }
-  } else {
-    /* unescaped sample data and mark of interval */
-    ymport = 0; ymreg = 0x2A; ymdata = data; interval = 1;
-  }
-  if (interval) {
-    interval = 0;
-    update sound;
-  }
-}
-```
-
-## Rationale
+## Why GYM is not enough
 
 The GYM file format does not support samples. Where sample data has been added
 to the GYM file format it is not possible to know where within the time period
@@ -68,17 +28,7 @@ the GNM format uses the samples themselves as a marker for each interval. If
 there is no sample, then a special marker is inserted to represent no change.
 This makes the file format as concise as possible.
 
-## Encoding
-
-Each field starts with a `$0` byte marker followed by two bytes that indicate
-the number of intervals for this field.
-
-Each interval is marked by a sample. The samples are placed directly in the
-stream except for byte values `$0` to `$f`, in which case they are escaped with
-a `$4` byte. If there was no sample written in the interval period then a `$5`
-byte is inserted.
-
-## Generator's implementation
+## How Generator writes it
 
 Generator works on a field at a time basis. Generator allocates a block of
 memory, which expands if required, that contains what we would write to disk
@@ -96,6 +46,3 @@ output into the file. If there were no samples in the entire period then we
 remove all interval markers (`$5` bytes) and set the number of intervals to 0
 for this field. We could leave a few intervals in to make FM more accurate, but
 Generator doesn't do this (not sure if it's necessary).
-
-Generator is of course open source, so you are free to look at the actual
-implementation.
