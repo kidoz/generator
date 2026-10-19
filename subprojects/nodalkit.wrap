@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/kidoz/nodalkit.git
-revision = a1f5320e5875a11d9b825ce35425d57336d92451
+revision = ec075a50a4ac2eff1dec8d5d25a1e96acde81638
 clone-recursive = false
 
 [provide]
