@@ -1,6 +1,7 @@
-# Patch Files
+# Genecyst patch files
 
-Generator supports Genecyst patch files. The format is assumed to be:
+This page specifies the Genecyst patch file format that Generator supports.
+The format is assumed to be:
 
 ```text
 aabbcc:ddee<space><space><space><space><description>\r\n
