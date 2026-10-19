@@ -1,8 +1,8 @@
 [wrap-file]
-directory = Catch2-3.15.0
-source_url = https://github.com/catchorg/Catch2/archive/v3.15.0.tar.gz
-source_filename = Catch2-3.15.0.tar.gz
-source_hash = 9650c55e497759cc39b977e45524bc8acb15256061c112080916ab6cb0b1ea66
+directory = Catch2-3.16.1
+source_url = https://github.com/catchorg/Catch2/archive/v3.16.1.tar.gz
+source_filename = Catch2-3.16.1.tar.gz
+source_hash = d16bd1b8b2364918bd472cb216394acb93bde6784890df0d91bccfb3f28d777d
 
 [provide]
 catch2 = catch2_dep
