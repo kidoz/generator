@@ -226,6 +226,15 @@ void soundp_resume(void)
   }
 }
 
+/*** soundp_flush - drop queued samples (after a save-state load) ***/
+
+void soundp_flush(void)
+{
+  if (soundp_stream) {
+    SDL_ClearAudioStream(soundp_stream);
+  }
+}
+
 /*** soundp_samplesbuffered - how many samples are currently buffered? ***/
 
 int soundp_samplesbuffered(void)

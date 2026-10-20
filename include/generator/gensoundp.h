@@ -37,6 +37,9 @@ int soundp_start(void);
 void soundp_stop(void);
 void soundp_pause(void);
 void soundp_resume(void);
+/* Discard samples queued before a save-state load so the pre-load timeline
+ * does not keep playing. */
+void soundp_flush(void);
 int soundp_samplesbuffered(void);
 void soundp_output(const uint16 *left, const uint16 *right,
                    unsigned int samples);
