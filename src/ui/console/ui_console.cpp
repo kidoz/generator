@@ -255,12 +255,26 @@ int ui_loop(void)
           ui_running = 0;
           break;
         case SDLK_F1:
-          if (console_core)
-            console_core->save_state_slot(0);
+          if (console_core) {
+            auto saved = console_core->save_state_slot(0);
+            if (!saved) {
+              const std::string message{
+                  generator::state_error_message(saved.error())};
+              fprintf(stderr, "Save state failed: %s\n", message.c_str());
+            }
+          }
           break;
         case SDLK_F2:
-          if (console_core)
-            console_core->load_state_slot(0);
+          if (console_core) {
+            auto loaded = console_core->load_state_slot(0);
+            if (!loaded) {
+              const std::string message{
+                  generator::state_error_message(loaded.error())};
+              fprintf(stderr, "Load state failed: %s\n", message.c_str());
+            } else {
+              soundp_flush();
+            }
+          }
           break;
         case SDLK_F5:
           if (console_core)
