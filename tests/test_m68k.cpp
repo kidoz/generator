@@ -1236,6 +1236,44 @@ TEST_CASE("divu packs remainder and quotient", "[m68k]")
   CHECK(rig.cpu.d(0) == ((2u << 16) | 31)); /* rem 2, quot 31 */
 }
 
+TEST_CASE("multiply keeps full-width products at the operand limits", "[m68k]")
+{
+  Rig rig;
+  SECTION("unsigned maximum product exceeds signed int")
+  {
+    rig.w(0x0100, 0xC0C1); /* MULU.W D1,D0 */
+    rig.cpu.set_d(0, 0xFFFF);
+    rig.cpu.set_d(1, 0xFFFF);
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0xFFFE0001U);
+    CHECK((rig.cpu.sr() & 0x0F) == 0x08); /* N, no Z/V/C */
+  }
+  SECTION("signed minimum times signed minimum")
+  {
+    rig.w(0x0100, 0xC1C1); /* MULS.W D1,D0 */
+    rig.cpu.set_d(0, 0x8000);
+    rig.cpu.set_d(1, 0x8000);
+    rig.boot();
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x40000000U);
+    CHECK((rig.cpu.sr() & 0x0F) == 0);
+  }
+}
+
+TEST_CASE("signed division widens the minimum dividend before dividing",
+          "[m68k]")
+{
+  Rig rig;
+  rig.w(0x0100, 0x81C1); /* DIVS.W D1,D0 */
+  rig.cpu.set_d(0, 0x80000000U);
+  rig.cpu.set_d(1, 0xFFFF); /* -1: host int32 division would overflow */
+  rig.boot();
+  rig.cpu.step();
+  CHECK(rig.cpu.d(0) == 0x80000000U);
+  CHECK((rig.cpu.sr() & 0x02) != 0); /* guest quotient overflow */
+}
+
 TEST_CASE("divu overflow sets V and keeps the operand", "[m68k]")
 {
   Rig rig;
