@@ -9,6 +9,7 @@
 #include <nk/platform/file_dialog.h>
 
 #include "emulator_core.hpp"
+#include "gensoundp.h"
 #include "log.h"
 
 #include <algorithm>
@@ -264,17 +265,15 @@ void GeneratorApp::save_state()
   if (!g_emulator_core)
     return;
 
-  /* The state writer walks machine state the emulation thread mutates, so
-   * park the thread for the (short) duration. */
-  emulator_.stop();
-  const int result = g_emulator_core->save_state_slot(state_slot_);
-  emulator_.start();
+  std::expected<void, StateError> result;
+  emulator_.run_exclusive(
+      [&] { result = g_emulator_core->save_state_slot(state_slot_); });
 
-  if (result == 0) {
+  if (result) {
     window_->show_toast("State saved to slot " + std::to_string(state_slot_));
     refresh_menus(); /* the slot is now marked as saved */
   } else {
-    window_->show_toast("Save state failed");
+    window_->show_toast(std::string(state_error_message(result.error())));
   }
 }
 
@@ -283,14 +282,19 @@ void GeneratorApp::load_state()
   if (!g_emulator_core)
     return;
 
-  emulator_.stop();
-  const int result = g_emulator_core->load_state_slot(state_slot_);
+  std::expected<void, StateError> result;
+  emulator_.run_exclusive(
+      [&] { result = g_emulator_core->load_state_slot(state_slot_); });
+  if (result) {
+    /* Drop samples queued before the load so the old timeline does not
+     * keep playing over the restored one. */
+    soundp_flush();
+  }
   window_->input().release_all();
-  emulator_.start();
 
   window_->show_toast(
-      result == 0 ? "State loaded from slot " + std::to_string(state_slot_)
-                  : "No saved state in slot " + std::to_string(state_slot_));
+      result ? "State loaded from slot " + std::to_string(state_slot_)
+             : std::string(state_error_message(result.error())));
 }
 
 void GeneratorApp::set_state_slot(int slot)

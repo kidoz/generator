@@ -37,6 +37,7 @@ void EmulatorThread::stop()
     std::lock_guard<std::mutex> lock(m_mutex);
     m_thread_alive = false;
     m_cond.notify_one();
+    m_exclusive_cond.notify_all();
   }
 
   if (m_thread.joinable()) {
@@ -56,6 +57,32 @@ void EmulatorThread::set_emulation_running(bool running)
   m_emulation_running.store(running);
 }
 
+void EmulatorThread::run_exclusive(const std::function<void()> &fn)
+{
+  {
+    std::unique_lock<std::mutex> lock(m_mutex);
+    if (!m_thread_alive) {
+      lock.unlock();
+      fn();
+      return;
+    }
+    m_exclusive_requested = true;
+    m_cond.notify_all();
+    m_exclusive_cond.wait(
+        lock, [this] { return m_exclusive_active || !m_thread_alive; });
+  }
+
+  fn();
+
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_exclusive_requested = false;
+    m_exclusive_active = false;
+    m_exclusive_cond.notify_all();
+    m_cond.notify_all();
+  }
+}
+
 void EmulatorThread::thread_loop()
 {
   gint64 last_frame_time = g_get_monotonic_time();
@@ -73,7 +100,8 @@ void EmulatorThread::thread_loop()
     gint64 elapsed = now - last_frame_time;
     gint64 wait_time = frame_duration_us - elapsed;
 
-    if (!frame_was_requested && m_thread_alive && wait_time > 1000) {
+    if (!frame_was_requested && m_thread_alive && wait_time > 1000 &&
+        !m_exclusive_requested) {
       auto until = std::chrono::steady_clock::now() +
                    std::chrono::microseconds(wait_time);
       m_cond.wait_until(lock, until);
@@ -82,6 +110,18 @@ void EmulatorThread::thread_loop()
 
     if (!m_thread_alive) {
       break;
+    }
+
+    if (m_exclusive_requested) {
+      /* No frame is in flight; park until the UI's core call returns. */
+      m_exclusive_active = true;
+      m_exclusive_cond.notify_all();
+      m_exclusive_cond.wait(
+          lock, [this] { return !m_exclusive_requested || !m_thread_alive; });
+      m_exclusive_active = false;
+      /* Do not try to catch up the paused interval. */
+      last_frame_time = g_get_monotonic_time();
+      continue;
     }
 
     m_frame_requested = false;

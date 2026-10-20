@@ -4,6 +4,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <functional>
 
 class EmulatorThread {
 public:
@@ -22,6 +23,10 @@ public:
   // Set to true to allow emulation, false to pause
   void set_emulation_running(bool running);
 
+  // Run fn with frame execution quiesced at a field boundary, so the core
+  // can be read or replaced without racing the emulation thread.
+  void run_exclusive(const std::function<void()> &fn);
+
   // UI-thread read; whether nudging the thread with request_frame() can
   // currently achieve anything
   bool emulation_running() const
@@ -38,5 +43,8 @@ private:
 
   bool m_thread_alive{false};
   bool m_frame_requested{false};
+  bool m_exclusive_requested{false};
+  bool m_exclusive_active{false};
+  std::condition_variable m_exclusive_cond;
   std::atomic<bool> m_emulation_running{false};
 };

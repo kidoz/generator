@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <functional>
 #include <mutex>
 #include <thread>
 
@@ -38,6 +39,11 @@ public:
     return emulation_running_.load(std::memory_order_relaxed);
   }
 
+  /* UI thread: run fn with frame execution quiesced at a field boundary.
+   * The emulation thread finishes any field already in flight and blocks
+   * until fn returns, so core state can be read or replaced safely. */
+  void run_exclusive(const std::function<void()> &fn);
+
   /* UI thread: true once per field the emulation thread completed. */
   bool take_render_complete()
   {
@@ -53,6 +59,9 @@ private:
 
   bool thread_alive_ = false;
   bool frame_requested_ = false;
+  bool exclusive_requested_ = false;
+  bool exclusive_active_ = false;
+  std::condition_variable exclusive_cv_;
   std::atomic<bool> emulation_running_{false};
   std::atomic<bool> render_complete_{false};
 };
