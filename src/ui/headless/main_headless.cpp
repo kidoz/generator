@@ -300,8 +300,9 @@ static int dump_state_hash_report(EmulatorCore &core)
   }
   close(fd);
 
-  if (core.save_state(tmpl) != 0) {
-    std::cerr << "Error: failed to save state for hashing\n";
+  if (auto saved = core.save_state(tmpl); !saved) {
+    std::cerr << "Error: failed to save state for hashing: "
+              << state_error_message(saved.error()) << "\n";
     unlink(tmpl);
     return 1;
   }
@@ -340,7 +341,7 @@ static std::optional<uint64_t> z80_ram_fingerprint(EmulatorCore &core)
     return std::nullopt;
   }
   close(fd);
-  if (core.save_state(tmpl) != 0) {
+  if (auto saved = core.save_state(tmpl); !saved) {
     unlink(tmpl);
     return std::nullopt;
   }
@@ -599,9 +600,9 @@ int main(int argc, char *argv[])
     }
 
     if (load_state_file != nullptr) {
-      if (core->load_state(load_state_file) != 0) {
+      if (auto loaded = core->load_state(load_state_file); !loaded) {
         std::cerr << "Error: Failed to load state from: " << load_state_file
-                  << "\n";
+                  << ": " << state_error_message(loaded.error()) << "\n";
         return 1;
       }
       if (!quiet_mode)
@@ -836,9 +837,9 @@ int main(int argc, char *argv[])
     }
 
     if (save_state_file != nullptr) {
-      if (core->save_state(save_state_file) != 0) {
+      if (auto saved = core->save_state(save_state_file); !saved) {
         std::cerr << "Error: Failed to save state to: " << save_state_file
-                  << "\n";
+                  << ": " << state_error_message(saved.error()) << "\n";
         return 1;
       }
       if (!quiet_mode)

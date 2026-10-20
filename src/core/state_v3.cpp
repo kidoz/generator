@@ -16,7 +16,25 @@ void put_u32_le(std::vector<uint8_t> &out, uint32_t v)
   out.push_back((uint8_t)((v >> 24) & 0xff));
 }
 
+uint32_t read_u32_le(std::span<const uint8_t> data, size_t pos)
+{
+  return (uint32_t)data[pos] | (uint32_t)data[pos + 1] << 8 |
+         (uint32_t)data[pos + 2] << 16 | (uint32_t)data[pos + 3] << 24;
+}
+
 }  // namespace
+
+uint32_t state_crc32(std::span<const uint8_t> data)
+{
+  uint32_t crc = 0xFFFFFFFFu;
+  for (const uint8_t byte : data) {
+    crc ^= byte;
+    for (int bit = 0; bit < 8; bit++) {
+      crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+    }
+  }
+  return ~crc;
+}
 
 std::vector<uint8_t> StateV3::serialize(std::span<const StateChunk> chunks)
 {
@@ -33,36 +51,31 @@ std::vector<uint8_t> StateV3::serialize(std::span<const StateChunk> chunks)
   return out;
 }
 
-std::optional<std::vector<StateChunk>>
+std::expected<std::vector<StateChunk>, StateV3Error>
 StateV3::deserialize(std::span<const uint8_t> blob)
 {
   if (blob.size() < 12) {
-    return std::nullopt;
+    return std::unexpected(StateV3Error::Corrupt);
   }
   if (std::memcmp(blob.data(), "GNST", 4) != 0) {
-    return std::nullopt;
+    return std::unexpected(StateV3Error::Corrupt);
   }
-
-  const auto read_u32 = [&blob](size_t pos) -> uint32_t {
-    return (uint32_t)blob[pos] | (uint32_t)blob[pos + 1] << 8 |
-           (uint32_t)blob[pos + 2] << 16 | (uint32_t)blob[pos + 3] << 24;
-  };
-  if (read_u32(4) != kStateV3Version) {
-    return std::nullopt;
+  if (read_u32_le(blob, 4) != kStateV3Version) {
+    return std::unexpected(StateV3Error::UnsupportedVersion);
   }
-  const uint32_t count = read_u32(8);
+  const uint32_t count = read_u32_le(blob, 8);
 
   std::vector<StateChunk> chunks;
   size_t pos = 12;
   for (uint32_t i = 0; i < count; i++) {
     if (pos + 8 > blob.size()) {
-      return std::nullopt;
+      return std::unexpected(StateV3Error::Corrupt);
     }
-    const uint32_t id = read_u32(pos);
-    const uint32_t len = read_u32(pos + 4);
+    const uint32_t id = read_u32_le(blob, pos);
+    const uint32_t len = read_u32_le(blob, pos + 4);
     pos += 8;
-    if (pos + len > blob.size()) {
-      return std::nullopt;
+    if ((size_t)len > blob.size() - pos) {
+      return std::unexpected(StateV3Error::Corrupt);
     }
     StateChunk chunk{id, {}};
     chunk.data.resize(len);
@@ -72,6 +85,26 @@ StateV3::deserialize(std::span<const uint8_t> blob)
     pos += len;
     chunks.push_back(std::move(chunk));
   }
+
+  /* Optional integrity chunk: CHKS must be the final chunk and covers every
+   * byte before its own four-byte checksum. States written before it existed
+   * have no CHKS and remain readable. */
+  for (size_t i = 0; i < chunks.size(); i++) {
+    if (chunks[i].id != fourcc("CHKS")) {
+      continue;
+    }
+    if (i + 1 != chunks.size() || chunks[i].data.size() != 4 ||
+        pos != blob.size()) {
+      return std::unexpected(StateV3Error::Corrupt);
+    }
+    const uint32_t stored = read_u32_le(chunks[i].data, 0);
+    const uint32_t actual =
+        state_crc32(blob.first(blob.size() - sizeof(uint32_t)));
+    if (stored != actual) {
+      return std::unexpected(StateV3Error::Corrupt);
+    }
+  }
+
   return chunks;
 }
 

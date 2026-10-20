@@ -15,6 +15,7 @@
 #include "interfaces/audio_backend.hpp"
 #include "interfaces/video_backend.hpp"
 #include "interfaces/logger.hpp"
+#include "state_error.hpp"
 
 #include "bus/m68k_bus.hpp"
 #include "m68k/m68k.hpp"
@@ -29,7 +30,9 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <expected>
+#include <filesystem>
 #include <memory>
 #include <span>
 #include <string>
@@ -67,8 +70,14 @@ public:
 
   // --- Save states (format v3) ---
 
-  int save_state(const char *filename);
-  int load_state(const char *filename);
+  std::expected<void, StateError> save_state(std::string_view filename);
+  std::expected<void, StateError> load_state(std::string_view filename);
+
+  /* Per-ROM slots under the user data directory. Slots are 0-9. */
+  std::expected<void, StateError> save_state_slot(int slot);
+  std::expected<void, StateError> load_state_slot(int slot);
+  /* File mtime of the slot, or 0 when the slot does not exist. */
+  time_t state_slot_date(int slot) const;
 
   /* Battery save: persist/restore SRAM alongside the ROM file. */
   int save_sram(const char *filename);
@@ -188,6 +197,13 @@ private:
   void power_on();           /* reset hold + vector fetch */
   void finish_frame_video(); /* emit the field through the video seam */
   void halt(const char *why);
+
+  /* Identity of the loaded ROM, used for the per-ROM slot directory. */
+  uint64_t rom_id() const;
+  std::filesystem::path state_slot_path(int slot) const;
+  std::expected<void, StateError> save_state_impl(std::string_view filename,
+                                                  int slot);
+  static constexpr int kStateSlotCount = 10;
 
   struct FileCloser {
     void operator()(std::FILE *f) const

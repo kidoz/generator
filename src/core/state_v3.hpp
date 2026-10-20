@@ -13,7 +13,7 @@
 #pragma once
 
 #include <cstdint>
-#include <optional>
+#include <expected>
 #include <span>
 #include <vector>
 
@@ -21,11 +21,20 @@ namespace generator {
 
 inline constexpr uint32_t kStateV3Version = 3;
 
+enum class StateV3Error {
+  Corrupt,            /* bad magic, truncation, bounds or checksum failure */
+  UnsupportedVersion, /* not the version this build reads */
+};
+
 inline constexpr uint32_t fourcc(const char *tag)
 {
   return (uint32_t)(uint8_t)tag[0] | (uint32_t)(uint8_t)tag[1] << 8 |
          (uint32_t)(uint8_t)tag[2] << 16 | (uint32_t)(uint8_t)tag[3] << 24;
 }
+
+/* CRC-32 (IEEE 802.3, reflected, polynomial 0xEDB88320). Used by the
+ * optional trailing CHKS chunk. */
+uint32_t state_crc32(std::span<const uint8_t> data);
 
 struct StateChunk {
   uint32_t id;
@@ -38,8 +47,9 @@ class StateV3 {
 public:
   static std::vector<uint8_t> serialize(std::span<const StateChunk> chunks);
 
-  /* Returns nullopt when the blob is truncated or not a v3 state. */
-  static std::optional<std::vector<StateChunk>>
+  /* Returns an error when the blob is truncated, not a v3 state, or fails
+   * its optional CHKS checksum. */
+  static std::expected<std::vector<StateChunk>, StateV3Error>
   deserialize(std::span<const uint8_t> blob);
 };
 
@@ -84,6 +94,12 @@ public:
   size_t remaining() const
   {
     return m_payload.size() - m_pos;
+  }
+  /* Feature detection for optional fields appended after the required tail:
+   * a loader may read an optional field only when has() confirms it. */
+  bool has(size_t count) const
+  {
+    return remaining() >= count;
   }
 
 private:

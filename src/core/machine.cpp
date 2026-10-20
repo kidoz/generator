@@ -8,11 +8,20 @@
 
 #include <algorithm>
 #include <bit>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <system_error>
 #include <utility>
+
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 namespace generator {
 
@@ -130,6 +139,61 @@ void header_text(char *out, size_t out_size, const uint8_t *rom, size_t field,
   size_t n = std::min(end, out_size - 1);
   std::memcpy(out, rom + field, n);
   out[n] = '\0';
+}
+
+/* Write through a sibling temporary and rename it over the target, so a
+ * failure mid-write never truncates the previous good state. */
+std::expected<void, StateError>
+write_file_atomic(const std::filesystem::path &target,
+                  std::span<const uint8_t> bytes)
+{
+  std::error_code ec;
+  std::filesystem::path temp = target;
+  temp += ".tmp";
+
+  {
+    std::ofstream out{temp, std::ios::binary | std::ios::trunc};
+    if (!out) {
+      return std::unexpected(StateError::Io);
+    }
+    out.write(reinterpret_cast<const char *>(bytes.data()),
+              (std::streamsize)bytes.size());
+    out.flush();
+    if (!out) {
+      out.close();
+      std::filesystem::remove(temp, ec);
+      return std::unexpected(StateError::Io);
+    }
+  }
+
+#if !defined(_WIN32)
+  const int fd = ::open(temp.c_str(), O_RDONLY);
+  if (fd >= 0) {
+    (void)::fsync(fd);
+    (void)::close(fd);
+  }
+  std::filesystem::permissions(temp,
+                               std::filesystem::perms::owner_read |
+                                   std::filesystem::perms::owner_write,
+                               std::filesystem::perm_options::replace, ec);
+  ec.clear();
+#endif
+
+  std::filesystem::rename(temp, target, ec);
+#if defined(_WIN32)
+  if (ec) {
+    /* Windows may refuse to replace an existing file; retry after
+     * removing it. POSIX rename is atomic and never needs this. */
+    std::filesystem::remove(target, ec);
+    ec.clear();
+    std::filesystem::rename(temp, target, ec);
+  }
+#endif
+  if (ec) {
+    std::filesystem::remove(temp, ec);
+    return std::unexpected(StateError::Io);
+  }
+  return {};
 }
 
 }  // namespace
@@ -710,10 +774,19 @@ void Machine::interrupt_ack(int level)
 /* savestate v3                                                        */
 /* ------------------------------------------------------------------ */
 
-int Machine::save_state(const char *filename)
+std::expected<void, StateError> Machine::save_state(std::string_view filename)
 {
-  if (filename == nullptr || m_rom.empty()) {
-    return -1;
+  return save_state_impl(filename, -1);
+}
+
+std::expected<void, StateError>
+Machine::save_state_impl(std::string_view filename, int slot)
+{
+  if (m_rom.empty()) {
+    return std::unexpected(StateError::NotLoaded);
+  }
+  if (filename.empty()) {
+    return std::unexpected(StateError::Io);
   }
 
   /* Keep the legacy BORD identifier stable across the Board-to-Machine class
@@ -963,55 +1036,130 @@ int Machine::save_state(const char *filename)
     audio_chunk.data = w.take_payload();
   }
 
-  const StateChunk chunks[] = {
-      std::move(board_chunk), std::move(rom_chunk),  std::move(cpu_chunk),
-      std::move(ram_chunk),   std::move(zram_chunk), std::move(z80bus_chunk),
-      std::move(z80_chunk),   std::move(vdp_chunk),  std::move(ym_chunk),
-      std::move(psg_chunk),   std::move(io_chunk),   std::move(audio_chunk)};
-  const std::vector<uint8_t> blob = StateV3::serialize(chunks);
-
-  std::ofstream out{filename, std::ios::binary};
-  if (!out) {
-    return -1;
+  /* Descriptive metadata. Deliberately deterministic: the wall-clock save
+   * time lives in the file mtime, so a load followed by an immediate save
+   * still reproduces the same blob byte for byte. */
+  StateChunk meta_chunk{fourcc("META"), {}};
+  {
+    ChunkWriter w;
+    w.u16(1); /* META payload version */
+    const std::string_view version = VERSION;
+    w.u16((uint16_t)version.size());
+    w.bytes(std::span<const uint8_t>{
+        reinterpret_cast<const uint8_t *>(version.data()), version.size()});
+#if defined(NDEBUG)
+    w.u8(0); /* release */
+#else
+    w.u8(1); /* debug */
+#endif
+#if defined(_WIN32)
+    w.u8(1); /* platform */
+#elif defined(__APPLE__)
+    w.u8(2);
+#else
+    w.u8(3);
+#endif
+    w.u64((uint64_t)m_rom.size());
+    w.u64(rom_id());
+    const char *title = m_cartinfo.name_domestic[0] != '\0'
+                            ? m_cartinfo.name_domestic
+                            : m_cartinfo.name_overseas;
+    const std::string_view title_view{title};
+    w.u16((uint16_t)title_view.size());
+    w.bytes(std::span<const uint8_t>{
+        reinterpret_cast<const uint8_t *>(title_view.data()),
+        title_view.size()});
+    w.u8((uint8_t)((m_cartinfo.flag_japan != 0) |
+                   ((m_cartinfo.flag_usa != 0) << 1) |
+                   ((m_cartinfo.flag_europe != 0) << 2)));
+    w.u32(slot >= 0 ? (uint32_t)slot : 0xFFFFFFFFu);
+    meta_chunk.data = w.take_payload();
   }
-  out.write(reinterpret_cast<const char *>(blob.data()),
-            (std::streamsize)blob.size());
-  return out ? 0 : -1;
+
+  /* Optional trailing integrity chunk; the payload is patched after
+   * serialization so it can cover the completed container. */
+  StateChunk checksum_chunk{fourcc("CHKS"), std::vector<uint8_t>(4, 0)};
+
+  const StateChunk chunks[] = {
+      std::move(board_chunk), std::move(rom_chunk),     std::move(cpu_chunk),
+      std::move(ram_chunk),   std::move(zram_chunk),    std::move(z80bus_chunk),
+      std::move(z80_chunk),   std::move(vdp_chunk),     std::move(ym_chunk),
+      std::move(psg_chunk),   std::move(io_chunk),      std::move(audio_chunk),
+      std::move(meta_chunk),  std::move(checksum_chunk)};
+  std::vector<uint8_t> blob = StateV3::serialize(chunks);
+
+  const uint32_t checksum = state_crc32(
+      std::span<const uint8_t>{blob.data(), blob.size() - sizeof(uint32_t)});
+  const size_t checksum_at = blob.size() - sizeof(uint32_t);
+  blob[checksum_at] = (uint8_t)(checksum & 0xff);
+  blob[checksum_at + 1] = (uint8_t)((checksum >> 8) & 0xff);
+  blob[checksum_at + 2] = (uint8_t)((checksum >> 16) & 0xff);
+  blob[checksum_at + 3] = (uint8_t)((checksum >> 24) & 0xff);
+
+  return write_file_atomic(std::filesystem::path{std::string(filename)}, blob);
 }
 
-int Machine::load_state(const char *filename)
+std::expected<void, StateError> Machine::load_state(std::string_view filename)
 {
-  if (filename == nullptr || m_rom.empty()) {
-    return -1;
+  if (m_rom.empty()) {
+    return std::unexpected(StateError::NotLoaded);
+  }
+  if (filename.empty()) {
+    return std::unexpected(StateError::Io);
   }
 
-  std::ifstream in{filename, std::ios::binary};
+  std::ifstream in{std::filesystem::path{std::string(filename)},
+                   std::ios::binary};
   if (!in) {
-    return -1;
+    return std::unexpected(StateError::Io);
   }
   std::vector<uint8_t> blob((std::istreambuf_iterator<char>(in)),
                             std::istreambuf_iterator<char>());
   auto chunks = StateV3::deserialize(blob);
   if (!chunks) {
-    return -1;
+    return std::unexpected(chunks.error() == StateV3Error::UnsupportedVersion
+                               ? StateError::UnsupportedVersion
+                               : StateError::Corrupt);
   }
 
-  bool board_seen = false, rom_matches = false, cpu_seen = false;
-  bool vdp_seen = false;
+  /* Validate ROM identity before applying anything: a state for a different
+   * game must leave the running machine untouched. */
+  bool rom_seen = false;
+  bool rom_matches = false;
   for (const StateChunk &chunk : *chunks) {
+    if (chunk.id != fourcc("ROMI")) {
+      continue;
+    }
+    ChunkReader r{chunk.data};
+    const uint64_t rom_hash = r.u64();
+    const uint32_t rom_size = r.u32();
+    rom_seen = r.ok();
+    rom_matches = rom_seen && rom_size == m_rom.size() &&
+                  rom_hash == fnv1a64(m_rom.data(), m_rom.size());
+  }
+  if (!rom_seen) {
+    return std::unexpected(StateError::Corrupt);
+  }
+  if (!rom_matches) {
+    return std::unexpected(StateError::WrongRom);
+  }
+
+  bool board_seen = false, cpu_seen = false;
+  bool vdp_seen = false;
+  const auto apply_chunk = [&](const StateChunk &chunk) {
     if (chunk.id == fourcc("BORD")) {
       ChunkReader r{chunk.data};
-      m_frames = r.u32();
-      m_mclk_total = r.u64();
-      m_pal = r.u8() != 0;
-      m_halted = r.u8() != 0;
+      const uint32_t frames = r.u32();
+      const uint64_t mclk_total = r.u64();
+      const uint8_t pal = r.u8();
+      const uint8_t halted = r.u8();
       board_seen = r.ok();
-    } else if (chunk.id == fourcc("ROMI")) {
-      ChunkReader r{chunk.data};
-      const uint64_t rom_hash = r.u64();
-      const uint32_t rom_size = r.u32();
-      rom_matches = r.ok() && rom_size == m_rom.size() &&
-                    rom_hash == fnv1a64(m_rom.data(), m_rom.size());
+      if (board_seen) {
+        m_frames = frames;
+        m_mclk_total = mclk_total;
+        m_pal = pal != 0;
+        m_halted = halted != 0;
+      }
     } else if (chunk.id == fourcc("M68K")) {
       M68k::SavedState cpu{};
       ChunkReader r{chunk.data};
@@ -1269,10 +1417,25 @@ int Machine::load_state(const char *filename)
       }
     }
     /* Unknown chunk ids are skipped: forward compatibility within v3. */
+  };
+
+  /* Apply in a fixed order, not file order: ZBNK must precede Z80C so a
+   * crafted state cannot reorder the reset edge after the register restore. */
+  static constexpr uint32_t kApplyOrder[] = {
+      fourcc("BORD"), fourcc("M68K"), fourcc("W68K"), fourcc("WZ80"),
+      fourcc("ZBNK"), fourcc("Z80C"), fourcc("VDP0"), fourcc("YM34"),
+      fourcc("PSG0"), fourcc("IOCH"), fourcc("AUD0")};
+  for (const uint32_t id : kApplyOrder) {
+    for (const StateChunk &chunk : *chunks) {
+      if (chunk.id == id) {
+        apply_chunk(chunk);
+        break;
+      }
+    }
   }
 
-  if (!board_seen || !rom_matches || !cpu_seen) {
-    return -1;
+  if (!board_seen || !cpu_seen) {
+    return std::unexpected(StateError::Corrupt);
   }
   if (!vdp_seen) {
     /* States written before the VDP0 chunk existed carry no video state;
@@ -1283,7 +1446,129 @@ int Machine::load_state(const char *filename)
   m_bus.reset();
   m_bus.attach_rom(m_rom.data(), m_rom.size());
   m_bus.attach_ram(m_ram.data());
-  return 0;
+  return {};
+}
+
+/* ------------------------------------------------------------------ */
+/* save-state slots                                                    */
+/* ------------------------------------------------------------------ */
+
+uint64_t Machine::rom_id() const
+{
+  return fnv1a64(m_rom.data(), m_rom.size());
+}
+
+std::filesystem::path Machine::state_slot_path(int slot) const
+{
+  std::filesystem::path base;
+#if defined(_WIN32)
+  const char *local = std::getenv("LOCALAPPDATA");
+  if (local != nullptr && *local != '\0') {
+    base = local;
+  }
+#endif
+  if (base.empty()) {
+    const char *xdg = std::getenv("XDG_DATA_HOME");
+    if (xdg != nullptr && *xdg != '\0') {
+      base = xdg;
+    }
+  }
+  if (base.empty()) {
+#if defined(_WIN32)
+    const char *home = std::getenv("USERPROFILE");
+    if (home != nullptr && *home != '\0') {
+      base = home;
+    }
+#else
+    const char *home = std::getenv("HOME");
+    if (home != nullptr && *home != '\0') {
+      base = std::filesystem::path(home) / ".local" / "share";
+    }
+#endif
+  }
+  if (base.empty()) {
+    return {};
+  }
+
+  char id[17];
+  std::snprintf(id, sizeof(id), "%016llx", (unsigned long long)rom_id());
+  return base / "generator" / "states" / id /
+         ("slot" + std::to_string(slot) + ".gst");
+}
+
+std::expected<void, StateError> Machine::save_state_slot(int slot)
+{
+  if (slot < 0 || slot >= kStateSlotCount) {
+    return std::unexpected(StateError::InvalidSlot);
+  }
+  if (m_rom.empty()) {
+    return std::unexpected(StateError::NotLoaded);
+  }
+
+  const std::filesystem::path path = state_slot_path(slot);
+  if (path.empty()) {
+    return std::unexpected(StateError::Io);
+  }
+
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  if (ec) {
+    return std::unexpected(StateError::Io);
+  }
+#if !defined(_WIN32)
+  std::filesystem::permissions(path.parent_path(),
+                               std::filesystem::perms::owner_all,
+                               std::filesystem::perm_options::replace, ec);
+  ec.clear();
+#endif
+
+  const std::string name = path.string();
+  return save_state_impl(name, slot);
+}
+
+std::expected<void, StateError> Machine::load_state_slot(int slot)
+{
+  if (slot < 0 || slot >= kStateSlotCount) {
+    return std::unexpected(StateError::InvalidSlot);
+  }
+  if (m_rom.empty()) {
+    return std::unexpected(StateError::NotLoaded);
+  }
+
+  const std::filesystem::path path = state_slot_path(slot);
+  if (path.empty()) {
+    return std::unexpected(StateError::Io);
+  }
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec)) {
+    return std::unexpected(StateError::NoSlot);
+  }
+
+  const std::string name = path.string();
+  return load_state(name);
+}
+
+time_t Machine::state_slot_date(int slot) const
+{
+  if (slot < 0 || slot >= kStateSlotCount) {
+    return 0;
+  }
+  const std::filesystem::path path = state_slot_path(slot);
+  if (path.empty()) {
+    return 0;
+  }
+
+  std::error_code ec;
+  const std::filesystem::file_time_type file_time =
+      std::filesystem::last_write_time(path, ec);
+  if (ec) {
+    return 0;
+  }
+  const auto system_time =
+      std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+          file_time - std::filesystem::file_time_type::clock::now() +
+          std::chrono::system_clock::now());
+  return std::chrono::system_clock::to_time_t(system_time);
 }
 
 /* ------------------------------------------------------------------ */

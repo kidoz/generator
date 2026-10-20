@@ -9,8 +9,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string_view>
@@ -172,10 +175,10 @@ TEST_CASE("a loaded state re-serializes byte-for-byte and runs identically",
   machine.run_frame();
   machine.run_frame();
 
-  REQUIRE(machine.save_state(first) == 0);
+  REQUIRE(machine.save_state(first).has_value());
   machine.run_frame();
   machine.run_frame();
-  REQUIRE(machine.save_state(second) == 0);
+  REQUIRE(machine.save_state(second).has_value());
   const auto expected = read_file(first);
   const auto expected_continuation = read_file(second);
 
@@ -183,17 +186,17 @@ TEST_CASE("a loaded state re-serializes byte-for-byte and runs identically",
   machine.run_frame();
   dirty_machine(machine);
   machine.run_frame();
-  REQUIRE(machine.save_state(mutated) == 0);
+  REQUIRE(machine.save_state(mutated).has_value());
   CHECK(read_file(mutated) != expected);
 
-  REQUIRE(machine.load_state(first) == 0);
-  REQUIRE(machine.save_state(resaved) == 0);
+  REQUIRE(machine.load_state(first).has_value());
+  REQUIRE(machine.save_state(resaved).has_value());
   CHECK(read_file(resaved) == expected);
 
   /* Execution after the load follows the uninterrupted timeline. */
   machine.run_frame();
   machine.run_frame();
-  REQUIRE(machine.save_state(continued) == 0);
+  REQUIRE(machine.save_state(continued).has_value());
   CHECK(read_file(continued) == expected_continuation);
 
   for (const char *path : {first, second, mutated, resaved, continued}) {
@@ -213,7 +216,7 @@ TEST_CASE("states without the v3 extension chunks still load",
   REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
   machine.run_frame();
   machine.run_frame();
-  REQUIRE(machine.save_state(full_path) == 0);
+  REQUIRE(machine.save_state(full_path).has_value());
   const std::vector<uint8_t> full = read_file(full_path);
 
   auto parsed = StateV3::deserialize(full);
@@ -222,7 +225,8 @@ TEST_CASE("states without the v3 extension chunks still load",
   for (const StateChunk &chunk : *parsed) {
     if (chunk.id == fourcc("VDP0") || chunk.id == fourcc("YM34") ||
         chunk.id == fourcc("PSG0") || chunk.id == fourcc("IOCH") ||
-        chunk.id == fourcc("AUD0") || chunk.id == fourcc("ZBNK")) {
+        chunk.id == fourcc("AUD0") || chunk.id == fourcc("ZBNK") ||
+        chunk.id == fourcc("META") || chunk.id == fourcc("CHKS")) {
       continue;
     }
     legacy.push_back(chunk);
@@ -231,7 +235,7 @@ TEST_CASE("states without the v3 extension chunks still load",
 
   const unsigned int saved_frames = machine.frame_count();
   machine.run_frame();
-  REQUIRE(machine.load_state(legacy_path) == 0);
+  REQUIRE(machine.load_state(legacy_path).has_value());
   CHECK(machine.frame_count() == saved_frames);
   /* No VDP0 chunk: the chip was reset to re-sync the field timing. */
   CHECK(machine.vdp().line() == 0);
@@ -240,4 +244,260 @@ TEST_CASE("states without the v3 extension chunks still load",
 
   std::remove(full_path);
   std::remove(legacy_path);
+}
+
+namespace {
+
+/* Isolated slot root and environment for slot-store tests. */
+class TempStateDir {
+public:
+  TempStateDir()
+  {
+    const auto stamp =
+        std::chrono::steady_clock::now().time_since_epoch().count();
+    m_path = std::filesystem::temp_directory_path() /
+             ("generator-state-test-" + std::to_string(stamp));
+    std::error_code ec;
+    std::filesystem::remove_all(m_path, ec);
+    std::filesystem::create_directories(m_path, ec);
+  }
+  ~TempStateDir()
+  {
+    std::error_code ec;
+    std::filesystem::remove_all(m_path, ec);
+  }
+
+  TempStateDir(const TempStateDir &) = delete;
+  TempStateDir &operator=(const TempStateDir &) = delete;
+
+  const std::filesystem::path &path() const
+  {
+    return m_path;
+  }
+
+private:
+  std::filesystem::path m_path;
+};
+
+class ScopedEnv {
+public:
+  ScopedEnv(const char *name, const std::string &value) : m_name(name)
+  {
+    const char *old = std::getenv(name);
+    if (old != nullptr) {
+      m_had_old = true;
+      m_old = old;
+    }
+#if defined(_WIN32)
+    _putenv_s(name, value.c_str());
+#else
+    setenv(name, value.c_str(), 1);
+#endif
+  }
+  ~ScopedEnv()
+  {
+#if defined(_WIN32)
+    _putenv_s(m_name.c_str(), m_had_old ? m_old.c_str() : "");
+#else
+    if (m_had_old) {
+      setenv(m_name.c_str(), m_old.c_str(), 1);
+    } else {
+      unsetenv(m_name.c_str());
+    }
+#endif
+  }
+
+  ScopedEnv(const ScopedEnv &) = delete;
+  ScopedEnv &operator=(const ScopedEnv &) = delete;
+
+private:
+  std::string m_name;
+  std::string m_old;
+  bool m_had_old = false;
+};
+
+std::filesystem::path find_slot_file(const std::filesystem::path &root)
+{
+  std::error_code ec;
+  for (const auto &entry :
+       std::filesystem::recursive_directory_iterator(root, ec)) {
+    if (entry.is_regular_file() && entry.path().filename() == "slot0.gst") {
+      return entry.path();
+    }
+  }
+  return {};
+}
+
+}  // namespace
+
+TEST_CASE("per-ROM slots round-trip and report their date", "[state_slots]")
+{
+  TempStateDir dir;
+  ScopedEnv env("XDG_DATA_HOME", dir.path().string());
+
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  machine.run_frame();
+  const unsigned int saved_frames = machine.frame_count();
+
+  CHECK(machine.state_slot_date(0) == 0);
+  REQUIRE(machine.save_state_slot(0).has_value());
+  CHECK(machine.state_slot_date(0) != 0);
+
+  machine.run_frame();
+  CHECK(machine.frame_count() != saved_frames);
+  REQUIRE(machine.load_state_slot(0).has_value());
+  CHECK(machine.frame_count() == saved_frames);
+
+  const auto missing = machine.load_state_slot(1);
+  REQUIRE_FALSE(missing.has_value());
+  CHECK(missing.error() == StateError::NoSlot);
+
+  const auto invalid = machine.save_state_slot(10);
+  REQUIRE_FALSE(invalid.has_value());
+  CHECK(invalid.error() == StateError::InvalidSlot);
+}
+
+TEST_CASE("a damaged slot is rejected as corrupt", "[state_slots]")
+{
+  TempStateDir dir;
+  ScopedEnv env("XDG_DATA_HOME", dir.path().string());
+
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  machine.run_frame();
+  REQUIRE(machine.save_state_slot(0).has_value());
+
+  const std::filesystem::path slot = find_slot_file(dir.path());
+  REQUIRE_FALSE(slot.empty());
+
+  SECTION("truncated")
+  {
+    std::filesystem::resize_file(slot, 8);
+    const auto result = machine.load_state_slot(0);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == StateError::Corrupt);
+  }
+  SECTION("checksum mismatch")
+  {
+    std::fstream file{slot, std::ios::binary | std::ios::in | std::ios::out};
+    REQUIRE(file.good());
+    file.seekg(-1, std::ios::end);
+    char byte = 0;
+    file.read(&byte, 1);
+    REQUIRE(file.good());
+    byte = (char)(byte ^ 0xFF);
+    file.seekp(-1, std::ios::end);
+    file.write(&byte, 1);
+    file.flush();
+    REQUIRE(file.good());
+
+    const auto result = machine.load_state_slot(0);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == StateError::Corrupt);
+  }
+}
+
+TEST_CASE("a state from another ROM is rejected before it is applied",
+          "[state_slots]")
+{
+  TempStateDir dir;
+  const std::string path = (dir.path() / "foreign.gst").string();
+
+  auto first = make_machine();
+  REQUIRE(first.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  first.run_frame();
+  REQUIRE(first.save_state(path).has_value());
+
+  auto second = make_machine();
+  REQUIRE(second.load_rom_mem(make_painter_rom(0x8000, 0x300)));
+  second.run_frame();
+  const unsigned int frames = second.frame_count();
+
+  const auto result = second.load_state(path);
+  REQUIRE_FALSE(result.has_value());
+  CHECK(result.error() == StateError::WrongRom);
+  CHECK(second.frame_count() == frames);
+}
+
+TEST_CASE("a machine without a ROM reports NotLoaded", "[state_slots]")
+{
+  auto machine = make_machine();
+  const auto saved = machine.save_state_slot(0);
+  REQUIRE_FALSE(saved.has_value());
+  CHECK(saved.error() == StateError::NotLoaded);
+
+  const auto loaded = machine.load_state_slot(0);
+  REQUIRE_FALSE(loaded.has_value());
+  CHECK(loaded.error() == StateError::NotLoaded);
+}
+
+TEST_CASE("states carry META metadata and a trailing checksum", "[state_v3]")
+{
+  TempStateDir dir;
+  const std::string path = (dir.path() / "meta.gst").string();
+
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  machine.run_frame();
+  REQUIRE(machine.save_state(path).has_value());
+
+  std::ifstream in{path, std::ios::binary};
+  REQUIRE(in.good());
+  std::vector<uint8_t> blob((std::istreambuf_iterator<char>(in)),
+                            std::istreambuf_iterator<char>());
+
+  auto chunks = StateV3::deserialize(blob);
+  REQUIRE(chunks.has_value());
+
+  bool meta_seen = false;
+  for (const StateChunk &chunk : *chunks) {
+    if (chunk.id == fourcc("META")) {
+      meta_seen = true;
+    }
+  }
+  CHECK(meta_seen);
+  REQUIRE_FALSE(chunks->empty());
+  CHECK(chunks->back().id == fourcc("CHKS"));
+  CHECK(chunks->back().data.size() == 4);
+}
+
+TEST_CASE("chunk order in the file does not change the load", "[state_v3]")
+{
+  TempStateDir dir;
+  const std::string original = (dir.path() / "order.gst").string();
+  const std::string reordered = (dir.path() / "reordered.gst").string();
+  const std::string resaved = (dir.path() / "resaved.gst").string();
+
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  machine.run_frame();
+  machine.run_frame();
+  REQUIRE(machine.save_state(original).has_value());
+
+  auto chunks = StateV3::deserialize(read_file(original.c_str()));
+  REQUIRE(chunks.has_value());
+
+  /* Reverse every payload chunk, then append a fresh trailing checksum. */
+  std::vector<StateChunk> reversed;
+  for (auto it = chunks->rbegin(); it != chunks->rend(); ++it) {
+    if (it->id == fourcc("CHKS")) {
+      continue;
+    }
+    reversed.push_back(*it);
+  }
+  reversed.push_back(StateChunk{fourcc("CHKS"), std::vector<uint8_t>(4, 0)});
+
+  std::vector<uint8_t> blob = StateV3::serialize(reversed);
+  const uint32_t checksum = state_crc32(
+      std::span<const uint8_t>{blob.data(), blob.size() - sizeof(uint32_t)});
+  const size_t checksum_at = blob.size() - sizeof(uint32_t);
+  for (size_t i = 0; i < sizeof(uint32_t); i++) {
+    blob[checksum_at + i] = (uint8_t)((checksum >> (8 * i)) & 0xff);
+  }
+  save_blob(reordered.c_str(), blob);
+
+  REQUIRE(machine.load_state(reordered).has_value());
+  REQUIRE(machine.save_state(resaved).has_value());
+  CHECK(read_file(resaved.c_str()) == read_file(original.c_str()));
 }

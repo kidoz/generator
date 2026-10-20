@@ -67,22 +67,24 @@ void EmulatorCore::pause(bool paused)
   m_impl->set_paused(paused);
 }
 
-int EmulatorCore::save_state(const char *filename)
+std::expected<void, StateError>
+EmulatorCore::save_state(std::string_view filename)
 {
   return m_impl->save_state(filename);
 }
 
-int EmulatorCore::load_state(const char *filename)
+std::expected<void, StateError>
+EmulatorCore::load_state(std::string_view filename)
 {
   return m_impl->load_state(filename);
 }
 
-int EmulatorCore::save_state_slot(int slot)
+std::expected<void, StateError> EmulatorCore::save_state_slot(int slot)
 {
   return m_impl->save_state_slot(slot);
 }
 
-int EmulatorCore::load_state_slot(int slot)
+std::expected<void, StateError> EmulatorCore::load_state_slot(int slot)
 {
   return m_impl->load_state_slot(slot);
 }

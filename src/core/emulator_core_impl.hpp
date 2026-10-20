@@ -14,7 +14,9 @@
 #include "interfaces/logger.hpp"
 
 #include "generator.h" /* t_cartinfo */
+#include "state_error.hpp"
 
+#include <ctime>
 #include <expected>
 #include <memory>
 #include <span>
@@ -57,10 +59,12 @@ public:
 
   // --- Save states ---
 
-  virtual int save_state(const char *filename) = 0;
-  virtual int load_state(const char *filename) = 0;
-  virtual int save_state_slot(int slot) = 0;
-  virtual int load_state_slot(int slot) = 0;
+  virtual std::expected<void, StateError>
+  save_state(std::string_view filename) = 0;
+  virtual std::expected<void, StateError>
+  load_state(std::string_view filename) = 0;
+  virtual std::expected<void, StateError> save_state_slot(int slot) = 0;
+  virtual std::expected<void, StateError> load_state_slot(int slot) = 0;
   virtual time_t state_slot_date(int slot) const = 0;
 
   // --- Input ---

@@ -7,12 +7,15 @@
 #include "interfaces/audio_backend.hpp"
 #include "interfaces/video_backend.hpp"
 #include "interfaces/logger.hpp"
+#include "state_error.hpp"
 
+#include <atomic>
 #include <expected>
 #include <memory>
 #include <span>
 #include <string>
 #include <string_view>
+#include <ctime>
 
 namespace generator {
 
@@ -59,10 +62,11 @@ public:
 
   // --- Save states ---
 
-  int save_state(const char *filename);
-  int load_state(const char *filename);
-  int save_state_slot(int slot);
-  int load_state_slot(int slot);
+  std::expected<void, StateError> save_state(std::string_view filename);
+  std::expected<void, StateError> load_state(std::string_view filename);
+  std::expected<void, StateError> save_state_slot(int slot);
+  std::expected<void, StateError> load_state_slot(int slot);
+  /* File mtime of the slot, or 0 when the slot does not exist. */
   time_t state_slot_date(int slot) const;
 
   // --- Input ---
@@ -106,7 +110,8 @@ public:
 
 private:
   std::unique_ptr<CoreImplBase> m_impl;
-  bool m_paused = false;
+  /* Read by the emulation thread, written by the UI thread. */
+  std::atomic<bool> m_paused{false};
 };
 
 }  // namespace generator

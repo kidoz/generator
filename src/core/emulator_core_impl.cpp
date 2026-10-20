@@ -67,32 +67,29 @@ public:
     (void)paused; /* audio pacing arrives with the chip-clock audio phase */
   }
 
-  int save_state(const char *filename) override
+  std::expected<void, StateError> save_state(std::string_view filename) override
   {
     return m_machine.save_state(filename);
   }
 
-  int load_state(const char *filename) override
+  std::expected<void, StateError> load_state(std::string_view filename) override
   {
     return m_machine.load_state(filename);
   }
 
-  int save_state_slot(int slot) override
+  std::expected<void, StateError> save_state_slot(int slot) override
   {
-    (void)slot; /* slot plumbing arrives with the savestate phase */
-    return -1;
+    return m_machine.save_state_slot(slot);
   }
 
-  int load_state_slot(int slot) override
+  std::expected<void, StateError> load_state_slot(int slot) override
   {
-    (void)slot;
-    return -1;
+    return m_machine.load_state_slot(slot);
   }
 
   time_t state_slot_date(int slot) const override
   {
-    (void)slot;
-    return 0;
+    return m_machine.state_slot_date(slot);
   }
 
   void debug_log_zram_to(const char *path) override
