@@ -118,6 +118,16 @@ void InputController::attach_to_widget(Gtk::Widget &widget)
   widget.add_controller(m_key_controller);
 }
 
+void InputController::release_all()
+{
+  for (int player = 0; player < 2; player++) {
+    for (int button = 0; button < PAD_BUTTON_COUNT; button++) {
+      g_pads[player].b[button] = 0;
+    }
+  }
+  publish_pads();
+}
+
 void InputController::poll_sdl_events()
 {
   SDL_Event event;

@@ -207,6 +207,16 @@ void MainWindow::setup_ui()
 
   auto menu = Gio::Menu::create();
   menu->append("Open ROM", "app.open-rom");
+  menu->append("Save State", "app.save-state");
+  menu->append("Load State", "app.load-state");
+
+  auto slot_menu = Gio::Menu::create();
+  for (int slot = 0; slot < 10; slot++) {
+    slot_menu->append("Slot " + std::to_string(slot),
+                      "app.state-slot(" + std::to_string(slot) + ")");
+  }
+  menu->append_submenu("State Slot", slot_menu);
+
   menu->append("Preferences", "app.preferences");
   menu->append("About", "app.about");
   menu->append("Quit", "app.quit");

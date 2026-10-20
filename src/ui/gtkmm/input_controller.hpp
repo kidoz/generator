@@ -41,6 +41,9 @@ public:
   // Call periodically (e.g. from the tick callback) to poll SDL3 events
   void poll_sdl_events();
 
+  // Release every pad line (after a save-state load or focus loss).
+  void release_all();
+
 private:
   // GTKmm Keyboard signals
   bool on_key_pressed(guint keyval, guint keycode, Gdk::ModifierType state);

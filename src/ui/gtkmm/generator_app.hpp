@@ -38,9 +38,16 @@ protected:
 private:
   void on_action_open_rom();
   void on_action_pause();
+  void on_action_save_state();
+  void on_action_load_state();
+  void on_action_state_slot(int slot);
   void on_action_preferences();
   void on_action_about();
   void on_action_quit();
+
+  /* Quiesce the emulation thread around the core call, then report the
+   * typed result. */
+  void save_or_load_state(bool save);
 
   // Stop the thread, load, report failures, resume; shared by on_open and
   // the file dialog
@@ -50,8 +57,10 @@ private:
                          const Glib::ustring &body);
 
   Glib::RefPtr<Gio::SimpleAction> m_pause_action;
+  Glib::RefPtr<Gio::SimpleAction> m_state_slot_action;
 
   MainWindow *m_main_window{nullptr};
   std::unique_ptr<PreferencesDialog> m_prefs_dialog;
   EmulatorThread m_emu_thread;
+  int m_state_slot{0};
 };

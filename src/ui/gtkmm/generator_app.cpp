@@ -2,6 +2,7 @@
 #include "main_window.hpp"
 
 #include "ui_bridge.hpp"
+#include <algorithm>
 #include <iostream>
 
 #include "generator.h"
@@ -89,6 +90,13 @@ void GeneratorApp::on_startup()
              sigc::mem_fun(*this, &GeneratorApp::on_action_preferences));
   add_action("about", sigc::mem_fun(*this, &GeneratorApp::on_action_about));
   add_action("quit", sigc::mem_fun(*this, &GeneratorApp::on_action_quit));
+  add_action("save-state",
+             sigc::mem_fun(*this, &GeneratorApp::on_action_save_state));
+  add_action("load-state",
+             sigc::mem_fun(*this, &GeneratorApp::on_action_load_state));
+  m_state_slot_action = add_action_radio_integer(
+      "state-slot", sigc::mem_fun(*this, &GeneratorApp::on_action_state_slot),
+      m_state_slot);
 
   // Stateful pause toggle — bound to the header-bar pause button and Space.
   m_pause_action = add_action_bool(
@@ -99,6 +107,8 @@ void GeneratorApp::on_startup()
   set_accel_for_action("app.pause", "space");
   set_accel_for_action("app.quit", "<Ctrl>Q");
   set_accel_for_action("app.preferences", "<Ctrl>comma");
+  set_accel_for_action("app.save-state", "<Ctrl>S");
+  set_accel_for_action("app.load-state", "<Ctrl>L");
 }
 
 void GeneratorApp::on_activate()
@@ -186,6 +196,58 @@ void GeneratorApp::on_action_pause()
   if (m_main_window) {
     m_main_window->set_runtime_state(paused ? "Paused" : "Running", !paused);
   }
+}
+
+void GeneratorApp::on_action_save_state()
+{
+  save_or_load_state(true);
+}
+
+void GeneratorApp::on_action_load_state()
+{
+  save_or_load_state(false);
+}
+
+void GeneratorApp::on_action_state_slot(int slot)
+{
+  m_state_slot = std::clamp(slot, 0, 9);
+  if (m_state_slot_action) {
+    m_state_slot_action->set_state(Glib::Variant<int>::create(m_state_slot));
+  }
+}
+
+void GeneratorApp::save_or_load_state(bool save)
+{
+  if (!g_emulator_core) {
+    show_error_dialog(save ? "Save State Failed" : "Load State Failed",
+                      "No ROM is loaded.");
+    return;
+  }
+
+  std::expected<void, generator::StateError> result;
+  m_emu_thread.run_exclusive([&] {
+    result = save ? g_emulator_core->save_state_slot(m_state_slot)
+                  : g_emulator_core->load_state_slot(m_state_slot);
+  });
+
+  if (!result) {
+    show_error_dialog(
+        save ? "Save State Failed" : "Load State Failed",
+        std::string(generator::state_error_message(result.error())));
+    return;
+  }
+
+  if (!save) {
+    /* Drop pre-load audio and input state so the restored timeline is not
+     * driven by the old one. */
+    soundp_flush();
+    if (m_main_window) {
+      m_main_window->get_input_controller().release_all();
+    }
+  }
+
+  std::cout << (save ? "State saved to slot " : "State loaded from slot ")
+            << m_state_slot << std::endl;
 }
 
 void GeneratorApp::on_action_preferences()
