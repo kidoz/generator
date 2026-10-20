@@ -2,6 +2,7 @@
 /* Headless Backend - Run emulator without UI for testing/benchmarking */
 
 #include "emulator_core.hpp"
+#include <charconv>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
@@ -470,7 +471,7 @@ int main(int argc, char *argv[])
   unsigned int num_frames = DEFAULT_FRAMES;
   int opt;
 
-  static struct option long_options[] = {
+  const struct option long_options[] = {
       {"help", no_argument, 0, 'h'},
       {"version", no_argument, 0, 'v'},
       {"frames", required_argument, 0, 'f'},
@@ -499,13 +500,15 @@ int main(int argc, char *argv[])
     case 'v':
       print_version();
       return 0;
-    case 'f':
-      num_frames = (unsigned int)atoi(optarg);
-      if (num_frames == 0) {
+    case 'f': {
+      const char *end = optarg + std::strlen(optarg);
+      const auto result = std::from_chars(optarg, end, num_frames);
+      if (result.ec != std::errc{} || result.ptr != end || num_frames == 0) {
         std::cerr << "Error: Invalid frame count\n";
         return 1;
       }
       break;
+    }
     case 'l':
       load_state_file = optarg;
       break;
