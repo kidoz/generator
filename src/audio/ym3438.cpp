@@ -503,9 +503,10 @@ void Ym3438::write_register(uint8_t bank, uint8_t addr, uint8_t data)
   if (bank == 0 && addr == 0x28) {
     /* Key on/off: bits 7-4 gate the four operators (in internal slot
      * order), bits 2-0 pick the channel — bit 2 moves the range to
-     * channels 4-6, and channel index 3 is only valid there. */
+     * channels 4-6. Low channel bits 3 do not select a channel in
+     * either group; code 7 would otherwise index past m_channels. */
     const int ch = (data & 0x03) + ((data & 0x04) != 0 ? 3 : 0);
-    if ((data & 0x03) == 3 && (data & 0x04) == 0) {
+    if ((data & 0x03) == 3) {
       return;
     }
     for (int bit = 0; bit < 4; bit++) {
