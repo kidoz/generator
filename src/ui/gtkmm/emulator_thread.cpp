@@ -91,7 +91,9 @@ void EmulatorThread::thread_loop()
           generator::kFieldNtsc)
           .count(); /* crystal-exact NTSC field; see field_timing.h */
 
-  while (m_thread_alive) {
+  for (;;) {
+    /* stop() writes m_thread_alive under this mutex. Read it only while
+     * locked below, including when returning from an unlocked frame. */
     std::unique_lock<std::mutex> lock(m_mutex);
 
     bool frame_was_requested = m_frame_requested;

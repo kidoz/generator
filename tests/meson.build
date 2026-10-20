@@ -115,6 +115,22 @@ test('state_machine', test_state_machine,
   suite: 'catch2'
 )
 
+if ui_backend == 'gtk4'
+  test_emulator_thread = executable('test_emulator_thread',
+    'test_emulator_thread.cpp',
+    '../src/ui/gtkmm/emulator_thread.cpp',
+    '../src/ui/headless/soundp_null.cpp',
+    '../src/video/uiplot_cram.cpp',
+    include_directories: [machine_test_inc, include_directories('../src/ui/gtkmm')],
+    dependencies: [catch2_dep, core_dep, z80f_dep, gtkmm_dep, dependency('threads')],
+    build_by_default: false
+  )
+  test('emulator_thread', test_emulator_thread,
+    timeout: 30,
+    suite: 'catch2'
+  )
+endif
+
 # Controller-port protocol: the 3-button pad multiplexer behind the IO
 # chip data/ctrl registers, driven through the debug IO seam.
 test_io_ports = executable('test_io_ports',
