@@ -57,6 +57,36 @@ struct Palette {
 
 }  // namespace
 
+TEST_CASE("palette conversion accepts byte-aligned input and partial groups",
+          "[vdp-frame-renderer]")
+{
+  alignas(uint32_t) std::array<uint8_t, 7> pixels{0, 1, 2, 3, 4, 5, 0};
+  for (unsigned int i = 1; i <= 5; i++) {
+    uiplot_palcache[i] = 0xA500U | i;
+  }
+
+  SECTION("16-bit output needs only 16-bit alignment")
+  {
+    alignas(uint32_t) std::array<uint16_t, 7> row{};
+    row.fill(0xDEAD);
+    uiplot_convertdata16(pixels.data() + 1, row.data() + 1, 5);
+    CHECK(row.front() == 0xDEAD);
+    CHECK(row.back() == 0xDEAD);
+    for (unsigned int i = 1; i <= 5; i++)
+      CHECK(row[i] == (0xA500U | i));
+  }
+  SECTION("32-bit output includes the final pixel")
+  {
+    std::array<uint32_t, 7> row{};
+    row.fill(0xDEADBEEF);
+    uiplot_convertdata32(pixels.data() + 1, row.data() + 1, 5);
+    CHECK(row.front() == 0xDEADBEEF);
+    CHECK(row.back() == 0xDEADBEEF);
+    for (unsigned int i = 1; i <= 5; i++)
+      CHECK(row[i] == (0xA500U | i));
+  }
+}
+
 TEST_CASE("render_pushed converts a full-width line", "[vdp-frame-renderer]")
 {
   Palette palette;

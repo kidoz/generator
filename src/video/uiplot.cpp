@@ -150,25 +150,9 @@ void uiplot_checkpalcache(int flag)
 
 void uiplot_convertdata16(uint8 *indata, uint16 *outdata, unsigned int pixels)
 {
-  unsigned int ui;
-  uint32 outdata1;
-  uint32 outdata2;
-  uint32 indata_val;
-
-  /* not scaled, 16bpp - we do 4 pixels at a time */
-  for (ui = 0; ui < (pixels >> 2); ui++) {
-    indata_val = ((uint32 *)indata)[ui]; /* 4 bytes of in data */
-    outdata1 = (uiplot_palcache[indata_val & 0xff] |
-                uiplot_palcache[(indata_val >> 8) & 0xff] << 16);
-    outdata2 = (uiplot_palcache[(indata_val >> 16) & 0xff] |
-                uiplot_palcache[(indata_val >> 24) & 0xff] << 16);
-#ifdef WORDS_BIGENDIAN
-    ((uint32 *)outdata)[(ui << 1)] = outdata2;
-    ((uint32 *)outdata)[(ui << 1) + 1] = outdata1;
-#else
-    ((uint32 *)outdata)[(ui << 1)] = outdata1;
-    ((uint32 *)outdata)[(ui << 1) + 1] = outdata2;
-#endif
+  /* Byte input has no wider alignment or object-type guarantee. */
+  for (unsigned int i = 0; i < pixels; i++) {
+    outdata[i] = (uint16)uiplot_palcache[indata[i]];
   }
 }
 
@@ -178,31 +162,9 @@ void uiplot_convertdata16(uint8 *indata, uint16 *outdata, unsigned int pixels)
 
 void uiplot_convertdata32(uint8 *indata, uint32 *outdata, unsigned int pixels)
 {
-  unsigned int ui;
-  uint32 outdata1;
-  uint32 outdata2;
-  uint32 outdata3;
-  uint32 outdata4;
-  uint32 indata_val;
-
-  /* not scaled, 32bpp - we do 4 pixels at a time */
-  for (ui = 0; ui < pixels >> 2; ui++) {
-    indata_val = ((uint32 *)indata)[ui]; /* 4 bytes of in data */
-    outdata1 = uiplot_palcache[indata_val & 0xff];
-    outdata2 = uiplot_palcache[(indata_val >> 8) & 0xff];
-    outdata3 = uiplot_palcache[(indata_val >> 16) & 0xff];
-    outdata4 = uiplot_palcache[(indata_val >> 24) & 0xff];
-#ifdef WORDS_BIGENDIAN
-    ((uint32 *)outdata)[(ui << 2)] = outdata4;
-    ((uint32 *)outdata)[(ui << 2) + 1] = outdata3;
-    ((uint32 *)outdata)[(ui << 2) + 2] = outdata2;
-    ((uint32 *)outdata)[(ui << 2) + 3] = outdata1;
-#else
-    ((uint32 *)outdata)[(ui << 2)] = outdata1;
-    ((uint32 *)outdata)[(ui << 2) + 1] = outdata2;
-    ((uint32 *)outdata)[(ui << 2) + 2] = outdata3;
-    ((uint32 *)outdata)[(ui << 2) + 3] = outdata4;
-#endif
+  /* Read indices as bytes; this also handles widths not divisible by four. */
+  for (unsigned int i = 0; i < pixels; i++) {
+    outdata[i] = uiplot_palcache[indata[i]];
   }
 }
 
