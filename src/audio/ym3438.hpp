@@ -124,6 +124,8 @@ public:
     uint64_t sample_timer;
   };
   SavedState save() const;
+  /* Validate arithmetic/table bounds before restoring an external state. */
+  static bool valid_saved_state(const SavedState &state);
   void restore(const SavedState &state);
 
 private:

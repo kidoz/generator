@@ -276,7 +276,9 @@ uint8_t Ym3438::read_status() const
 Ym3438::SavedState Ym3438::save() const
 {
   SavedState state{};
-  std::copy_n(&m_regs[0][0], 0x200, &state.regs[0][0]);
+  for (size_t bank = 0; bank < m_regs.size(); bank++) {
+    std::copy(m_regs[bank].begin(), m_regs[bank].end(), state.regs[bank]);
+  }
   state.latch_addr[0] = m_latch_addr[0];
   state.latch_addr[1] = m_latch_addr[1];
   for (int ch = 0; ch < 6; ch++) {
@@ -331,9 +333,45 @@ Ym3438::SavedState Ym3438::save() const
   return state;
 }
 
+bool Ym3438::valid_saved_state(const SavedState &state)
+{
+  const auto in_range = [](int64_t value, int64_t low, int64_t high) {
+    return value >= low && value <= high;
+  };
+  for (const ChannelState &channel : state.channels) {
+    if (channel.key_code > 31 || channel.ams > kAmdDepth[3] ||
+        !in_range(channel.op1_history[0], -8192, 8192) ||
+        !in_range(channel.op1_history[1], -8192, 8192)) {
+      return false;
+    }
+    for (const SlotState &slot : channel.slots) {
+      /* The bounds come from refresh_pitch/rates and the output tables.
+       * Reject impossible cached arithmetic before it can overflow or
+       * supply an out-of-range rate-table index after a register write. */
+      if (!in_range(slot.incr, 0, 0x1FFFF * 15) ||
+          !in_range(slot.volume, 0, kMaxAttenuation) ||
+          !in_range(slot.delta_attack, 0, kMaxAttenuation + 1) ||
+          !in_range(slot.delta_decay, 0, kEgRate.back()) ||
+          !in_range(slot.delta_sustain, 0, kEgRate.back()) ||
+          !in_range(slot.delta_release, 0, kEgRate.back()) ||
+          !in_range(slot.sustain_level, 0, kMaxAttenuation) ||
+          !in_range(slot.total_level, 0, 0x7F << 3) || slot.key_scale > 31 ||
+          slot.am_depth > kAmdDepth[3]) {
+        return false;
+      }
+    }
+  }
+  return in_range(state.timer_a, 0, 1024 * kTimerATick) &&
+         in_range(state.timer_b, 0, 256 * kTimerBTick) &&
+         state.lfo_am <= 0x10000 && in_range(state.lfo_pm, -0x8000, 0x8000) &&
+         in_range(state.dac_output, -8192, 8128);
+}
+
 void Ym3438::restore(const SavedState &state)
 {
-  std::copy_n(&state.regs[0][0], 0x200, &m_regs[0][0]);
+  for (size_t bank = 0; bank < m_regs.size(); bank++) {
+    std::copy_n(state.regs[bank], m_regs[bank].size(), m_regs[bank].begin());
+  }
   m_latch_addr[0] = state.latch_addr[0];
   m_latch_addr[1] = state.latch_addr[1];
   for (int ch = 0; ch < 6; ch++) {

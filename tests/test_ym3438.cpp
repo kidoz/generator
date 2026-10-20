@@ -19,6 +19,23 @@ TEST_CASE("ym3438 status is idle after reset", "[ym]")
   CHECK_FALSE(ym.irq_line());
 }
 
+TEST_CASE("ym3438 state bounds accept register-derived caches", "[ym]")
+{
+  Ym3438 ym;
+  ym.reset();
+  REQUIRE(Ym3438::valid_saved_state(ym.save()));
+  for (uint8_t value : {uint8_t{0xFF}, uint8_t{0}}) {
+    for (uint8_t bank = 0; bank < 2; bank++) {
+      for (unsigned int addr = 0; addr < 256; addr++) {
+        ym.write_address((uint8_t)addr, bank);
+        ym.write_data(value, bank);
+        ym.advance_mclk(1008);
+        REQUIRE(Ym3438::valid_saved_state(ym.save()));
+      }
+    }
+  }
+}
+
 TEST_CASE("ym3438 busy flag sets immediately on write", "[ym]")
 {
   Ym3438 ym;

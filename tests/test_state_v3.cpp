@@ -8,6 +8,7 @@
 
 #include <array>
 #include <cstring>
+#include <limits>
 
 using namespace generator;
 
@@ -162,4 +163,15 @@ TEST_CASE("fourcc packs tags little-endian first", "[state_v3]")
 {
   CHECK(fourcc("BORD") == 0x44524F42U);
   CHECK(fourcc("VDP0") == 0x30504456U);
+}
+
+TEST_CASE("chunk reader rejects a count that wraps the current position",
+          "[state_v3]")
+{
+  const std::array<uint8_t, 2> payload{1, 2};
+  ChunkReader reader{payload};
+  REQUIRE(reader.u8() == 1);
+  CHECK(reader.bytes(std::numeric_limits<size_t>::max()).empty());
+  CHECK_FALSE(reader.ok());
+  CHECK(reader.remaining() == 0);
 }

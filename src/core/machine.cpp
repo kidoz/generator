@@ -49,6 +49,9 @@ constexpr uint64_t kPadThIdleResetMclk = 25 * 3420;
  * that preceded this ran the PAL pitch ~0.3% low. */
 constexpr uint64_t kMclkPerSecondNtsc = 53693175;
 constexpr uint64_t kMclkPerSecondPal = 53203424;
+constexpr int32_t kFmGain = 3;     /* +9.5 dB */
+constexpr int32_t kPsgGainDiv = 5; /* -14.0 dB */
+constexpr int64_t kMaxMix = 32768 * kFmGain + 32768 / kPsgGainDiv;
 
 bool has_rom_signature(std::span<const uint8_t> image, size_t offset)
 {
@@ -491,8 +494,6 @@ void Machine::advance_mclk(uint64_t ticks)
      * recording (tmp/sound-ab-20261010/REPORT.md): the FM gain undoes the
      * core's /3 so the chip's own full scale reaches the mix, and the PSG
      * sits under it the way the console's mixing network puts it there. */
-    constexpr int32_t kFmGain = 3;     /* +9.5 dB */
-    constexpr int32_t kPsgGainDiv = 5; /* -14.0 dB */
     const int32_t psg = m_z80bus.psg().output() / kPsgGainDiv;
     m_mix_acc_l +=
         (int64_t)(m_z80bus.ym().sample_left() * kFmGain + psg) * (int64_t)chunk;
@@ -935,7 +936,9 @@ Machine::save_state_impl(std::string_view filename, int slot)
   {
     const Ym3438::SavedState y = m_z80bus.ym().save();
     ChunkWriter w;
-    w.bytes(std::span<const uint8_t>{&y.regs[0][0], 0x200});
+    for (const auto &bank : y.regs) {
+      w.bytes(bank);
+    }
     w.u8(y.latch_addr[0]);
     w.u8(y.latch_addr[1]);
     for (const Ym3438::ChannelState &c : y.channels) {
@@ -1130,10 +1133,16 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
     if (chunk.id != fourcc("ROMI")) {
       continue;
     }
+    if (rom_seen) {
+      return std::unexpected(StateError::Corrupt);
+    }
     ChunkReader r{chunk.data};
     const uint64_t rom_hash = r.u64();
     const uint32_t rom_size = r.u32();
-    rom_seen = r.ok();
+    if (!r.ok()) {
+      return std::unexpected(StateError::Corrupt);
+    }
+    rom_seen = true;
     rom_matches = rom_seen && rom_size == m_rom.size() &&
                   rom_hash == fnv1a64(m_rom.data(), m_rom.size());
   }
@@ -1146,15 +1155,20 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
 
   bool board_seen = false, cpu_seen = false;
   bool vdp_seen = false;
-  const auto apply_chunk = [&](const StateChunk &chunk) {
+  bool state_pal = false;
+  const auto read_chunk = [&](const StateChunk &chunk, bool apply) {
+    ChunkReader r{chunk.data};
     if (chunk.id == fourcc("BORD")) {
-      ChunkReader r{chunk.data};
       const uint32_t frames = r.u32();
       const uint64_t mclk_total = r.u64();
       const uint8_t pal = r.u8();
       const uint8_t halted = r.u8();
       board_seen = r.ok();
-      if (board_seen) {
+      if (pal > 1 || halted > 1) {
+        return false;
+      }
+      state_pal = pal != 0;
+      if (apply && board_seen) {
         m_frames = frames;
         m_mclk_total = mclk_total;
         m_pal = pal != 0;
@@ -1162,7 +1176,6 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       }
     } else if (chunk.id == fourcc("M68K")) {
       M68k::SavedState cpu{};
-      ChunkReader r{chunk.data};
       for (int i = 0; i < 8; i++) {
         cpu.d[i] = r.u32();
       }
@@ -1180,25 +1193,26 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       cpu.prefetch_addr = r.u32();
       cpu.fault_kind = r.u8();
       cpu_seen = r.ok();
-      if (cpu_seen) {
+      if (cpu.queue_len > 2 ||
+          cpu.fault_kind > (uint8_t)M68k::Fault::Kind::Stopped) {
+        return false;
+      }
+      if (apply && cpu_seen) {
         m_cpu.restore(cpu);
       }
     } else if (chunk.id == fourcc("W68K")) {
-      ChunkReader r{chunk.data};
       const std::span<const uint8_t> data = r.bytes(m_ram.size());
-      if (r.ok()) {
+      if (apply && r.ok()) {
         std::memcpy(m_ram.data(), data.data(), m_ram.size());
       }
     } else if (chunk.id == fourcc("WZ80")) {
-      ChunkReader r{chunk.data};
       const std::span<const uint8_t> data = r.bytes(m_z80bus.ram().size());
-      if (r.ok()) {
+      if (apply && r.ok()) {
         std::memcpy(m_z80bus.ram().data(), data.data(), m_z80bus.ram().size());
       }
     } else if (chunk.id == fourcc("Z80C")) {
       z80f::Snapshot snap;
       z80f::Registers &r0 = snap.registers;
-      ChunkReader r{chunk.data};
       r0.a = r.u8();
       r0.flags.bits = r.u8();
       r0.b = r.u8();
@@ -1234,15 +1248,14 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       snap.int_line = r.u8() != 0;
       snap.int_pulse_pending = r.u8() != 0;
       const uint64_t tstates = r.u64();
-      if (r.ok()) {
+      if (apply && r.ok()) {
         m_z80.restore(snap);
         m_z80.restore_tstates(tstates);
       }
     } else if (chunk.id == fourcc("ZBNK")) {
-      ChunkReader r{chunk.data};
       const uint32_t bank = r.u32();
       const uint8_t reset_asserted = r.u8();
-      if (r.ok()) {
+      if (apply && r.ok()) {
         m_z80bus.set_bank(bank);
         /* Ordered ahead of Z80C: a rising reset edge clears the core, and
          * the snapshot restore then overwrites it with the saved one. */
@@ -1250,7 +1263,6 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       }
     } else if (chunk.id == fourcc("VDP0")) {
       Vdp::SavedState v{};
-      ChunkReader r{chunk.data};
       const std::span<const uint8_t> reg = r.bytes(sizeof(v.reg));
       if (!reg.empty()) {
         std::memcpy(v.reg, reg.data(), sizeof(v.reg));
@@ -1287,16 +1299,17 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       v.dma_debt_mclk = r.u64();
       v.dma_busy = r.u8();
       v.dma_fill_armed = r.u8();
-      if (r.ok()) {
+      if (apply && r.ok()) {
         m_vdp.restore(v);
         vdp_seen = true;
       }
     } else if (chunk.id == fourcc("YM34")) {
       Ym3438::SavedState y{};
-      ChunkReader r{chunk.data};
-      const std::span<const uint8_t> regs = r.bytes(sizeof(y.regs));
-      if (!regs.empty()) {
-        std::memcpy(&y.regs[0][0], regs.data(), sizeof(y.regs));
+      for (auto &bank : y.regs) {
+        const std::span<const uint8_t> regs = r.bytes(sizeof(bank));
+        if (!regs.empty()) {
+          std::memcpy(bank, regs.data(), sizeof(bank));
+        }
       }
       y.latch_addr[0] = r.u8();
       y.latch_addr[1] = r.u8();
@@ -1345,12 +1358,14 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       y.sample_l = (int16_t)r.u16();
       y.sample_r = (int16_t)r.u16();
       y.sample_timer = r.u64();
-      if (r.ok()) {
+      if (!Ym3438::valid_saved_state(y)) {
+        return false;
+      }
+      if (apply && r.ok()) {
         m_z80bus.ym().restore(y);
       }
     } else if (chunk.id == fourcc("PSG0")) {
       Psg::SavedState p{};
-      ChunkReader r{chunk.data};
       for (uint16_t &v : p.counter) {
         v = r.u16();
       }
@@ -1372,11 +1387,10 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       p.noise_rate = r.u8();
       p.output_value = (int16_t)r.u16();
       p.mclk_acc = r.u64();
-      if (r.ok()) {
+      if (apply && r.ok()) {
         m_z80bus.psg().restore(p);
       }
     } else if (chunk.id == fourcc("IOCH")) {
-      ChunkReader r{chunk.data};
       const std::span<const uint8_t> io_ctrl = r.bytes(m_io_ctrl.size());
       const std::span<const uint8_t> io_data = r.bytes(m_io_data.size());
       const uint8_t pad_counter0 = r.u8();
@@ -1387,7 +1401,7 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       const uint64_t pad_edge1 = r.u64();
       const uint8_t busreq = r.u8();
       const uint32_t resume_delay = r.u32();
-      if (r.ok()) {
+      if (apply && r.ok()) {
         std::memcpy(m_io_ctrl.data(), io_ctrl.data(), m_io_ctrl.size());
         std::memcpy(m_io_data.data(), io_data.data(), m_io_data.size());
         m_pad_counter[0] = pad_counter0;
@@ -1400,14 +1414,31 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
         m_z80_resume_delay = resume_delay;
       }
     } else if (chunk.id == fourcc("AUD0")) {
-      ChunkReader r{chunk.data};
       const uint64_t audio_acc = r.u64();
       const uint64_t mix_acc_l = r.u64();
       const uint64_t mix_acc_r = r.u64();
       const uint64_t mix_ticks = r.u64();
       const uint64_t lp_l = r.u64();
       const uint64_t lp_r = r.u64();
-      if (r.ok()) {
+      /* A v3 state does not encode the host sample rate. Allow the longest
+       * sample interval supported by the build options (44100 Hz), but
+       * reject accumulators that cannot come from the bounded chip outputs.
+       * Check IEEE-754 magnitude bits so release -ffast-math cannot remove
+       * the NaN/infinity rejection. */
+      constexpr uint64_t kMaxMixTicks = (kMclkPerSecondNtsc + 44099) / 44100;
+      constexpr uint64_t kMagnitude = 0x7FFFFFFFFFFFFFFFULL;
+      constexpr uint64_t kMaxFilter = std::bit_cast<uint64_t>((double)kMaxMix);
+      if (audio_acc >= (state_pal ? kMclkPerSecondPal : kMclkPerSecondNtsc) ||
+          mix_ticks > kMaxMixTicks || (lp_l & kMagnitude) > kMaxFilter ||
+          (lp_r & kMagnitude) > kMaxFilter) {
+        return false;
+      }
+      const int64_t mix_limit = (int64_t)mix_ticks * kMaxMix;
+      if ((int64_t)mix_acc_l < -mix_limit || (int64_t)mix_acc_l > mix_limit ||
+          (int64_t)mix_acc_r < -mix_limit || (int64_t)mix_acc_r > mix_limit) {
+        return false;
+      }
+      if (apply && r.ok()) {
         m_audio_acc = audio_acc;
         m_mix_acc_l = (int64_t)mix_acc_l;
         m_mix_acc_r = (int64_t)mix_acc_r;
@@ -1417,6 +1448,7 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       }
     }
     /* Unknown chunk ids are skipped: forward compatibility within v3. */
+    return r.ok();
   };
 
   /* Apply in a fixed order, not file order: ZBNK must precede Z80C so a
@@ -1425,17 +1457,31 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       fourcc("BORD"), fourcc("M68K"), fourcc("W68K"), fourcc("WZ80"),
       fourcc("ZBNK"), fourcc("Z80C"), fourcc("VDP0"), fourcc("YM34"),
       fourcc("PSG0"), fourcc("IOCH"), fourcc("AUD0")};
+  /* Parse every known payload before touching the live machine. Reuse the
+   * same reader in both passes so validation cannot drift from application.
+   * Missing optional chunks remain compatible with early v3 states. */
   for (const uint32_t id : kApplyOrder) {
+    bool seen = false;
     for (const StateChunk &chunk : *chunks) {
       if (chunk.id == id) {
-        apply_chunk(chunk);
-        break;
+        if (seen || !read_chunk(chunk, false)) {
+          return std::unexpected(StateError::Corrupt);
+        }
+        seen = true;
       }
     }
   }
-
   if (!board_seen || !cpu_seen) {
     return std::unexpected(StateError::Corrupt);
+  }
+
+  for (const uint32_t id : kApplyOrder) {
+    for (const StateChunk &chunk : *chunks) {
+      if (chunk.id == id) {
+        (void)read_chunk(chunk, true);
+        break;
+      }
+    }
   }
   if (!vdp_seen) {
     /* States written before the VDP0 chunk existed carry no video state;

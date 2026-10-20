@@ -7,6 +7,7 @@
 #include "core/state_v3.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -155,6 +156,88 @@ void save_blob(const char *path, std::span<const uint8_t> blob)
 }
 
 }  // namespace
+
+TEST_CASE("invalid state payloads leave the running machine unchanged",
+          "[state_machine]")
+{
+  const char *original = "test_state_validation_original.gst";
+  const char *invalid = "test_state_validation_invalid.gst";
+  const char *after = "test_state_validation_after.gst";
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  machine.run_frame();
+  REQUIRE(machine.save_state(original));
+  auto chunks = StateV3::deserialize(read_file(original));
+  REQUIRE(chunks);
+  std::erase_if(*chunks, [](const StateChunk &chunk) {
+    return chunk.id == fourcc("CHKS");
+  });
+  auto find_chunk = [&](uint32_t id) -> StateChunk & {
+    auto it =
+        std::find_if(chunks->begin(), chunks->end(),
+                     [=](const StateChunk &chunk) { return chunk.id == id; });
+    REQUIRE(it != chunks->end());
+    return *it;
+  };
+
+  SECTION("truncated required CPU state")
+  {
+    find_chunk(fourcc("M68K")).data.clear();
+  }
+  SECTION("truncated optional device state")
+  {
+    const char *tag = GENERATE("W68K", "WZ80", "ZBNK", "Z80C", "VDP0", "YM34",
+                               "PSG0", "IOCH", "AUD0");
+    find_chunk(fourcc(tag)).data.pop_back();
+  }
+  SECTION("invalid prefetch queue length")
+  {
+    /* Eight D/A register pairs, PC/USP/SSP, SR, and clock precede it. */
+    find_chunk(fourcc("M68K")).data[64 + 12 + 2 + 8] = 3;
+  }
+  SECTION("duplicate known state")
+  {
+    const char *tag = GENERATE("BORD", "M68K", "ROMI", "AUD0");
+    const StateChunk duplicate = find_chunk(fourcc(tag));
+    chunks->push_back(duplicate);
+  }
+  SECTION("non-finite filter history")
+  {
+    auto &data = find_chunk(fourcc("AUD0")).data;
+    /* Quiet NaN in the first filter's little-endian double. */
+    std::fill_n(data.begin() + 32, 8, 0);
+    data[38] = 0xF8;
+    data[39] = 0x7F;
+  }
+  SECTION("overflowing mixer accumulator")
+  {
+    auto &data = find_chunk(fourcc("AUD0")).data;
+    std::fill_n(data.begin() + 8, 8, 0xFF);
+    data[15] = 0x7F;
+  }
+  SECTION("overflowing FM envelope")
+  {
+    auto &data = find_chunk(fourcc("YM34")).data;
+    /* Register banks, address latches, phase, increment, dirty flag. */
+    constexpr size_t volume = 512 + 2 + 4 + 4 + 1;
+    std::fill_n(data.begin() + volume, 4, 0xFF);
+    data[volume + 3] = 0x7F;
+  }
+  save_blob(invalid, StateV3::serialize(*chunks));
+  machine.run_frame();
+  REQUIRE(machine.save_state(original));
+  const auto before = read_file(original);
+
+  const auto result = machine.load_state(invalid);
+  REQUIRE_FALSE(result);
+  CHECK(result.error() == StateError::Corrupt);
+  REQUIRE(machine.save_state(after));
+  CHECK((read_file(after) == before));
+
+  std::remove(original);
+  std::remove(invalid);
+  std::remove(after);
+}
 
 TEST_CASE("a loaded state re-serializes byte-for-byte and runs identically",
           "[state_machine]")

@@ -68,7 +68,7 @@ StateV3::deserialize(std::span<const uint8_t> blob)
   std::vector<StateChunk> chunks;
   size_t pos = 12;
   for (uint32_t i = 0; i < count; i++) {
-    if (pos + 8 > blob.size()) {
+    if (blob.size() - pos < 8) {
       return std::unexpected(StateV3Error::Corrupt);
     }
     const uint32_t id = read_u32_le(blob, pos);
@@ -169,7 +169,7 @@ uint64_t ChunkReader::u64()
 
 std::span<const uint8_t> ChunkReader::bytes(size_t count)
 {
-  if (m_pos + count > m_payload.size()) {
+  if (count > remaining()) {
     m_ok = false;
     m_pos = m_payload.size();
     return {};
