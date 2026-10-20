@@ -141,6 +141,21 @@ uninstall:
 # Static Analysis & Code Quality
 # =============================================================================
 
+# Keep the normal build intact; dependencies must already be available locally.
+test-sanitize:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    setup_args=(--wrap-mode=nodownload -Dui-backend=console -Dnetplay=false
+                -Dbuildtype=debugoptimized -Dgcc-version=no
+                -Db_sanitize=address,undefined
+                "-Dcpp_args=-fno-omit-frame-pointer -fno-sanitize-recover=undefined -D_GLIBCXX_ASSERTIONS")
+    if [[ -f build-ub-check/meson-private/coredata.dat ]]; then
+        setup_args+=(--reconfigure)
+    fi
+    meson setup build-ub-check "${setup_args[@]}"
+    meson compile -C build-ub-check
+    meson test -C build-ub-check --print-errorlogs
+
 # Run Clang Static Analyzer (requires clang)
 analyze:
     @if [ ! -d build ]; then \
