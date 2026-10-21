@@ -1439,6 +1439,165 @@ TEST_CASE("vdp fill dma replicates the latch bytes", "[vdp_dma]")
   CHECK(vdp.port_read(0xC00000) == 0xABCD);
 }
 
+/* --- window plane --- */
+
+namespace {
+
+void window_reg(Vdp &vdp, int reg, uint8_t value)
+{
+  vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | value));
+}
+
+void vram_word_write(Vdp &vdp, uint32_t addr, uint16_t value)
+{
+  vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
+  vdp.port_write(0xC00004, (uint16_t)((addr >> 14) & 3));
+  vdp.port_write(0xC00000, value);
+}
+
+/* One 4-byte pattern row: two big-endian pixel nibbles per byte. */
+void pattern_row(Vdp &vdp, uint16_t tile, uint8_t row, uint16_t a, uint16_t b)
+{
+  const uint32_t addr = (uint32_t)(tile & 0x7FF) * 32 + (uint32_t)row * 4;
+  vram_word_write(vdp, addr, a);
+  vram_word_write(vdp, addr + 2, b);
+}
+
+}  // namespace
+
+TEST_CASE("vdp window fetches 64-cell name table rows in H40", "[vdp_window]")
+{
+  Vdp vdp;
+  vdp.reset(false);
+  window_reg(vdp, 0x01, 0x40); /* display on */
+  window_reg(vdp, 0x03, 0x00); /* window name table at 0 */
+  window_reg(vdp, 0x07, 0x3F); /* backdrop */
+  window_reg(vdp, 0x0C, 0x81); /* H40 */
+  window_reg(vdp, 0x0D, 0x3F); /* hscroll table away from base 0 */
+  window_reg(vdp, 0x0F, 0x02); /* auto-increment two */
+  window_reg(vdp, 0x10, 0x00); /* plane 32x32 */
+  window_reg(vdp, 0x11, 0x01); /* left window, 16 pixels */
+  window_reg(vdp, 0x12, 0x02); /* window band covers vcells 0-1 */
+
+  /* Line 8 is window row 1. Plane-A-style rows are 64 cells wide, so
+   * column 0 of that row is cell 64 (byte 0x80); a 40-cell stride would
+   * fetch cell 40 instead. */
+  vram_word_write(vdp, 0x80, 0x0020); /* opaque colour 3 */
+  vram_word_write(vdp, 0x50, 0x0021); /* decoy colour 1 */
+  pattern_row(vdp, 0x020, 0, 0x3333, 0x3333);
+  pattern_row(vdp, 0x021, 0, 0x1111, 0x1111);
+
+  vdp.render_line(8);
+  CHECK(vdp.line_pixels(8)[0] == 3);
+}
+
+TEST_CASE("vdp window uses 32-cell name table rows in H32", "[vdp_window]")
+{
+  Vdp vdp;
+  vdp.reset(false);
+  window_reg(vdp, 0x01, 0x40);
+  window_reg(vdp, 0x03, 0x00);
+  window_reg(vdp, 0x07, 0x3F);
+  window_reg(vdp, 0x0C, 0x80); /* H32 */
+  window_reg(vdp, 0x0D, 0x3F);
+  window_reg(vdp, 0x0F, 0x02);
+  window_reg(vdp, 0x10, 0x00);
+  window_reg(vdp, 0x11, 0x01);
+  window_reg(vdp, 0x12, 0x03); /* window band covers vcells 0-2 */
+
+  /* Line 16 is window row 2: cell 64 with a 32-cell stride; the old
+   * 40-cell stride fetches cell 80. */
+  vram_word_write(vdp, 0x80, 0x0020);
+  vram_word_write(vdp, 0xA0, 0x0021);
+  pattern_row(vdp, 0x020, 0, 0x3333, 0x3333);
+  pattern_row(vdp, 0x021, 0, 0x1111, 0x1111);
+
+  vdp.render_line(16);
+  CHECK(vdp.line_pixels(16)[0] == 3);
+}
+
+TEST_CASE("vdp window leaves plane B visible underneath", "[vdp_window]")
+{
+  Vdp vdp;
+  vdp.reset(false);
+  window_reg(vdp, 0x01, 0x40);
+  window_reg(vdp, 0x03, 0x00); /* window name table at 0 */
+  window_reg(vdp, 0x04, 0x07); /* plane B base 0xE000 */
+  window_reg(vdp, 0x07, 0x3F); /* backdrop colour 63 */
+  window_reg(vdp, 0x0C, 0x81); /* H40 */
+  window_reg(vdp, 0x0D, 0x3F);
+  window_reg(vdp, 0x0F, 0x02);
+  window_reg(vdp, 0x10, 0x00); /* plane 32x32 */
+  window_reg(vdp, 0x11, 0x01); /* left window, 16 pixels */
+  window_reg(vdp, 0x12, 0x02);
+
+  /* The window cell on line 8 is transparent; plane B has an opaque
+   * pixel at the same spot and must still be composited. */
+  vram_word_write(vdp, 0x80, 0x0000);
+  vram_word_write(vdp, 0xE040, 0x0022); /* plane B row 1, column 0 */
+  pattern_row(vdp, 0x022, 0, 0x2222, 0x2222);
+
+  vdp.render_line(8);
+  CHECK(vdp.line_pixels(8)[0] == 2);
+}
+
+TEST_CASE("vdp dma length zero means a full 64K-word sweep", "[vdp_dma]")
+{
+  Vdp vdp;
+  vdp.reset(false);
+  auto regw = [&](int reg, uint8_t val) {
+    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+  };
+  regw(0x01, 0x10); /* DMA enable */
+  regw(0x0F, 0x02); /* increment two */
+  regw(0x13, 0x00); /* length 0 = 65536 words */
+  regw(0x14, 0x00);
+  regw(0x17, 0x80); /* type 2 = fill */
+  vdp.port_write(0xC00004, (uint16_t)(0x4000 | 0x0000));
+  vdp.port_write(0xC00004, (uint16_t)0x0080);
+  vdp.port_write(0xC00000, 0x1234);
+  /* The sweep wraps VRAM and lands on word 0 again after 65536 writes;
+   * with a zero-length no-op the first word stays zero instead. */
+  CHECK(vdp.vram_word(0x0000) == 0x1234);
+  CHECK(vdp.vram_word(0xFFFE) == 0x1234);
+}
+
+TEST_CASE("vdp dma clears the length counter after a transfer", "[vdp_dma]")
+{
+  Vdp vdp;
+  vdp.reset(false);
+  auto regw = [&](int reg, uint8_t val) {
+    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+  };
+  regw(0x01, 0x10); /* DMA enable */
+  regw(0x0F, 0x02); /* increment two */
+  vdp.set_dma_reader([](uint32_t addr) -> uint16_t {
+    return addr >= 0x400 ? 0x5555 : 0xAAAA;
+  });
+
+  /* First transfer stores a length high byte of 1 (0x104 words). */
+  regw(0x13, 0x04);
+  regw(0x14, 0x01);
+  regw(0x15, 0x00); /* source 0x200 */
+  regw(0x16, 0x01);
+  regw(0x17, 0x00); /* bank 0, memory to VDP */
+  vdp.port_write(0xC00004, (uint16_t)(0x4000 | 0x2000));
+  vdp.port_write(0xC00004, (uint16_t)0x0080);
+
+  /* The second transfer writes only the low length byte, which is what
+   * games do once the counter has been cleared by the first one. */
+  regw(0x13, 0x02);
+  regw(0x15, 0x00); /* source 0x400 */
+  regw(0x16, 0x02);
+  vdp.port_write(0xC00004, (uint16_t)(0x4000 | 0x3000));
+  vdp.port_write(0xC00004, (uint16_t)0x0080);
+
+  CHECK(vdp.vram_word(0x3000) == 0x5555);
+  CHECK(vdp.vram_word(0x3002) == 0x5555);
+  /* A stale 0x01 high byte would run 0x102 words and reach 0x3004. */
+  CHECK(vdp.vram_word(0x3004) == 0x0000);
+}
+
 TEST_CASE("andi.w #imm,abs.w modifies memory", "[m68k]")
 {
   Rig rig;
