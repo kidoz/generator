@@ -11,7 +11,8 @@ namespace {
  * stored zero means the full 65536-word sweep, not an empty transfer. */
 uint32_t dma_length(uint8_t lo, uint8_t hi)
 {
-  const uint32_t words = (uint32_t)lo | ((uint32_t)hi << 8);
+  const uint32_t words =
+      static_cast<uint32_t>(lo) | (static_cast<uint32_t>(hi) << 8);
   return words == 0 ? 0x10000u : words;
 }
 
@@ -426,10 +427,11 @@ void Vdp::run_dma_transfer()
    * 272-word one that wraps through CRAM and zeroes the palette. */
   m_reg[19] = 0;
   m_reg[20] = 0;
-  uint32_t offset = (uint32_t)m_reg[21] | ((uint32_t)m_reg[22] << 8);
+  uint32_t offset = static_cast<uint32_t>(m_reg[21]) |
+                    (static_cast<uint32_t>(m_reg[22]) << 8);
   offset = (offset + length) & 0xFFFF;
-  m_reg[21] = (uint8_t)offset;
-  m_reg[22] = (uint8_t)(offset >> 8);
+  m_reg[21] = static_cast<uint8_t>(offset);
+  m_reg[22] = static_cast<uint8_t>(offset >> 8);
   m_dma_busy = false;
 }
 
@@ -475,8 +477,8 @@ void Vdp::run_dma_copy()
   m_reg[19] = 0;
   m_reg[20] = 0;
   /* The copy's source counter ends just past the last word read. */
-  m_reg[21] = (uint8_t)((src >> 1) & 0xFF);
-  m_reg[22] = (uint8_t)((src >> 9) & 0xFF);
+  m_reg[21] = static_cast<uint8_t>((src >> 1) & 0xFF);
+  m_reg[22] = static_cast<uint8_t>((src >> 9) & 0xFF);
   m_dma_busy = false;
 }
 
