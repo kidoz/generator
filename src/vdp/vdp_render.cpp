@@ -109,7 +109,13 @@ Vdp::Px Vdp::layer_pixel(int layer, uint32_t line, uint32_t x) const
 Vdp::Px Vdp::window_pixel(uint32_t line, uint32_t x) const
 {
   const uint32_t ntbase = (m_reg[3] & 0x3E) << 10;
-  const uint16_t cell = vram_word(ntbase + ((x >> 3) + 40 * (line >> 3)) * 2);
+  /* The window plane shares plane A's name-table layout, so its rows are
+   * 64 cells wide in H40 and 32 in H32. The visible 40/32-cell span is
+   * only the part fetched; a 40-cell stride shifts every row and makes
+   * any window effect fetch unrelated cells. */
+  const uint32_t row_cells = h40() ? 64 : 32;
+  const uint16_t cell =
+      vram_word(ntbase + ((x >> 3) + row_cells * (line >> 3)) * 2);
   const uint32_t row = line & 7;
   const uint32_t pattern =
       ((cell & 0x7FF) << 5) + ((cell & 0x1000) ? (7 - row) : row) * 4;
@@ -228,7 +234,12 @@ void Vdp::render_line(uint32_t line)
         win_v && x < width && (win_right ? x >= win_h : x < win_h);
     const Px a = in_window ? window_pixel(line, x)
                            : (x < width ? layer_pixel(0, line, x) : Px{0, 0});
-    const Px b = (x < width && !in_window) ? layer_pixel(1, line, x) : Px{0, 0};
+    /* The window replaces plane A only: plane B is still fetched and
+     * composited underneath it. Suppressing plane B across the window
+     * turns every transparent window pixel into backdrop (black when
+     * reg7 is zero), which is exactly what a full-screen window effect
+     * must not do. */
+    const Px b = x < width ? layer_pixel(1, line, x) : Px{0, 0};
     const Px s = x < width ? sprite_px[x] : Px{0, 0};
 
     /* per-pixel priority: tier = priority bit; within a tier the order
