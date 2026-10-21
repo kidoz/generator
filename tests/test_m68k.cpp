@@ -1368,7 +1368,7 @@ TEST_CASE("vdp data writes retain the complete 64K VRAM address", "[vdp_port]")
   generator::Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   regw(0x0F, 2);    /* increment one word */
   regw(0x10, 0x04); /* plane size; unrelated to the address counter */
@@ -1389,7 +1389,7 @@ TEST_CASE("vdp 68k-to-vram dma moves words through the bus", "[vdp_dma]")
   generator::Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   regw(0x01, 0x10); /* DMA enable */
   regw(0x0F, 2);    /* increment 2 */
@@ -1419,7 +1419,7 @@ TEST_CASE("vdp fill dma replicates the latch bytes", "[vdp_dma]")
   generator::Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   regw(0x01, 0x10); /* DMA enable */
   regw(0x0F, 1);    /* increment 1 */
@@ -1445,20 +1445,21 @@ namespace {
 
 void window_reg(Vdp &vdp, int reg, uint8_t value)
 {
-  vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | value));
+  vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | value));
 }
 
 void vram_word_write(Vdp &vdp, uint32_t addr, uint16_t value)
 {
-  vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
-  vdp.port_write(0xC00004, (uint16_t)((addr >> 14) & 3));
+  vdp.port_write(0xC00004, static_cast<uint16_t>(0x4000 | (addr & 0x3FFF)));
+  vdp.port_write(0xC00004, static_cast<uint16_t>((addr >> 14) & 3));
   vdp.port_write(0xC00000, value);
 }
 
 /* One 4-byte pattern row: two big-endian pixel nibbles per byte. */
 void pattern_row(Vdp &vdp, uint16_t tile, uint8_t row, uint16_t a, uint16_t b)
 {
-  const uint32_t addr = (uint32_t)(tile & 0x7FF) * 32 + (uint32_t)row * 4;
+  const uint32_t addr =
+      static_cast<uint32_t>(tile & 0x7FF) * 32 + static_cast<uint32_t>(row) * 4;
   vram_word_write(vdp, addr, a);
   vram_word_write(vdp, addr + 2, b);
 }
@@ -1546,15 +1547,15 @@ TEST_CASE("vdp dma length zero means a full 64K-word sweep", "[vdp_dma]")
   Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   regw(0x01, 0x10); /* DMA enable */
   regw(0x0F, 0x02); /* increment two */
   regw(0x13, 0x00); /* length 0 = 65536 words */
   regw(0x14, 0x00);
   regw(0x17, 0x80); /* type 2 = fill */
-  vdp.port_write(0xC00004, (uint16_t)(0x4000 | 0x0000));
-  vdp.port_write(0xC00004, (uint16_t)0x0080);
+  vdp.port_write(0xC00004, static_cast<uint16_t>(0x4000 | 0x0000));
+  vdp.port_write(0xC00004, static_cast<uint16_t>(0x0080));
   vdp.port_write(0xC00000, 0x1234);
   /* The sweep wraps VRAM and lands on word 0 again after 65536 writes;
    * with a zero-length no-op the first word stays zero instead. */
@@ -1567,7 +1568,7 @@ TEST_CASE("vdp dma clears the length counter after a transfer", "[vdp_dma]")
   Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   regw(0x01, 0x10); /* DMA enable */
   regw(0x0F, 0x02); /* increment two */
@@ -1581,16 +1582,16 @@ TEST_CASE("vdp dma clears the length counter after a transfer", "[vdp_dma]")
   regw(0x15, 0x00); /* source 0x200 */
   regw(0x16, 0x01);
   regw(0x17, 0x00); /* bank 0, memory to VDP */
-  vdp.port_write(0xC00004, (uint16_t)(0x4000 | 0x2000));
-  vdp.port_write(0xC00004, (uint16_t)0x0080);
+  vdp.port_write(0xC00004, static_cast<uint16_t>(0x4000 | 0x2000));
+  vdp.port_write(0xC00004, static_cast<uint16_t>(0x0080));
 
   /* The second transfer writes only the low length byte, which is what
    * games do once the counter has been cleared by the first one. */
   regw(0x13, 0x02);
   regw(0x15, 0x00); /* source 0x400 */
   regw(0x16, 0x02);
-  vdp.port_write(0xC00004, (uint16_t)(0x4000 | 0x3000));
-  vdp.port_write(0xC00004, (uint16_t)0x0080);
+  vdp.port_write(0xC00004, static_cast<uint16_t>(0x4000 | 0x3000));
+  vdp.port_write(0xC00004, static_cast<uint16_t>(0x0080));
 
   CHECK(vdp.vram_word(0x3000) == 0x5555);
   CHECK(vdp.vram_word(0x3002) == 0x5555);
@@ -1825,7 +1826,7 @@ TEST_CASE("vdp command words decode cd5..cd2 from the second word",
   generator::Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   regw(0x0F, 2);
 
@@ -1990,7 +1991,7 @@ TEST_CASE("sprite size comes from the high byte of the second word",
   generator::Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   auto vwrite = [&](uint32_t addr, uint16_t value) {
     vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
@@ -2029,7 +2030,7 @@ TEST_CASE("sprite mask entry stops lower-priority sprites on its scanline",
   generator::Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   auto vwrite = [&](uint32_t addr, uint16_t value) {
     vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
@@ -2073,7 +2074,7 @@ TEST_CASE("cell horizontal scroll uses one table pair per eight scanlines",
   generator::Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   auto vwrite = [&](uint32_t addr, uint16_t value) {
     vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
@@ -2108,7 +2109,7 @@ TEST_CASE("two-cell vertical scroll leaves partial left fetch unscrolled",
   generator::Vdp vdp;
   vdp.reset(false);
   auto regw = [&](int reg, uint8_t val) {
-    vdp.port_write(0xC00004, (uint16_t)(0x8000 | reg << 8 | val));
+    vdp.port_write(0xC00004, static_cast<uint16_t>(0x8000 | reg << 8 | val));
   };
   auto vwrite = [&](uint32_t addr, uint16_t value) {
     vdp.port_write(0xC00004, (uint16_t)(0x4000 | (addr & 0x3FFF)));
