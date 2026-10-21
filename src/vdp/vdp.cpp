@@ -7,6 +7,14 @@ namespace generator {
 
 namespace {
 
+/* The length register is a 16-bit down-counter with a do/while shape: a
+ * stored zero means the full 65536-word sweep, not an empty transfer. */
+uint32_t dma_length(uint8_t lo, uint8_t hi)
+{
+  const uint32_t words = (uint32_t)lo | ((uint32_t)hi << 8);
+  return words == 0 ? 0x10000u : words;
+}
+
 /* Every scanline is 3420 master clocks, in both H modes. H32 gets there
  * with 342 dots at master/10; H40 has 420 dots but cannot: 420 x 8 is
  * only 3360, so the chip runs the tail of the line on the slower clock
@@ -400,7 +408,7 @@ void Vdp::charge_dma(uint32_t words)
 void Vdp::run_dma_transfer()
 {
   m_dma_busy = true;
-  const uint32_t length = (uint32_t)m_reg[19] | ((uint32_t)m_reg[20] << 8);
+  const uint32_t length = dma_length(m_reg[19], m_reg[20]);
   const uint32_t src = (((uint32_t)m_reg[23] & 0xFF) << 17) |
                        ((uint32_t)m_reg[22] << 9) | ((uint32_t)m_reg[21] << 1);
   for (uint32_t i = 0; i < length; i++) {
@@ -411,13 +419,24 @@ void Vdp::run_dma_transfer()
     data_write(word);
   }
   charge_dma(length);
+  /* The VDP clears the length counter when the transfer completes and
+   * leaves the source counter at its final position. Games rely on the
+   * clear: Batman & Robin programs only the low length byte for short
+   * palette transfers, so a stale high byte turns a 16-word DMA into a
+   * 272-word one that wraps through CRAM and zeroes the palette. */
+  m_reg[19] = 0;
+  m_reg[20] = 0;
+  uint32_t offset = (uint32_t)m_reg[21] | ((uint32_t)m_reg[22] << 8);
+  offset = (offset + length) & 0xFFFF;
+  m_reg[21] = (uint8_t)offset;
+  m_reg[22] = (uint8_t)(offset >> 8);
   m_dma_busy = false;
 }
 
 void Vdp::run_dma_fill(uint16_t latch)
 {
   m_dma_busy = true;
-  const uint32_t length = (uint32_t)m_reg[19] | ((uint32_t)m_reg[20] << 8);
+  const uint32_t length = dma_length(m_reg[19], m_reg[20]);
   const uint8_t hi = (uint8_t)(latch >> 8);
   const uint8_t lo = (uint8_t)latch;
   for (uint32_t i = 0; i < length; i++) {
@@ -434,13 +453,15 @@ void Vdp::run_dma_fill(uint16_t latch)
     }
   }
   charge_dma(length);
+  m_reg[19] = 0;
+  m_reg[20] = 0;
   m_dma_busy = false;
 }
 
 void Vdp::run_dma_copy()
 {
   m_dma_busy = true;
-  const uint32_t length = (uint32_t)m_reg[19] | ((uint32_t)m_reg[20] << 8);
+  const uint32_t length = dma_length(m_reg[19], m_reg[20]);
   uint32_t src = ((((uint32_t)m_reg[23] & 0xFF) << 17) |
                   ((uint32_t)m_reg[22] << 9) | ((uint32_t)m_reg[21] << 1)) &
                  0xFFFE;
@@ -451,6 +472,11 @@ void Vdp::run_dma_copy()
     src = (src + 2) & 0xFFFF;
   }
   charge_dma(length);
+  m_reg[19] = 0;
+  m_reg[20] = 0;
+  /* The copy's source counter ends just past the last word read. */
+  m_reg[21] = (uint8_t)((src >> 1) & 0xFF);
+  m_reg[22] = (uint8_t)((src >> 9) & 0xFF);
   m_dma_busy = false;
 }
 
