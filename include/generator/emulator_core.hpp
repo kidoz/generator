@@ -7,6 +7,7 @@
 #include "interfaces/audio_backend.hpp"
 #include "interfaces/video_backend.hpp"
 #include "interfaces/logger.hpp"
+#include "media.hpp"
 #include "state_error.hpp"
 
 #include <atomic>
@@ -42,7 +43,11 @@ public:
   EmulatorCore(EmulatorCore &&) = delete;
   EmulatorCore &operator=(EmulatorCore &&) = delete;
 
-  // --- ROM handling ---
+  // --- Media handling ---
+
+  std::expected<void, std::string>
+  load_media(std::string_view filename, const MediaLoadOptions &options = {});
+  MediaInfo media_info() const;
 
   std::expected<void, std::string> load_rom(std::string_view filename);
   std::expected<void, std::string>

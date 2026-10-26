@@ -14,6 +14,7 @@
 #include "interfaces/logger.hpp"
 
 #include "generator.h" /* t_cartinfo */
+#include "media.hpp"
 #include "state_error.hpp"
 
 #include <ctime>
@@ -42,7 +43,11 @@ public:
   CoreImplBase(CoreImplBase &&) = delete;
   CoreImplBase &operator=(CoreImplBase &&) = delete;
 
-  // --- ROM handling ---
+  // --- Media handling ---
+
+  virtual std::expected<void, std::string>
+  load_media(std::string_view filename, const MediaLoadOptions &options) = 0;
+  virtual MediaInfo media_info() const = 0;
 
   virtual std::expected<void, std::string>
   load_rom(std::string_view filename) = 0;

@@ -7,6 +7,7 @@
 #include "emulator_core_impl.hpp"
 
 #include "machine.hpp"
+#include "media_detect.hpp"
 
 #include <ctime>
 #include <utility>
@@ -14,6 +15,12 @@
 namespace generator {
 
 namespace {
+
+std::expected<void, std::string> unsupported_system(const MediaInfo &info)
+{
+  return std::unexpected(std::string(system_name(info.system)) +
+                         " support is not implemented yet");
+}
 
 class EmulatorCoreImpl final : public CoreImplBase {
 public:
@@ -26,20 +33,68 @@ public:
     m_machine.logger().log(LogLevel::Verbose, "core: machine created");
   }
 
+  std::expected<void, std::string>
+  load_media(std::string_view filename,
+             const MediaLoadOptions &options) override
+  {
+    auto detected = detect_media(filename, {}, options);
+    if (!detected) {
+      return std::unexpected(detected.error());
+    }
+    if (detected->system != SystemKind::MegaDrive) {
+      return unsupported_system(*detected);
+    }
+
+    auto data = read_media_file(filename);
+    if (!data) {
+      return std::unexpected(data.error());
+    }
+    detected = detect_media(filename, *data, options);
+    if (!detected) {
+      return std::unexpected(detected.error());
+    }
+    if (detected->system != SystemKind::MegaDrive) {
+      return unsupported_system(*detected);
+    }
+
+    auto result = m_machine.load_rom_mem(*data, filename);
+    if (result) {
+      m_media_info = *detected;
+    }
+    return result;
+  }
+
+  MediaInfo media_info() const override
+  {
+    return m_media_info;
+  }
+
   std::expected<void, std::string> load_rom(std::string_view filename) override
   {
-    return m_machine.load_rom(filename);
+    return load_media(filename, {});
   }
 
   std::expected<void, std::string>
   load_rom_mem(std::span<const uint8_t> rom_data) override
   {
-    return m_machine.load_rom_mem(rom_data);
+    auto detected = detect_media({}, rom_data);
+    if (!detected) {
+      return std::unexpected(detected.error());
+    }
+    if (detected->system != SystemKind::MegaDrive) {
+      return unsupported_system(*detected);
+    }
+    auto result = m_machine.load_rom_mem(rom_data);
+    if (result) {
+      m_media_info = *detected;
+    }
+    return result;
   }
 
   void unload_rom() override
   {
     m_machine.unload_rom();
+    m_media_info = {};
   }
 
   bool rom_loaded() const override
@@ -186,6 +241,7 @@ public:
 
 private:
   Machine m_machine;
+  MediaInfo m_media_info{};
 };
 
 }  // namespace

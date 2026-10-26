@@ -58,7 +58,8 @@ public:
 
   std::expected<void, std::string> load_rom(std::string_view filename);
   std::expected<void, std::string>
-  load_rom_mem(std::span<const uint8_t> rom_data);
+  load_rom_mem(std::span<const uint8_t> rom_data,
+               std::string_view filename = {});
   void unload_rom();
   bool rom_loaded() const;
 

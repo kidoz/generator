@@ -22,9 +22,21 @@ EmulatorCore::EmulatorCore(std::unique_ptr<IAudioBackend> audio,
 EmulatorCore::~EmulatorCore() = default;
 
 std::expected<void, std::string>
+EmulatorCore::load_media(std::string_view filename,
+                         const MediaLoadOptions &options)
+{
+  return m_impl->load_media(filename, options);
+}
+
+MediaInfo EmulatorCore::media_info() const
+{
+  return m_impl->media_info();
+}
+
+std::expected<void, std::string>
 EmulatorCore::load_rom(std::string_view filename)
 {
-  return m_impl->load_rom(filename);
+  return load_media(filename);
 }
 
 std::expected<void, std::string>

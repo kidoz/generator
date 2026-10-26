@@ -297,7 +297,8 @@ std::expected<void, std::string> Machine::load_rom(std::string_view filename)
 }
 
 std::expected<void, std::string>
-Machine::load_rom_mem(std::span<const uint8_t> rom_data)
+Machine::load_rom_mem(std::span<const uint8_t> rom_data,
+                      std::string_view filename)
 {
   auto normalized = normalize_rom(rom_data);
   if (!normalized) {
@@ -325,6 +326,13 @@ Machine::load_rom_mem(std::span<const uint8_t> rom_data)
   m_halted = false;
   m_mclk_total = 0;
   m_frames = 0;
+  if (!filename.empty()) {
+    const std::string name(filename);
+    const size_t slash = name.find_last_of("/\\");
+    std::snprintf(m_leafname.data(), m_leafname.size(), "%s",
+                  slash == std::string::npos ? name.c_str()
+                                             : name.c_str() + slash + 1);
+  }
   return {};
 }
 
