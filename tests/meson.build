@@ -116,6 +116,37 @@ test('state_machine', test_state_machine,
 )
 
 if ui_backend == 'gtk4'
+  video_presentation_test_sources = files(
+    '../src/ui/gtkmm/video_presentation.cpp',
+    '../src/video/uiplot.cpp',
+    '../src/video/uiplot_cram.cpp'
+  )
+  test_video_presentation = executable('test_video_presentation',
+    'test_video_presentation.cpp',
+    video_presentation_test_sources,
+    include_directories: [machine_test_inc, include_directories('../src/ui/gtkmm')],
+    dependencies: [catch2_dep, gtkopts_dep, xbrz_dep],
+    build_by_default: false
+  )
+  test('video_presentation', test_video_presentation,
+    timeout: 30,
+    suite: 'catch2'
+  )
+  test_video_preferences = executable('test_video_preferences',
+    'test_video_preferences.cpp',
+    '../src/ui/gtkmm/preferences_dialog.cpp',
+    '../src/ui/gtkmm/emulator_view.cpp',
+    '../src/ui/gtkmm/emulator_thread.cpp',
+    '../src/ui/headless/soundp_null.cpp',
+    video_presentation_test_sources,
+    include_directories: [machine_test_inc, include_directories('../src/ui/gtkmm')],
+    dependencies: [catch2_dep, core_dep, z80f_dep, gtkmm_dep, adwaita_dep, sdl3_dep, gtkopts_dep, xbrz_dep, dependency('threads')],
+    build_by_default: false
+  )
+  test('video_preferences', test_video_preferences,
+    timeout: 30,
+    suite: 'catch2'
+  )
   test_emulator_thread = executable('test_emulator_thread',
     'test_emulator_thread.cpp',
     '../src/ui/gtkmm/emulator_thread.cpp',
