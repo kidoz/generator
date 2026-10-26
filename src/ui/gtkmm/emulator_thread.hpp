@@ -39,6 +39,7 @@ private:
 
   std::thread m_thread;
   std::mutex m_mutex;
+  std::mutex m_exclusive_mutex;
   std::condition_variable m_cond;
 
   bool m_thread_alive{false};

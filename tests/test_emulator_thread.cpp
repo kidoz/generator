@@ -26,3 +26,15 @@ TEST_CASE("GTK worker stops and restarts around exclusive calls",
   worker.run_exclusive([&] { ++calls; });
   CHECK(calls == 101);
 }
+
+TEST_CASE("GTK worker acknowledges consecutive exclusive handoffs",
+          "[emulator_thread]")
+{
+  EmulatorThread worker;
+  worker.start();
+  unsigned int calls = 0;
+  for (unsigned int i = 0; i < 1000; ++i)
+    worker.run_exclusive([&] { ++calls; });
+  worker.stop();
+  CHECK(calls == 1000);
+}

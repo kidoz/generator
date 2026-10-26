@@ -59,6 +59,7 @@ void EmulatorThread::set_emulation_running(bool running)
 
 void EmulatorThread::run_exclusive(const std::function<void()> &fn)
 {
+  std::lock_guard caller_lock(m_exclusive_mutex);
   {
     std::unique_lock<std::mutex> lock(m_mutex);
     if (!m_thread_alive) {
@@ -75,11 +76,15 @@ void EmulatorThread::run_exclusive(const std::function<void()> &fn)
   fn();
 
   {
-    std::lock_guard<std::mutex> lock(m_mutex);
+    std::unique_lock<std::mutex> lock(m_mutex);
     m_exclusive_requested = false;
-    m_exclusive_active = false;
     m_exclusive_cond.notify_all();
     m_cond.notify_all();
+    // Let the worker leave its parked wait before another caller can
+    // request exclusivity. Otherwise a new request can hide the release
+    // from the previous wait and leave both threads waiting forever.
+    m_exclusive_cond.wait(
+        lock, [this] { return !m_exclusive_active || !m_thread_alive; });
   }
 }
 
@@ -121,6 +126,7 @@ void EmulatorThread::thread_loop()
       m_exclusive_cond.wait(
           lock, [this] { return !m_exclusive_requested || !m_thread_alive; });
       m_exclusive_active = false;
+      m_exclusive_cond.notify_all();
       /* Do not try to catch up the paused interval. */
       last_frame_time = g_get_monotonic_time();
       continue;
