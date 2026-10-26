@@ -142,7 +142,7 @@ meson setup build --buildtype=release -Dui-backend=gtk4
 - **xBRZ Upscaling** - High-quality pixel art upscaling (2x, 3x, 4x)
 - **Scale2x/3x/4x** - Fast EPX-based upscaling algorithms
 - **Save States** - Full save/load state support
-- **YM2612 + SN76496** - Accurate sound emulation
+- **YM3438 + SN76489** - Accurate sound emulation
 
 ## Architecture
 
@@ -157,19 +157,22 @@ meson setup build --buildtype=release -Dui-backend=gtk4
 
 ```
 generator/
-├── include/
-│   └── generator/  # Header files (shared across components)
+├── include/generator/   # Public headers (EmulatorCore and the UI seam)
 ├── src/
-│   ├── core/       # Emulator core and context
-│   ├── cpu/        # 68k and Z80 emulation
-│   ├── audio/      # YM2612 + SN76496
-│   ├── video/      # VDP and rendering helpers
-│   ├── platform/   # SDL3 platform layer
-│   ├── persist/    # Save states, AVI, patching
-│   ├── ui/         # GTK4, console, headless
-│   ├── xbrz/       # xBRZ image upscaler (C++23)
-│   └── app/        # Entry point and event loop
-└── meson.build    # Build configuration
+│   ├── core/            # EmulatorCore and Machine (clock, cartridge, state)
+│   ├── m68k/            # 68000 interpreter
+│   ├── bus/             # 68000 address decode, ROM mirror, SRAM window
+│   ├── z80/             # Z80 chip and its bus (z80f subproject)
+│   ├── vdp/             # VDP ports, raster timing, planes and sprites
+│   ├── audio/           # YM3438 and SN76489
+│   ├── video/           # Scanline presentation helpers
+│   ├── platform/        # SDL3 audio output
+│   ├── persist/         # AVI writer
+│   ├── network/         # Kaillera library (built only with -Dnetplay=true)
+│   ├── ui/              # gtkmm, nodalkit, console, headless
+│   ├── xbrz/            # xBRZ upscaler
+│   └── app/             # Process entry point
+└── meson.build
 ```
 
 ## Using Justfile
