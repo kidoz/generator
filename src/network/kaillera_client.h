@@ -33,6 +33,7 @@ typedef struct {
 
   /* Game events */
   void (*on_game_created)(uint32_t game_id, const char *name, const char *owner,
+                          int players, int max_players, int status,
                           void *user_data);
   void (*on_game_closed)(uint32_t game_id, void *user_data);
   void (*on_player_join)(int player_num, const char *username, void *user_data);

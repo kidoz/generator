@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <mutex>
 #include <string>
+#include <vector>
 
 #include "netplay.h"
 #include "kaillera_client.h"
@@ -25,7 +27,11 @@ static struct {
   kaillera_client_t *client;
   netplay_callbacks_t callbacks;
   char error_msg[256];
+  char expected_rom[128];
 } netplay_ctx;
+
+static std::mutex g_games_mu;
+static std::vector<netplay_game_t> g_games;
 
 /* Forward declarations for Kaillera callbacks */
 static void on_kaillera_connect(void *user_data);
@@ -37,6 +43,10 @@ static void on_kaillera_player_leave(int player_num, const char *username,
                                      void *user_data);
 static void on_kaillera_game_start(int num_players, void *user_data);
 static void on_kaillera_game_drop(void *user_data);
+static void on_kaillera_game_created(uint32_t game_id, const char *name,
+                                     const char *owner, int players,
+                                     int max_players, int status,
+                                     void *user_data);
 
 int netplay_init(void)
 {
@@ -54,6 +64,10 @@ int netplay_init(void)
 
   netplay_ctx.state = NETPLAY_DISCONNECTED;
   netplay_ctx.initialized = true;
+  {
+    std::lock_guard<std::mutex> lock(g_games_mu);
+    g_games.clear();
+  }
 
   return 0;
 }
@@ -105,21 +119,21 @@ int netplay_connect(const netplay_config_t *config, std::stop_token cancel)
   }
 
   /* Set up Kaillera callbacks */
-  kaillera_callbacks_t k_callbacks = {.on_connect = on_kaillera_connect,
-                                      .on_disconnect = on_kaillera_disconnect,
-                                      .on_error = on_kaillera_error,
-                                      .on_user_join = nullptr,
-                                      .on_user_quit = nullptr,
-                                      .on_chat = on_kaillera_chat,
-                                      .on_game_created = nullptr,
-                                      .on_game_closed = nullptr,
-                                      .on_player_join = nullptr,
-                                      .on_player_leave =
-                                          on_kaillera_player_leave,
-                                      .on_game_start = on_kaillera_game_start,
-                                      .on_game_drop = on_kaillera_game_drop,
-                                      .on_game_data = nullptr,
-                                      .user_data = nullptr};
+  kaillera_callbacks_t k_callbacks = {
+      .on_connect = on_kaillera_connect,
+      .on_disconnect = on_kaillera_disconnect,
+      .on_error = on_kaillera_error,
+      .on_user_join = nullptr,
+      .on_user_quit = nullptr,
+      .on_chat = on_kaillera_chat,
+      .on_game_created = on_kaillera_game_created,
+      .on_game_closed = nullptr,
+      .on_player_join = nullptr,
+      .on_player_leave = on_kaillera_player_leave,
+      .on_game_start = on_kaillera_game_start,
+      .on_game_drop = on_kaillera_game_drop,
+      .on_game_data = nullptr,
+      .user_data = nullptr};
   kaillera_client_set_callbacks(netplay_ctx.client, &k_callbacks);
 
   /* Initiate connection */
@@ -158,6 +172,10 @@ void netplay_disconnect(void)
 
   netplay_ctx.state = NETPLAY_DISCONNECTED;
   netplay_ctx.error_msg[0] = '\0';
+  {
+    std::lock_guard<std::mutex> lock(g_games_mu);
+    g_games.clear();
+  }
 }
 
 netplay_state_t netplay_get_state(void)
@@ -193,6 +211,55 @@ int netplay_create_game(const char *rom_name)
   return 0;
 }
 
+void netplay_set_expected_rom(const char *rom_name)
+{
+  if (rom_name == nullptr) {
+    netplay_ctx.expected_rom[0] = '\0';
+    return;
+  }
+  snprintf(netplay_ctx.expected_rom, sizeof(netplay_ctx.expected_rom), "%s",
+           rom_name);
+}
+
+int netplay_copy_games(netplay_game_t *out, int max_out)
+{
+  std::lock_guard<std::mutex> lock(g_games_mu);
+  if (out == nullptr || max_out <= 0)
+    return (int)g_games.size();
+  int n = (int)g_games.size();
+  if (n > max_out)
+    n = max_out;
+  for (int i = 0; i < n; i++)
+    out[i] = g_games[(size_t)i];
+  return n;
+}
+
+int netplay_player_count(void)
+{
+  if (!netplay_ctx.initialized || netplay_ctx.client == nullptr)
+    return 0;
+  int n = kaillera_client_get_num_players(netplay_ctx.client);
+  return n > 0 ? n : 0;
+}
+
+int netplay_is_host(void)
+{
+  if (!netplay_ctx.initialized || netplay_ctx.client == nullptr)
+    return 0;
+  kaillera_state_t kstate = kaillera_client_get_state(netplay_ctx.client);
+  if (kstate != KAILLERA_STATE_IN_GAME && kstate != KAILLERA_STATE_PLAYING)
+    return 0;
+  return kaillera_client_get_player_number(netplay_ctx.client) == 0;
+}
+
+int netplay_in_room(void)
+{
+  if (!netplay_ctx.initialized || netplay_ctx.client == nullptr)
+    return 0;
+  auto state = kaillera_client_get_state(netplay_ctx.client);
+  return state == KAILLERA_STATE_IN_GAME || state == KAILLERA_STATE_PLAYING;
+}
+
 int netplay_join_game(int game_id)
 {
   if (!netplay_ctx.initialized || netplay_ctx.client == nullptr)
@@ -200,6 +267,27 @@ int netplay_join_game(int game_id)
 
   if (netplay_ctx.state != NETPLAY_LOBBY)
     return -1;
+
+  bool listed = false;
+  {
+    std::lock_guard<std::mutex> lock(g_games_mu);
+    for (const netplay_game_t &game : g_games) {
+      if (game.id != game_id)
+        continue;
+      listed = true;
+      if (netplay_ctx.expected_rom[0] != '\0' &&
+          strcmp(game.name, netplay_ctx.expected_rom) != 0) {
+        snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
+                 "Loaded ROM does not match the room");
+        return -1;
+      }
+    }
+  }
+  if (!listed) {
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
+             "Game is not in the server list");
+    return -1;
+  }
 
   if (kaillera_client_join_game(netplay_ctx.client, (uint32_t)game_id) < 0) {
     const char *err = kaillera_client_get_error(netplay_ctx.client);
@@ -219,13 +307,19 @@ int netplay_start_game(void)
   if (kaillera_client_get_state(netplay_ctx.client) != KAILLERA_STATE_IN_GAME)
     return -1;
 
-  /* Send ready signal first */
+  if (kaillera_client_get_player_number(netplay_ctx.client) != 0) {
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
+             "Only the host can start the game");
+    return -1;
+  }
+
   kaillera_client_ready(netplay_ctx.client);
 
-  /* Start the game (if we're the host) */
   if (kaillera_client_start_game(netplay_ctx.client) < 0) {
-    /* Not host or error - wait for host to start */
-    return 0;
+    const char *err = kaillera_client_get_error(netplay_ctx.client);
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s",
+             err ? err : "Failed to start the game");
+    return -1;
   }
 
   return 0;
@@ -258,8 +352,20 @@ int netplay_chat_send(const char *text)
 
 int netplay_request_gamelist(void)
 {
-  /* The game list is received automatically via server status messages */
-  /* This function is a no-op but kept for API completeness */
+  /* The server pushes GAME_STATUS; there is no list-request message.
+   * Hand the cache to the callback so a UI refresh still has a call. */
+  if (!netplay_ctx.initialized)
+    return -1;
+  if (netplay_ctx.callbacks.on_gamelist) {
+    std::vector<netplay_game_t> copy;
+    {
+      std::lock_guard<std::mutex> lock(g_games_mu);
+      copy = g_games;
+    }
+    netplay_ctx.callbacks.on_gamelist(copy.empty() ? nullptr : copy.data(),
+                                      (int)copy.size(),
+                                      netplay_ctx.callbacks.user_data);
+  }
   return 0;
 }
 
@@ -471,6 +577,46 @@ static void on_kaillera_player_leave(int player_num, const char *username,
   if (netplay_ctx.callbacks.on_player_drop) {
     netplay_ctx.callbacks.on_player_drop(username, player_num,
                                          netplay_ctx.callbacks.user_data);
+  }
+}
+
+static void on_kaillera_game_created(uint32_t game_id, const char *name,
+                                     const char *owner, int players,
+                                     int max_players, int status,
+                                     void *user_data)
+{
+  (void)user_data;
+  netplay_game_t game{};
+  game.id = (int)game_id;
+  if (name != nullptr)
+    snprintf(game.name, sizeof(game.name), "%s", name);
+  if (owner != nullptr)
+    snprintf(game.owner, sizeof(game.owner), "%s", owner);
+  game.max_players = max_players;
+  game.num_players = players;
+  game.status = status;
+
+  std::vector<netplay_game_t> copy;
+  {
+    std::lock_guard<std::mutex> lock(g_games_mu);
+    bool replaced = false;
+    for (netplay_game_t &existing : g_games) {
+      if (existing.id == game.id) {
+        existing = game;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) {
+      if (g_games.size() >= 32)
+        g_games.erase(g_games.begin());
+      g_games.push_back(game);
+    }
+    copy = g_games;
+  }
+  if (netplay_ctx.callbacks.on_gamelist) {
+    netplay_ctx.callbacks.on_gamelist(copy.data(), (int)copy.size(),
+                                      netplay_ctx.callbacks.user_data);
   }
 }
 

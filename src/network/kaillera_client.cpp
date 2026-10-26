@@ -196,8 +196,9 @@ static void client_process_message(kaillera_client_t *client,
           p = kaillera_read_string(p, end, (char[64]){0}, 64); /* emulator */
           if (p != nullptr) {
             p = kaillera_read_string(p, end, owner, sizeof(owner));
-            if (p != nullptr) {
-              client->callbacks.on_game_created(game_id, name, owner,
+            if (p != nullptr && end - p >= 3) {
+              client->callbacks.on_game_created(game_id, name, owner, p[0],
+                                                p[1], p[2],
                                                 client->callbacks.user_data);
             }
           }
@@ -262,6 +263,13 @@ static void client_process_message(kaillera_client_t *client,
     break;
 
   case KAILLERA_MSG_START_GAME:
+    /* Host payload is [2B delay][1B player count]. The server's count
+     * wins over the join/leave tally, which can drift. */
+    if (msg->payload != nullptr && msg->length >= 3) {
+      int announced = msg->payload[2];
+      if (announced >= 1 && announced <= KAILLERA_MAX_PLAYERS)
+        client->num_players = announced;
+    }
     client->state = KAILLERA_STATE_PLAYING;
     client->frame_count = 0;
     client->have_game_seq = false;

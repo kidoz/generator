@@ -143,6 +143,23 @@ int netplay_create_game(const char *rom_name);
  */
 int netplay_join_game(int game_id);
 
+/* Room names must match this loaded-ROM title. Empty disables the check.
+ * Join refuses a listed room whose name differs, and refuses an id that
+ * is not in the list received from the server. */
+void netplay_set_expected_rom(const char *rom_name);
+
+/* Copy the cached game list. Returns the number of entries written. */
+int netplay_copy_games(netplay_game_t *out, int max_out);
+
+/* Players in the current match, or 0. */
+int netplay_player_count(void);
+
+/* Non-zero when this client created the room and has not left it. */
+int netplay_is_host(void);
+
+/* Non-zero while waiting in a room or playing, for either host or guest. */
+int netplay_in_room(void);
+
 /*
  * Start the game (host only).
  * Must be in NETPLAY_LOBBY state and be the game creator.
