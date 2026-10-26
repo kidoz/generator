@@ -168,6 +168,11 @@ public:
   };
   SavedState save() const;
   void restore(const SavedState &state);
+  /* Reject a raster or DMA counter that would spin advance_mclk. A state
+   * this build writes stays inside the limits: less than one dot of
+   * residual clock, a dot on the longer H40 line, a line in the selected
+   * field, and at most one full VRAM DMA of debt. */
+  static bool valid_saved_state(const SavedState &state);
   struct Px {
     uint8_t value; /* palette<<4 | color, 0 = transparent */
     uint8_t prio;  /* priority bit */

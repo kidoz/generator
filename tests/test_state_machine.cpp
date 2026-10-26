@@ -608,3 +608,50 @@ TEST_CASE("an oversized state file is rejected before it is applied",
   CHECK(result.error() == StateError::Corrupt);
   CHECK(machine.frame_count() == frames);
 }
+
+TEST_CASE("a VDP clock past one dot is rejected", "[state_v3]")
+{
+  TempStateDir dir;
+  const std::string path = (dir.path() / "vdp.gst").string();
+
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  machine.run_frame();
+  const unsigned int frames = machine.frame_count();
+  REQUIRE(machine.save_state(path).has_value());
+
+  auto chunks = StateV3::deserialize(read_file(path.c_str()));
+  REQUIRE(chunks.has_value());
+
+  /* VDP0 layout up to mclk: reg 24, vram 65536, cram 128, dirty 64,
+   * vsram 80, address 4, code 4, two flag bytes, read buffer 2, two
+   * more flag bytes. */
+  constexpr size_t kMclkAt =
+      24u + 65536u + 128u + 64u + 80u + 4u + 4u + 1u + 1u + 2u + 1u + 1u;
+  bool patched = false;
+  for (StateChunk &chunk : *chunks) {
+    if (chunk.id == fourcc("VDP0")) {
+      REQUIRE(chunk.data.size() >= kMclkAt + 8);
+      std::fill_n(chunk.data.begin() + (std::ptrdiff_t)kMclkAt, 8, 0xFF);
+      patched = true;
+    }
+    if (chunk.id == fourcc("CHKS")) {
+      chunk.data.assign(4, 0);
+    }
+  }
+  REQUIRE(patched);
+
+  std::vector<uint8_t> blob = StateV3::serialize(*chunks);
+  const uint32_t checksum = state_crc32(
+      std::span<const uint8_t>{blob.data(), blob.size() - sizeof(uint32_t)});
+  const size_t checksum_at = blob.size() - sizeof(uint32_t);
+  for (size_t i = 0; i < sizeof(uint32_t); i++) {
+    blob[checksum_at + i] = (uint8_t)((checksum >> (8 * i)) & 0xff);
+  }
+  save_blob(path.c_str(), blob);
+
+  const auto result = machine.load_state(path);
+  REQUIRE_FALSE(result.has_value());
+  CHECK(result.error() == StateError::Corrupt);
+  CHECK(machine.frame_count() == frames);
+}

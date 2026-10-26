@@ -111,6 +111,21 @@ Vdp::SavedState Vdp::save() const
   return state;
 }
 
+bool Vdp::valid_saved_state(const SavedState &state)
+{
+  if (state.pal > 1 || state.mclk >= 10 || state.dot >= kDotsH40) {
+    return false;
+  }
+  const uint32_t line_limit = state.pal != 0 ? kLinesPal : kLinesNtsc;
+  if (state.line >= line_limit) {
+    return false;
+  }
+  /* charge_dma bills at most 210 master clocks per word, and the length
+   * register sweeps at most 65536 words in one transfer. */
+  constexpr uint64_t kMaxDmaDebt = 0x10000ull * 210ull;
+  return state.dma_debt_mclk <= kMaxDmaDebt;
+}
+
 void Vdp::restore(const SavedState &state)
 {
   std::copy_n(state.reg, 0x18, m_reg);

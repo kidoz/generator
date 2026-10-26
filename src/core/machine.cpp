@@ -1353,6 +1353,11 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
       v.dma_debt_mclk = r.u64();
       v.dma_busy = r.u8();
       v.dma_fill_armed = r.u8();
+      /* mclk, dot, line and DMA debt are bounded so a crafted state
+       * cannot spin advance_mclk. A value this build can write passes. */
+      if (r.ok() && !Vdp::valid_saved_state(v)) {
+        return false;
+      }
       if (apply && r.ok()) {
         m_vdp.restore(v);
         vdp_seen = true;
