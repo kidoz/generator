@@ -70,7 +70,9 @@ if enable_debug
 else
   if gcc_opt_version != 'no'
     message('Turning on GCC optimizations')
-    add_project_arguments(['-O3', '-ffast-math', '-fomit-frame-pointer'], language: 'cpp')
+    # -ffast-math stays off. The audio filter and the save-state magnitude
+    # checks are IEEE-754, and a release build must hash like a debug one.
+    add_project_arguments(['-O3', '-fomit-frame-pointer'], language: 'cpp')
 
     if gcc_opt_version == '3'
       message('Turning on GCC 3 optimizations')
