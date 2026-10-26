@@ -83,6 +83,21 @@ public:
     renderer_.render_pushed(line, pixels, dest);
   }
 
+  void render_line_rgba(int line, std::span<const uint32_t> pixels) override
+  {
+    if (line < 0 || pixels.empty())
+      return;
+
+    const int width = static_cast<int>(std::min<std::size_t>(
+        pixels.size(), generator::ui::VdpFrameRenderer::kMaxWidth));
+
+    uint32_t *dest = g_frames.row(line, width);
+    if (dest == nullptr)
+      return;
+
+    renderer_.render_pushed_rgba(line, pixels, dest);
+  }
+
   void present_field() override
   {
     /* Publish only what was actually rendered; a field the VDP cut short

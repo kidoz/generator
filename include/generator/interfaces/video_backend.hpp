@@ -19,6 +19,10 @@ public:
      */
     virtual void render_line(int line, std::span<const uint8_t> pixels) = 0;
 
+    /* Render a scanline of final 0xAARRGGBB pixels (SMS and 32X). */
+    virtual void render_line_rgba(int line,
+                                  std::span<const uint32_t> pixels) = 0;
+
     /*
      * Present the completed field (frame) to the screen.
      */

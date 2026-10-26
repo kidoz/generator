@@ -182,18 +182,20 @@ public:
   {
     // No-op
   }
+  void render_line_rgba(int line, std::span<const uint32_t> pixels) override
+  {
+    // No-op
+  }
   void present_field() override
   {
     // No-op
   }
 };
 
-/* CapturingVideo fingerprints the rendered video output. It hashes the raw
- * 8-bit paletted scanlines the core pushes through render_line — before any
- * backend palette conversion — so the fingerprint is backend-independent.
- * The hashed stream is, in emission order: line index (u32 LE) + width
- * bytes of pixels per line, then the field index (u32 LE) per
- * present_field, so a scanline shift also changes the hash. */
+/* CapturingVideo fingerprints rendered scanlines before UI conversion.
+ * Paletted lines use their raw bytes; RGBA lines use explicit R,G,B,A bytes,
+ * so both encodings are host-endian independent. The hashed stream is line
+ * index (u32 LE) + encoded line bytes, then field index per present_field. */
 class CapturingVideo : public IVideoBackend {
 public:
   void render_line(int line, std::span<const uint8_t> pixels) override
@@ -203,10 +205,31 @@ public:
     }
     hash_line(line, pixels.data(), (unsigned int)pixels.size());
     if (m_dump && line < 240) {
+      m_dump_rgba = false;
       const unsigned int n = std::min((unsigned int)pixels.size(), 320u);
       for (unsigned int x = 0; x < n; x++) {
         m_dump_buf[(std::size_t)line * 320 + x] = pixels[x] & 0x3F;
       }
+    }
+  }
+
+  void render_line_rgba(int line, std::span<const uint32_t> pixels) override
+  {
+    if (line < 0 || pixels.empty()) {
+      return;
+    }
+    const unsigned int n = std::min((unsigned int)pixels.size(), 320u);
+    std::array<uint8_t, 320 * 4> encoded{};
+    for (unsigned int x = 0; x < n; x++) {
+      encoded[x * 4] = (uint8_t)(pixels[x] >> 16);
+      encoded[x * 4 + 1] = (uint8_t)(pixels[x] >> 8);
+      encoded[x * 4 + 2] = (uint8_t)pixels[x];
+      encoded[x * 4 + 3] = (uint8_t)(pixels[x] >> 24);
+    }
+    hash_line(line, encoded.data(), n * 4);
+    if (m_dump && line < 240) {
+      m_dump_rgba = true;
+      std::copy_n(pixels.begin(), n, m_rgba_dump_buf.begin() + line * 320);
     }
   }
 
@@ -221,16 +244,20 @@ public:
       std::snprintf(path, sizeof(path), "%s_%u.ppm", m_dump_prefix, m_frames);
       std::FILE *f = std::fopen(path, "wb");
       if (f) {
-        /* RGB through the published CRAM snapshot, so the dump shows
-         * what the game actually put on screen. */
         const uint16_t *cram = uiplot_cram_ptr();
         std::fprintf(f, "P6\n320 240\n255\n");
         for (std::size_t i = 0; i < 320u * 240; i++) {
-          const uint16_t entry = cram[m_dump_buf[i] & 0x3F];
-          const unsigned char rgb[3] = {
-              (unsigned char)(((entry >> 1) & 7) * 255 / 7),
-              (unsigned char)(((entry >> 5) & 7) * 255 / 7),
-              (unsigned char)(((entry >> 9) & 7) * 255 / 7)};
+          unsigned char rgb[3];
+          if (m_dump_rgba) {
+            rgb[0] = (unsigned char)(m_rgba_dump_buf[i] >> 16);
+            rgb[1] = (unsigned char)(m_rgba_dump_buf[i] >> 8);
+            rgb[2] = (unsigned char)m_rgba_dump_buf[i];
+          } else {
+            const uint16_t entry = cram[m_dump_buf[i] & 0x3F];
+            rgb[0] = (unsigned char)(((entry >> 1) & 7) * 255 / 7);
+            rgb[1] = (unsigned char)(((entry >> 5) & 7) * 255 / 7);
+            rgb[2] = (unsigned char)(((entry >> 9) & 7) * 255 / 7);
+          }
           std::fwrite(rgb, 1, 3, f);
         }
         std::fclose(f);
@@ -264,6 +291,8 @@ public:
   const char *m_dump_prefix = "";
   unsigned int m_dump_start = 0, m_dump_count = 0;
   std::array<uint8_t, 320u * 240> m_dump_buf{};
+  std::array<uint32_t, 320u * 240> m_rgba_dump_buf{};
+  bool m_dump_rgba = false;
 
   uint64_t last_field_hash() const
   {

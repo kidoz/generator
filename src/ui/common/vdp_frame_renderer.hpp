@@ -10,13 +10,11 @@
 
 namespace generator::ui {
 
-/* Turns the core's paletted scanlines into the ARGB8888 rows a windowed
- * backend displays.
+/* Turns the core's paletted or final-color scanlines into ARGB8888 rows.
  *
- * The core pushes each visible line through IVideoBackend::render_line as
- * CRAM indices; every windowed backend then needs the same two steps —
- * refresh the palette cache and convert — and each one used to carry its
- * own copy of them.
+ * Paletted lines arrive through IVideoBackend::render_line as CRAM indices;
+ * final-color lines arrive through render_line_rgba. The shared renderer
+ * refreshes the palette cache when needed and forces alpha opaque.
  *
  * Usage, per scanline:
  *
@@ -40,6 +38,10 @@ public:
    * cache carries no alpha, and a backend that honours the channel would
    * otherwise draw a fully transparent field. */
   void render_pushed(int line, std::span<const uint8_t> pixels, uint32_t *dest);
+
+  /* Copy a final-color scanline and force its alpha channel opaque. */
+  void render_pushed_rgba(int line, std::span<const uint32_t> pixels,
+                          uint32_t *dest);
 
   /* End the field and reset the latch. Returns the number of lines that
    * were rendered into it, which is what a backend publishing a

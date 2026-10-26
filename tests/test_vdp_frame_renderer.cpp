@@ -245,3 +245,21 @@ TEST_CASE("end_field reports the tallest line and resets the latch",
 
   REQUIRE(renderer.end_field() == 10);
 }
+
+TEST_CASE("render_pushed_rgba copies final colors and forces opaque alpha",
+          "[vdp-frame-renderer]")
+{
+  generator::ui::VdpFrameRenderer renderer;
+  constexpr std::array<uint32_t, 2> pixels{0x00112233, 0x80445566};
+  std::array<uint32_t, 4> row{};
+  row.fill(0xDEADBEEF);
+
+  renderer.render_pushed_rgba(3, pixels, row.data());
+
+  CHECK(row[0] == 0xFF112233);
+  CHECK(row[1] == 0xFF445566);
+  CHECK(row[2] == 0xDEADBEEF);
+  CHECK(renderer.field_width() == 2);
+  CHECK(renderer.field_lines() == 4);
+  CHECK(renderer.end_field() == 4);
+}

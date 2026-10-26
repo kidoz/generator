@@ -4,8 +4,8 @@
  * Rewritten to use only the EmulatorCore API: load ROM, run frames,
  * receive video/audio through the backend interfaces. The legacy
  * uip_sdl3 layer provides the SDL window/bank management and
- * keyboard/joystick input; uiplot converts the emulation core's
- * pushed paletted scanlines through the CRAM snapshot. */
+ * keyboard/joystick input; the video backend accepts both paletted
+ * scanlines and final RGBA pixels. */
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -88,6 +88,28 @@ public:
     }
     uiplot_checkpalcache(0);
     uiplot_convertdata16(linebuf, gfx_ + line * 320, 320);
+    lines_rendered_ = line + 1;
+  }
+
+  void render_line_rgba(int line, std::span<const uint32_t> pixels) override
+  {
+    if (line < 0 || line >= 240 || pixels.empty()) {
+      return;
+    }
+    const unsigned int n = std::min((unsigned int)pixels.size(), 320u);
+    const int green_bits = uip_info.greenmask == 0x07E0   ? 6
+                           : uip_info.greenmask == 0x03E0 ? 5
+                                                          : 8;
+    for (unsigned int x = 0; x < 320; x++) {
+      const uint32_t pixel = x < n ? pixels[x] : 0;
+      const uint32_t red = (pixel >> 16) & 0xFF;
+      const uint32_t green = (pixel >> 8) & 0xFF;
+      const uint32_t blue = pixel & 0xFF;
+      gfx_[line * 320 + x] =
+          (uint16_t)(((red >> 3) << uip_info.redshift) |
+                     ((green >> (8 - green_bits)) << uip_info.greenshift) |
+                     ((blue >> 3) << uip_info.blueshift));
+    }
     lines_rendered_ = line + 1;
   }
 

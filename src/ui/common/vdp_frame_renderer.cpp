@@ -27,6 +27,21 @@ void VdpFrameRenderer::render_pushed(int line, std::span<const uint8_t> pixels,
     dest[x] |= 0xFF000000U;
 }
 
+void VdpFrameRenderer::render_pushed_rgba(int line,
+                                          std::span<const uint32_t> pixels,
+                                          uint32_t *dest)
+{
+  if (dest == nullptr || pixels.empty()) {
+    return;
+  }
+  field_width_ = std::min<unsigned int>(kMaxWidth, (unsigned int)pixels.size());
+  field_lines_ = std::max(field_lines_, line + 1);
+
+  std::copy_n(pixels.begin(), field_width_, dest);
+  for (unsigned int x = 0; x < field_width_; x++)
+    dest[x] |= 0xFF000000U;
+}
+
 int VdpFrameRenderer::end_field()
 {
   const int lines = field_lines_;

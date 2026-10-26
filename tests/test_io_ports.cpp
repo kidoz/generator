@@ -34,6 +34,10 @@ public:
   void render_line(int, std::span<const uint8_t>) override
   {
   }
+  void render_line_rgba(int, std::span<const uint32_t>) override
+  {
+  }
+
   void present_field() override
   {
   }

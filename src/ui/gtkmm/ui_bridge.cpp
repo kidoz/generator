@@ -76,6 +76,19 @@ public:
         reinterpret_cast<uint32_t *>(g_newscreen + line * HMAXSIZE * 4));
   }
 
+  void render_line_rgba(int line, std::span<const uint32_t> pixels) override
+  {
+    if (!g_plotfield || !g_emulator_core)
+      return;
+
+    if (line < 0 || line >= static_cast<int>(VMAXSIZE))
+      return;
+
+    renderer_.render_pushed_rgba(
+        line, pixels,
+        reinterpret_cast<uint32_t *>(g_newscreen + line * HMAXSIZE * 4));
+  }
+
   void present_field() override
   {
     /* Read the width before ending the field: end_field() resets the
