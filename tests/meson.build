@@ -261,3 +261,36 @@ test('netplay_socket', test_netplay_socket,
   timeout: 30,
   suite: 'catch2'
 )
+
+if enable_netplay
+  if ui_backend == 'gtk4'
+    test_netplay_dialog = executable('test_netplay_dialog',
+      'test_netplay_dialog.cpp',
+      'support_netplay_server.hpp',
+      '../src/ui/gtkmm/netplay_dialog.cpp',
+      '../src/ui/gtkmm/netplay_session.cpp',
+      '../src/ui/gtkmm/emulator_thread.cpp',
+      '../src/ui/headless/soundp_null.cpp',
+      '../src/video/uiplot_cram.cpp',
+      include_directories: [machine_test_inc, include_directories('../src/ui/gtkmm')],
+      dependencies: [catch2_dep, core_dep, z80f_dep, gtkmm_dep, network_dep, dependency('threads')],
+      build_by_default: false
+    )
+    test('netplay_dialog', test_netplay_dialog,
+      timeout: 30,
+      suite: 'catch2'
+    )
+  endif
+  test_netplay_session = executable('test_netplay_session',
+    'test_netplay_session.cpp',
+    'support_netplay_server.hpp',
+    include_directories: [netplay_test_inc],
+    dependencies: [catch2_dep, network_dep],
+    override_options: ['cpp_std=c++23'],
+    build_by_default: false
+  )
+  test('netplay_session', test_netplay_session,
+    timeout: 30,
+    suite: 'catch2'
+  )
+endif
