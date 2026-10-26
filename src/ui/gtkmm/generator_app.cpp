@@ -22,6 +22,7 @@ GeneratorApp::GeneratorApp()
 
 GeneratorApp::~GeneratorApp()
 {
+  m_prefs_dialog.reset();
   // Connection work uses the emulator thread; join it before that member dies.
   m_netplay_dialog.reset();
   m_emu_thread.stop();
@@ -154,6 +155,7 @@ void GeneratorApp::on_activate()
 void GeneratorApp::on_window_removed(Gtk::Window *window)
 {
   if (window == m_main_window) {
+    m_prefs_dialog.reset();
     // Cancel and join connection work before tearing down its session.
     m_netplay_dialog.reset();
     m_emu_thread.stop();
@@ -315,7 +317,9 @@ void GeneratorApp::on_action_netplay()
 void GeneratorApp::on_action_preferences()
 {
   if (!m_prefs_dialog && m_main_window) {
-    m_prefs_dialog = std::make_unique<PreferencesDialog>(*m_main_window);
+    m_prefs_dialog = std::make_unique<PreferencesDialog>(
+        *m_main_window, [this] { m_main_window->apply_video_settings(); },
+        [this](int factor) { m_main_window->resize_video(factor); });
   }
   if (m_prefs_dialog) {
     m_prefs_dialog->present();
