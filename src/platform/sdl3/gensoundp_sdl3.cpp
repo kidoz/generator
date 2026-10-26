@@ -4,7 +4,12 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
-#include <unistd.h>
+#include <algorithm>
+#include <cmath>
+#include <numbers>
+#include <vector>
+
+#include "audio_output.hpp"
 #include <stdatomic.h>
 #include <SDL3/SDL.h>
 
@@ -16,6 +21,21 @@
 
 static SDL_AudioStream *soundp_stream = nullptr;
 static SDL_AudioDeviceID soundp_dev = 0;
+namespace {
+
+struct PlaybackControls {
+  SDL_AudioStream *test_stream = nullptr;
+  int volume = 100;
+  bool muted = false;
+};
+
+PlaybackControls &playback_controls()
+{
+  static PlaybackControls controls;
+  return controls;
+}
+
+}  // namespace
 
 /* Track samples we've written but not yet confirmed played */
 static _Atomic(unsigned int) soundp_samples_pending = 0;
@@ -24,41 +44,22 @@ static _Atomic(unsigned int) soundp_samples_pending = 0;
 
 static const char *soundp_detect_audio_backend(void)
 {
-  const char *driver;
-  char runtime_dir[512];
-  const char *xdg_runtime;
-
-  /* Get the current SDL audio driver name */
-  driver = SDL_GetCurrentAudioDriver();
-
-  /* Check if PipeWire runtime directory exists */
-  xdg_runtime = getenv("XDG_RUNTIME_DIR");
-  if (xdg_runtime) {
-    snprintf(runtime_dir, sizeof(runtime_dir), "%s/pipewire-0", xdg_runtime);
-    if (access(runtime_dir, F_OK) == 0) {
-      return "PipeWire (via PulseAudio compatibility)";
-    }
-  }
-
-  /* Check for direct PipeWire detection via environment */
-  if (getenv("PIPEWIRE_RUNTIME_DIR")) {
-    return "PipeWire (native)";
-  }
-
-  /* Otherwise, return the SDL driver name */
-  if (driver) {
-    if (strcmp(driver, "pulseaudio") == 0) {
-      return "PulseAudio";
-    } else if (strcmp(driver, "alsa") == 0) {
-      return "ALSA (direct)";
-    } else if (strcmp(driver, "pipewire") == 0) {
-      return "PipeWire (native)";
-    } else {
-      return driver;
-    }
-  }
-
-  return "Unknown";
+  const char *driver = SDL_GetCurrentAudioDriver();
+  if (!driver)
+    return "Unknown";
+  if (strcmp(driver, "pulseaudio") == 0)
+    return "PulseAudio";
+  if (strcmp(driver, "pipewire") == 0)
+    return "PipeWire";
+  if (strcmp(driver, "alsa") == 0)
+    return "ALSA";
+  if (strcmp(driver, "jack") == 0)
+    return "JACK";
+  if (strcmp(driver, "dummy") == 0)
+    return "Silent (dummy)";
+  if (strcmp(driver, "disk") == 0)
+    return "File output (disk)";
+  return driver;
 }
 
 /*** soundp_start - start sound hardware ***/
@@ -148,6 +149,13 @@ int soundp_start(void)
     return 1;
   }
 
+  if (!generator::audio::SdlAudioOutput::set_controls(
+          playback_controls().volume, playback_controls().muted)) {
+    LOG_CRITICAL("Failed to set audio volume: %s", SDL_GetError());
+    soundp_stop();
+    return 1;
+  }
+
   /* Initialize pending samples counter */
   atomic_store(&soundp_samples_pending, 0);
 
@@ -198,6 +206,7 @@ int soundp_start(void)
 
 void soundp_stop(void)
 {
+  generator::audio::SdlAudioOutput::stop_test();
   if (soundp_stream) {
     SDL_DestroyAudioStream(soundp_stream);
     soundp_stream = nullptr;
@@ -320,3 +329,116 @@ void soundp_output(const uint16 *left, const uint16 *right,
     offset += chunk;
   }
 }
+
+namespace generator::audio {
+
+bool SdlAudioOutput::set_controls(int volume_percent, bool muted)
+{
+  int volume = std::clamp(volume_percent, 0, 100);
+  float gain = muted ? 0.0f : volume / 100.0f;
+  if (soundp_stream && !SDL_SetAudioStreamGain(soundp_stream, gain))
+    return false;
+  if (playback_controls().test_stream &&
+      !SDL_SetAudioStreamGain(playback_controls().test_stream, gain))
+    return false;
+  playback_controls().volume = volume;
+  playback_controls().muted = muted;
+  return true;
+}
+
+AudioOutputStatus SdlAudioOutput::status()
+{
+  AudioOutputStatus result;
+  if (const char *driver = SDL_GetCurrentAudioDriver())
+    result.driver = driver;
+  if (!soundp_dev || !soundp_stream)
+    return result;
+  SDL_AudioSpec spec{};
+  if (!SDL_GetAudioDeviceFormat(soundp_dev, &spec, nullptr))
+    return result;
+  result.active = true;
+  result.sample_rate = spec.freq;
+  result.channels = spec.channels;
+  result.gain = SDL_GetAudioStreamGain(soundp_stream);
+  if (const char *name = SDL_GetAudioDeviceName(soundp_dev))
+    result.device = name;
+  return result;
+}
+
+std::string SdlAudioOutput::driver_label(std::string_view driver)
+{
+  if (driver == "auto")
+    return "Automatic";
+  if (driver == "pulseaudio")
+    return "PulseAudio";
+  if (driver == "pipewire")
+    return "PipeWire";
+  if (driver == "alsa")
+    return "ALSA";
+  if (driver == "jack")
+    return "JACK";
+  if (driver == "coreaudio")
+    return "Core Audio";
+  if (driver == "wasapi")
+    return "Windows Audio (WASAPI)";
+  if (driver == "directsound")
+    return "DirectSound";
+  if (driver == "dummy")
+    return "Silent (dummy)";
+  if (driver == "disk")
+    return "File output (disk)";
+  return std::string(driver);
+}
+
+bool SdlAudioOutput::play_test()
+{
+  stop_test();
+  if (!soundp_dev || !soundp_stream || playback_controls().muted ||
+      playback_controls().volume == 0)
+    return false;
+  SDL_AudioSpec source{SDL_AUDIO_S16, 2, SOUND_SAMPLERATE};
+  SDL_AudioSpec destination{};
+  if (!SDL_GetAudioDeviceFormat(soundp_dev, &destination, nullptr))
+    return false;
+  playback_controls().test_stream =
+      SDL_CreateAudioStream(&source, &destination);
+  if (!playback_controls().test_stream)
+    return false;
+  if (!SDL_BindAudioStream(soundp_dev, playback_controls().test_stream) ||
+      !SDL_SetAudioStreamGain(playback_controls().test_stream,
+                              playback_controls().volume / 100.0f)) {
+    stop_test();
+    return false;
+  }
+  constexpr int samples = SOUND_SAMPLERATE * 3 / 10;
+  constexpr int half = samples / 2;
+  std::vector<int16_t> cue(samples * 2, 0);
+  for (int i = 0; i < samples; ++i) {
+    int position = i % half;
+    double envelope =
+        std::min({1.0, position / (SOUND_SAMPLERATE * 0.01),
+                  (half - 1 - position) / (SOUND_SAMPLERATE * 0.01)});
+    double frequency = i < half ? 440.0 : 660.0;
+    double phase =
+        2 * std::numbers::pi * frequency * position / SOUND_SAMPLERATE;
+    cue[i * 2 + (i < half ? 0 : 1)] =
+        static_cast<int16_t>(2400 * envelope * std::sin(phase));
+  }
+  if (!SDL_PutAudioStreamData(playback_controls().test_stream, cue.data(),
+                              static_cast<int>(cue.size() * sizeof(int16_t))) ||
+      !SDL_FlushAudioStream(playback_controls().test_stream)) {
+    stop_test();
+    return false;
+  }
+  return true;
+}
+
+void SdlAudioOutput::stop_test()
+{
+  if (playback_controls().test_stream) {
+    SDL_DestroyAudioStream(playback_controls().test_stream);
+    playback_controls().test_stream = nullptr;
+  }
+}
+
+}  // namespace generator::audio
