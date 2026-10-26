@@ -5,7 +5,8 @@
 
 #include <span>
 
-#include <iostream>
+#include <cmath>
+#include "platform/sdl3/audio_output.hpp"
 
 #include "gtkopts.h"
 #include <SDL3/SDL.h>
@@ -41,21 +42,31 @@ void describe(AdwComboRow *row,
 
 PreferencesDialog::PreferencesDialog(Gtk::Window &parent,
                                      std::function<void()> video_changed,
-                                     std::function<void(int)> resize_video)
+                                     std::function<void(int)> resize_video,
+                                     std::function<void()> audio_changed)
     : m_parent(parent), m_video_changed(std::move(video_changed)),
-      m_resize_video(std::move(resize_video))
+      m_resize_video(std::move(resize_video)),
+      m_audio_changed(std::move(audio_changed)),
+      m_startup_audio_driver(generator::gtkui::AudioSettings::load().driver)
 {
   setup_ui();
 }
 
 PreferencesDialog::~PreferencesDialog()
 {
+  m_audio_timer.disconnect();
+  stop_audio_test();
   if (!m_dialog)
     return;
   for (auto *row : {m_aspect_row, m_scaling_row, m_sampling_row, m_scaler_row,
                     m_audio_driver_row})
     g_signal_handlers_disconnect_by_data(row, this);
   g_signal_handlers_disconnect_by_data(m_reset_button, this);
+  g_signal_handlers_disconnect_by_data(m_volume_scale, this);
+  g_signal_handlers_disconnect_by_data(m_audio_mute_row, this);
+  g_signal_handlers_disconnect_by_data(m_audio_test_button, this);
+  g_signal_handlers_disconnect_by_data(m_audio_reset_button, this);
+  g_signal_handlers_disconnect_by_data(m_dialog, this);
   g_object_set_data(G_OBJECT(m_dialog), "preferences", nullptr);
   // The weak pointer must not outlive the C++ object that stores it.
   g_object_remove_weak_pointer(G_OBJECT(m_dialog),
@@ -74,6 +85,12 @@ void PreferencesDialog::setup_ui()
   // nulls m_dialog at that point so present() knows to rebuild instead
   // of presenting a dangling pointer.
   g_object_add_weak_pointer(G_OBJECT(m_dialog), (gpointer *)&m_dialog);
+  g_signal_connect_swapped(m_dialog, "closed",
+                           G_CALLBACK(+[](PreferencesDialog *self) {
+                             self->m_audio_timer.disconnect();
+                             self->stop_audio_test();
+                           }),
+                           this);
 
   // Video Page
   AdwPreferencesPage *video_page =
@@ -87,6 +104,7 @@ void PreferencesDialog::setup_ui()
   AdwPreferencesPage *audio_page =
       ADW_PREFERENCES_PAGE(adw_preferences_page_new());
   adw_preferences_page_set_title(audio_page, "Audio");
+  adw_preferences_page_set_name(audio_page, "audio");
   adw_preferences_page_set_icon_name(audio_page, "audio-speakers-symbolic");
   populate_audio_page(audio_page);
   adw_preferences_dialog_add(m_dialog, audio_page);
@@ -165,43 +183,122 @@ void PreferencesDialog::populate_video_page(AdwPreferencesPage *page)
 
 void PreferencesDialog::populate_audio_page(AdwPreferencesPage *page)
 {
-  AdwPreferencesGroup *group =
-      ADW_PREFERENCES_GROUP(adw_preferences_group_new());
-  adw_preferences_group_set_title(group, "Output");
+  using generator::gtkui::AudioSettings;
+  auto settings = AudioSettings::load();
+  auto *playback = ADW_PREFERENCES_GROUP(adw_preferences_group_new());
+  adw_preferences_group_set_title(playback, "Playback");
+  adw_preferences_group_set_description(playback,
+                                        "Volume and mute apply immediately.");
+  auto *volume = ADW_ACTION_ROW(adw_action_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(volume), "Volume");
+  adw_action_row_set_subtitle(
+      volume, "Adjusts Generator without changing system volume.");
+  auto *level = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_set_valign(level, GTK_ALIGN_CENTER);
+  m_volume_scale =
+      gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, 0, 100, 1);
+  gtk_widget_set_size_request(m_volume_scale, 170, -1);
+  gtk_scale_set_draw_value(GTK_SCALE(m_volume_scale), false);
+  gtk_range_set_increments(GTK_RANGE(m_volume_scale), 1, 10);
+  gtk_range_set_value(GTK_RANGE(m_volume_scale), settings.volume);
+  gtk_accessible_update_property(GTK_ACCESSIBLE(m_volume_scale),
+                                 GTK_ACCESSIBLE_PROPERTY_LABEL, "Volume", -1);
+  gtk_box_append(GTK_BOX(level), m_volume_scale);
+  m_volume_label = GTK_LABEL(gtk_label_new("100%"));
+  gtk_label_set_width_chars(m_volume_label, 4);
+  gtk_label_set_xalign(m_volume_label, 1);
+  gtk_box_append(GTK_BOX(level), GTK_WIDGET(m_volume_label));
+  adw_action_row_add_suffix(volume, level);
+  adw_preferences_group_add(playback, GTK_WIDGET(volume));
+  m_audio_mute_row = ADW_SWITCH_ROW(adw_switch_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_audio_mute_row), "Mute");
+  adw_action_row_set_subtitle(
+      ADW_ACTION_ROW(m_audio_mute_row),
+      "Silences playback while keeping your volume setting.");
+  adw_switch_row_set_active(m_audio_mute_row, settings.muted);
+  adw_preferences_group_add(playback, GTK_WIDGET(m_audio_mute_row));
+  adw_preferences_page_add(page, playback);
+  g_signal_connect_swapped(m_volume_scale, "value-changed",
+                           G_CALLBACK(+[](PreferencesDialog *self) {
+                             self->on_audio_controls_changed();
+                           }),
+                           this);
+  g_signal_connect_swapped(m_audio_mute_row, "notify::active",
+                           G_CALLBACK(+[](PreferencesDialog *self) {
+                             self->on_audio_controls_changed();
+                           }),
+                           this);
 
+  auto *output = ADW_PREFERENCES_GROUP(adw_preferences_group_new());
+  adw_preferences_group_set_title(output, "Current output");
+  adw_preferences_group_set_description(
+      output, "Follows your system's default output device.");
+  m_audio_device_row = ADW_ACTION_ROW(adw_action_row_new());
+  adw_preferences_row_set_use_markup(ADW_PREFERENCES_ROW(m_audio_device_row),
+                                     false);
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_audio_device_row),
+                                "System default output");
+  adw_preferences_group_add(output, GTK_WIDGET(m_audio_device_row));
+  auto *test = ADW_ACTION_ROW(adw_action_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(test), "Test speakers");
+  adw_action_row_set_subtitle(
+      test, "Plays a short cue in the left and right channels.");
+  m_audio_test_button = gtk_button_new_with_label("Test sound");
+  gtk_widget_set_valign(m_audio_test_button, GTK_ALIGN_CENTER);
+  adw_action_row_add_suffix(test, m_audio_test_button);
+  adw_preferences_group_add(output, GTK_WIDGET(test));
+  g_signal_connect_swapped(
+      m_audio_test_button, "clicked",
+      G_CALLBACK(+[](PreferencesDialog *self) { self->test_audio(); }), this);
+  adw_preferences_page_add(page, output);
+
+  auto *backend = ADW_PREFERENCES_GROUP(adw_preferences_group_new());
+  adw_preferences_group_set_title(backend, "Audio backend");
+  adw_preferences_group_set_description(
+      backend, "Backend changes take effect after restarting Generator.");
   m_audio_driver_row = ADW_COMBO_ROW(adw_combo_row_new());
   adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_audio_driver_row),
-                                "Audio Backend");
-
-  GtkStringList *c_model = gtk_string_list_new(nullptr);
-  gtk_string_list_append(c_model, "Auto-detect");
-
-  const char *current_driver = gtkopts_getvalue("audio_driver");
-  if (!current_driver)
-    current_driver = "auto";
-
+                                "Preferred backend");
+  m_audio_drivers = generator::gtkui::audio_driver_options(settings.driver);
+  auto *model = gtk_string_list_new(nullptr);
   guint selected = 0;
-  int num_drivers = SDL_GetNumAudioDrivers();
-  for (int i = 0; i < num_drivers; i++) {
-    const char *driver = SDL_GetAudioDriver(i);
-    gtk_string_list_append(c_model, driver);
-    if (g_ascii_strcasecmp(driver, current_driver) == 0) {
-      selected = i + 1;  // +1 because "Auto" is 0
-    }
+  for (size_t i = 0; i < m_audio_drivers.size(); ++i) {
+    gtk_string_list_append(model, m_audio_drivers[i].label.c_str());
+    if (m_audio_drivers[i].value == settings.driver)
+      selected = static_cast<guint>(i);
   }
-
-  adw_combo_row_set_model(m_audio_driver_row, G_LIST_MODEL(c_model));
-  g_object_unref(c_model);
+  adw_combo_row_set_model(m_audio_driver_row, G_LIST_MODEL(model));
+  g_object_unref(model);
   adw_combo_row_set_selected(m_audio_driver_row, selected);
-
   g_signal_connect_swapped(m_audio_driver_row, "notify::selected",
                            G_CALLBACK(+[](PreferencesDialog *self) {
                              self->on_audio_driver_changed();
                            }),
                            this);
+  adw_preferences_group_add(backend, GTK_WIDGET(m_audio_driver_row));
+  m_audio_restart_label = GTK_LABEL(
+      gtk_label_new("Restart Generator to use the selected backend."));
+  gtk_label_set_wrap(m_audio_restart_label, true);
+  gtk_label_set_xalign(m_audio_restart_label, 0);
+  gtk_widget_set_margin_top(GTK_WIDGET(m_audio_restart_label), 8);
+  adw_preferences_group_add(backend, GTK_WIDGET(m_audio_restart_label));
+  adw_preferences_page_add(page, backend);
 
-  adw_preferences_group_add(group, GTK_WIDGET(m_audio_driver_row));
-  adw_preferences_page_add(page, group);
+  auto *reset = ADW_PREFERENCES_GROUP(adw_preferences_group_new());
+  m_audio_reset_button = gtk_button_new_with_label("Reset audio settings");
+  gtk_widget_set_halign(m_audio_reset_button, GTK_ALIGN_CENTER);
+  g_signal_connect_swapped(
+      m_audio_reset_button, "clicked",
+      G_CALLBACK(+[](PreferencesDialog *self) { self->reset_audio(); }), this);
+  adw_preferences_group_add(reset, m_audio_reset_button);
+  m_audio_feedback = GTK_LABEL(gtk_label_new(nullptr));
+  gtk_widget_add_css_class(GTK_WIDGET(m_audio_feedback), "error");
+  gtk_label_set_wrap(m_audio_feedback, true);
+  gtk_label_set_xalign(m_audio_feedback, 0);
+  gtk_widget_set_visible(GTK_WIDGET(m_audio_feedback), false);
+  adw_preferences_group_add(reset, GTK_WIDGET(m_audio_feedback));
+  adw_preferences_page_add(page, reset);
+  refresh_audio_status();
 }
 
 void PreferencesDialog::on_video_changed()
@@ -245,17 +342,151 @@ void PreferencesDialog::reset_video()
   on_video_changed();
 }
 
+void PreferencesDialog::on_audio_controls_changed()
+{
+  if (m_updating_audio)
+    return;
+  auto previous = generator::gtkui::AudioSettings::load();
+  auto settings = previous;
+  settings.volume = static_cast<int>(
+      std::lround(gtk_range_get_value(GTK_RANGE(m_volume_scale))));
+  settings.muted = adw_switch_row_get_active(m_audio_mute_row);
+  bool applied = generator::audio::SdlAudioOutput::set_controls(settings.volume,
+                                                                settings.muted);
+  if (!applied || !settings.save()) {
+    generator::audio::SdlAudioOutput::set_controls(previous.volume,
+                                                   previous.muted);
+    m_updating_audio = true;
+    gtk_range_set_value(GTK_RANGE(m_volume_scale), previous.volume);
+    adw_switch_row_set_active(m_audio_mute_row, previous.muted);
+    m_updating_audio = false;
+    gtk_label_set_text(m_audio_feedback, "Could not apply audio preferences.");
+    gtk_widget_set_visible(GTK_WIDGET(m_audio_feedback), true);
+  } else {
+    gtk_widget_set_visible(GTK_WIDGET(m_audio_feedback), false);
+    if (m_audio_changed)
+      m_audio_changed();
+  }
+  refresh_audio_status();
+}
+
 void PreferencesDialog::on_audio_driver_changed()
 {
-  guint selected = adw_combo_row_get_selected(m_audio_driver_row);
-  if (selected == 0) {
-    gtkopts_setvalue("audio_driver", "auto");
-    std::cout << "Audio driver changed to: auto" << std::endl;
-  } else {
-    const char *driver = SDL_GetAudioDriver(selected - 1);
-    gtkopts_setvalue("audio_driver", driver);
-    std::cout << "Audio driver changed to: " << driver << std::endl;
+  if (m_updating_audio)
+    return;
+  auto index = adw_combo_row_get_selected(m_audio_driver_row);
+  if (index >= m_audio_drivers.size())
+    return;
+  auto settings = generator::gtkui::AudioSettings::load();
+  settings.driver = m_audio_drivers[index].value;
+  if (!settings.save()) {
+    gtk_label_set_text(m_audio_feedback,
+                       "Could not save the preferred audio backend.");
+    gtk_widget_set_visible(GTK_WIDGET(m_audio_feedback), true);
   }
+  refresh_audio_status();
+}
+
+void PreferencesDialog::refresh_audio_status()
+{
+  using generator::audio::SdlAudioOutput;
+  auto settings = generator::gtkui::AudioSettings::load();
+  std::string percent = std::to_string(settings.volume) + "%";
+  gtk_label_set_text(m_volume_label, percent.c_str());
+  gtk_widget_set_visible(GTK_WIDGET(m_audio_restart_label),
+                         settings.driver != m_startup_audio_driver);
+  auto selected = adw_combo_row_get_selected(m_audio_driver_row);
+  if (selected < m_audio_drivers.size())
+    adw_action_row_set_subtitle(ADW_ACTION_ROW(m_audio_driver_row),
+                                m_audio_drivers[selected].description.c_str());
+  auto status = SdlAudioOutput::status();
+  bool silent = status.driver == "dummy" || status.driver == "disk";
+  std::string title = !status.active          ? "No audio device open"
+                      : silent                ? "No speaker output"
+                      : status.device.empty() ? "System default output"
+                                              : status.device;
+  std::string description =
+      !status.active
+          ? "Check your system sound settings, then restart Generator."
+          : SdlAudioOutput::driver_label(status.driver) + " · " +
+                std::to_string(status.sample_rate) + " Hz · " +
+                (status.channels == 2 ? "Stereo"
+                 : status.channels == 1
+                     ? "Mono"
+                     : std::to_string(status.channels) + " channels");
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_audio_device_row),
+                                title.c_str());
+  adw_action_row_set_subtitle(m_audio_device_row, description.c_str());
+  bool can_test = status.active && !silent && !settings.muted &&
+                  settings.volume > 0 && !m_testing_audio;
+  gtk_widget_set_sensitive(m_audio_test_button, can_test);
+  gtk_widget_set_tooltip_text(
+      m_audio_test_button, !status.active ? "No audio device is open"
+                           : silent
+                               ? "This backend does not play through speakers"
+                           : settings.muted || settings.volume == 0
+                               ? "Unmute and raise the volume to test speakers"
+                               : "Play a short left/right speaker test");
+}
+
+void PreferencesDialog::stop_audio_test()
+{
+  m_audio_test_timer.disconnect();
+  generator::audio::SdlAudioOutput::stop_test();
+  m_testing_audio = false;
+  if (m_dialog && m_audio_test_button)
+    gtk_button_set_label(GTK_BUTTON(m_audio_test_button), "Test sound");
+}
+
+void PreferencesDialog::test_audio()
+{
+  if (m_testing_audio || !gtk_widget_get_sensitive(m_audio_test_button))
+    return;
+  if (!generator::audio::SdlAudioOutput::play_test()) {
+    gtk_label_set_text(
+        m_audio_feedback,
+        "Could not play the test sound. Check your output device.");
+    gtk_widget_set_visible(GTK_WIDGET(m_audio_feedback), true);
+    return;
+  }
+  m_testing_audio = true;
+  gtk_widget_set_visible(GTK_WIDGET(m_audio_feedback), false);
+  gtk_button_set_label(GTK_BUTTON(m_audio_test_button), "Playing…");
+  refresh_audio_status();
+  m_audio_test_timer = Glib::signal_timeout().connect(
+      [this] {
+        generator::audio::SdlAudioOutput::stop_test();
+        m_testing_audio = false;
+        if (m_dialog) {
+          gtk_button_set_label(GTK_BUTTON(m_audio_test_button), "Test sound");
+          refresh_audio_status();
+        }
+        return false;
+      },
+      700);
+}
+
+void PreferencesDialog::reset_audio()
+{
+  stop_audio_test();
+  auto defaults = generator::gtkui::AudioSettings{};
+  if (!generator::audio::SdlAudioOutput::set_controls(defaults.volume,
+                                                      defaults.muted) ||
+      !defaults.save()) {
+    gtk_label_set_text(m_audio_feedback, "Could not reset audio preferences.");
+    gtk_widget_set_visible(GTK_WIDGET(m_audio_feedback), true);
+    return;
+  }
+  m_updating_audio = true;
+  gtk_range_set_value(GTK_RANGE(m_volume_scale), defaults.volume);
+  adw_switch_row_set_active(m_audio_mute_row, defaults.muted);
+  adw_combo_row_set_selected(m_audio_driver_row, 0);
+  gtk_button_set_label(GTK_BUTTON(m_audio_test_button), "Test sound");
+  m_updating_audio = false;
+  gtk_widget_set_visible(GTK_WIDGET(m_audio_feedback), false);
+  if (m_audio_changed)
+    m_audio_changed();
+  refresh_audio_status();
 }
 
 void PreferencesDialog::present()
@@ -263,4 +494,12 @@ void PreferencesDialog::present()
   if (!m_dialog)
     setup_ui(); /* previous dialog was destroyed on close */
   adw_dialog_present(ADW_DIALOG(m_dialog), GTK_WIDGET(m_parent.gobj()));
+  m_audio_timer.disconnect();
+  m_audio_timer = Glib::signal_timeout().connect(
+      [this] {
+        if (m_dialog)
+          refresh_audio_status();
+        return true;
+      },
+      500);
 }

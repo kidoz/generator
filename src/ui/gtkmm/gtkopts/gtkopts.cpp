@@ -55,6 +55,8 @@ static t_opts gtkopts_opts[] = {
      "maximum buffered sound fields before blocking (waiting)"},
     {"audio_driver", "auto, pulseaudio, pipewire, alsa, jack, dummy", "auto",
      "Preferred SDL audio backend (auto = SDL default)"},
+    {"audio_volume", "0-100", "100", "Playback volume in percent"},
+    {"audio_mute", "on, off", "off", "Mute playback without changing volume"},
     {"loglevel", "integer (0-7)", "1", "logging level"},
     {"debugsound", "on, off", "off", "extra sound debug logging"},
     {"statusbar", "on, off", "off", "status bar on main window (fps counter)"},

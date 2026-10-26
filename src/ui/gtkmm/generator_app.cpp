@@ -147,7 +147,7 @@ void GeneratorApp::on_activate()
   // Create the main window
   m_main_window = new MainWindow(m_emu_thread);
   m_main_window->set_runtime_state("Running", true);
-  m_main_window->set_audio_backend(soundp_backend_name());
+  update_audio_status();
   add_window(*m_main_window);
   m_main_window->present();
 }
@@ -319,11 +319,25 @@ void GeneratorApp::on_action_preferences()
   if (!m_prefs_dialog && m_main_window) {
     m_prefs_dialog = std::make_unique<PreferencesDialog>(
         *m_main_window, [this] { m_main_window->apply_video_settings(); },
-        [this](int factor) { m_main_window->resize_video(factor); });
+        [this](int factor) { m_main_window->resize_video(factor); },
+        [this] { update_audio_status(); });
   }
   if (m_prefs_dialog) {
     m_prefs_dialog->present();
   }
+}
+
+void GeneratorApp::update_audio_status()
+{
+  if (!m_main_window)
+    return;
+  auto settings = generator::gtkui::AudioSettings::load();
+  std::string status = soundp_backend_name();
+  if (settings.muted || settings.volume == 0)
+    status = "Muted · " + status;
+  else if (settings.volume != 100)
+    status += " · " + std::to_string(settings.volume) + "%";
+  m_main_window->set_audio_backend(status);
 }
 
 void GeneratorApp::on_action_about()

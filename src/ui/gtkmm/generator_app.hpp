@@ -44,6 +44,7 @@ private:
   void on_action_load_state();
   void on_action_state_slot(int slot);
   void on_action_preferences();
+  void update_audio_status();
   void on_action_netplay();
   void on_action_about();
   void on_action_quit();

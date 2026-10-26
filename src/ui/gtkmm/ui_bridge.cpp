@@ -2,6 +2,8 @@
 #include "generator_app.hpp"
 #include "emulator_core.hpp"
 #include "screen_geometry.hpp"
+#include "audio_preferences.hpp"
+#include "platform/sdl3/audio_output.hpp"
 
 #include "sdl_audio_backend.hpp"
 #include "stream_logger.hpp"
@@ -164,6 +166,9 @@ int ui_init(int argc, char *argv[])
   const char *driver = gtkopts_getvalue("audio_driver");
   if (driver && g_strcmp0(driver, "auto") != 0)
     SDL_SetHint(SDL_HINT_AUDIO_DRIVER, driver);
+  auto audio_settings = generator::gtkui::AudioSettings::load();
+  generator::audio::SdlAudioOutput::set_controls(audio_settings.volume,
+                                                 audio_settings.muted);
 
   // Allocate pixel buffers
   g_screen_buffers[0] = (uint8_t *)calloc(1, 4 * HMAXSIZE * VMAXSIZE);
