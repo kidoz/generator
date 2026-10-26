@@ -56,10 +56,19 @@ public:
   void attach_ram(uint8_t *ram /* 65536 bytes, borrowed */);
   /* SRAM: enabled when the cart header declares a save area.
    * start/size are the 68K address range, write-protected per the
-   * header's SRAM info bits. */
+   * header's SRAM info bits. Offsets alias inside 32 KiB and are then
+   * rejected when they fall outside the buffer Machine allocated. */
   void enable_sram(uint8_t *sram, uint32_t start, uint32_t size, bool writable);
   void disable_sram();
   void reset();
+  bool sram_dirty() const
+  {
+    return m_sram_dirty;
+  }
+  void clear_sram_dirty()
+  {
+    m_sram_dirty = false;
+  }
 
   /* One bus transfer. Returns wait states inserted before DTACK. Word
      accesses must be even (the CPU raises address errors before reaching
@@ -89,7 +98,9 @@ private:
   uint8_t *m_sram = nullptr;
   uint32_t m_sram_start = 0;
   uint32_t m_sram_end = 0;
+  uint32_t m_sram_size = 0;
   bool m_sram_writable = false;
+  bool m_sram_dirty = false;
 };
 
 }  // namespace generator

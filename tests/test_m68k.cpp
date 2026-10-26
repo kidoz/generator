@@ -161,6 +161,46 @@ TEST_CASE("68K bus ignores the upper address byte", "[m68k_bus]")
   CHECK(ram[0x0205] == 0xCD);
 }
 
+TEST_CASE("SRAM indexes stay inside the allocated window", "[m68k_bus]")
+{
+  TestDevices devices;
+  M68kBus bus(devices);
+
+  SECTION("a one-byte window ignores the low byte of a word")
+  {
+    std::vector<uint8_t> sram(1, 0xAB);
+    bus.enable_sram(sram.data(), 0x200000, 1, true);
+    uint16_t value = 0;
+    bus.read(0x200000, true, true, &value);
+    CHECK(value == 0xAB00);
+    bus.write(0x200000, 0xCD00, true, true);
+    CHECK(sram[0] == 0xCD);
+    CHECK(sram.size() == 1);
+  }
+
+  SECTION("the last word of an 8 KiB window is stored")
+  {
+    std::vector<uint8_t> sram(0x2000, 0);
+    bus.enable_sram(sram.data(), 0x200000, (uint32_t)sram.size(), true);
+    bus.write(0x201FFE, 0xBEEF, true, true);
+    CHECK(sram[0x1FFE] == 0xBE);
+    CHECK(sram[0x1FFF] == 0xEF);
+    uint16_t value = 0;
+    bus.read(0x201FFE, true, true, &value);
+    CHECK(value == 0xBEEF);
+  }
+
+  SECTION("a window above 32 KiB still aliases")
+  {
+    std::vector<uint8_t> sram(0x9000, 0);
+    sram[0] = 0x11;
+    bus.enable_sram(sram.data(), 0x200000, (uint32_t)sram.size(), true);
+    uint16_t value = 0;
+    bus.read(0x208000, true, true, &value);
+    CHECK((value >> 8) == 0x11);
+  }
+}
+
 TEST_CASE("jsr follows a callback tagged in the upper address byte", "[m68k]")
 {
   Rig rig;

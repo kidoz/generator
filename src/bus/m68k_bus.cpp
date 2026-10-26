@@ -26,7 +26,9 @@ void M68kBus::enable_sram(uint8_t *sram, uint32_t start, uint32_t size,
   m_sram = sram;
   m_sram_start = start;
   m_sram_end = start + size;
+  m_sram_size = size;
   m_sram_writable = writable;
+  m_sram_dirty = false;
 }
 
 void M68kBus::disable_sram()
@@ -34,7 +36,9 @@ void M68kBus::disable_sram()
   m_sram = nullptr;
   m_sram_start = 0;
   m_sram_end = 0;
+  m_sram_size = 0;
   m_sram_writable = false;
+  m_sram_dirty = false;
 }
 
 void M68kBus::reset()
@@ -51,8 +55,21 @@ int M68kBus::read(uint32_t addr, bool upper, bool lower, uint16_t *out)
   uint16_t value = 0;
 
   if (m_sram != nullptr && addr >= m_sram_start && addr < m_sram_end) {
-    value = (uint16_t)((uint16_t)m_sram[(addr - m_sram_start) & 0x7FFF] << 8 |
-                       m_sram[(addr - m_sram_start + 1) & 0x7FFF]);
+    /* Even address plus strobes, matching the 68000. The +1 index is the
+     * low byte. Masking at 32 KiB keeps the historical alias, and the
+     * size check drops an index the header's window did not allocate. */
+    const uint32_t offset = addr - m_sram_start;
+    const uint32_t hi = offset & 0x7FFFu;
+    const uint32_t lo = (offset + 1u) & 0x7FFFu;
+    uint8_t high_byte = (uint8_t)(m_data_bus >> 8);
+    uint8_t low_byte = (uint8_t)m_data_bus;
+    if (hi < m_sram_size) {
+      high_byte = m_sram[hi];
+    }
+    if (lo < m_sram_size) {
+      low_byte = m_sram[lo];
+    }
+    value = (uint16_t)((uint16_t)high_byte << 8 | low_byte);
   } else if (addr < 0x400000) {
     /* Cartridge ROM mirrors at its actual length. A bit mask only works
        for power-of-two dumps; homebrew images are often an exact,
@@ -116,12 +133,16 @@ int M68kBus::write(uint32_t addr, uint16_t data, bool upper, bool lower)
     }
   } else if (m_sram != nullptr && addr >= m_sram_start && addr < m_sram_end) {
     const uint32_t offset = addr - m_sram_start;
+    const uint32_t hi = offset & 0x7FFFu;
+    const uint32_t lo = (offset + 1u) & 0x7FFFu;
     if (m_sram_writable) {
-      if (upper) {
-        m_sram[offset & 0x7FFF] = (uint8_t)(data >> 8);
+      if (upper && hi < m_sram_size) {
+        m_sram[hi] = (uint8_t)(data >> 8);
+        m_sram_dirty = true;
       }
-      if (lower) {
-        m_sram[(offset + 1) & 0x7FFF] = (uint8_t)data;
+      if (lower && lo < m_sram_size) {
+        m_sram[lo] = (uint8_t)data;
+        m_sram_dirty = true;
       }
     }
   }
