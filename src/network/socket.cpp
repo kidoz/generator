@@ -205,7 +205,10 @@ int socket_recv(netplay_socket_t *sock, void *buf, size_t maxlen,
     }
   }
 
-  ssize_t received = recvfrom(sock->fd, buf, maxlen, 0, nullptr, nullptr);
+  struct sockaddr_in from_addr;
+  socklen_t addrlen = sizeof(from_addr);
+  ssize_t received = recvfrom(sock->fd, buf, maxlen, 0,
+                              (struct sockaddr *)&from_addr, &addrlen);
   if (received < 0) {
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
       return 0;
@@ -213,6 +216,16 @@ int socket_recv(netplay_socket_t *sock, void *buf, size_t maxlen,
     snprintf(socket_error_buf, sizeof(socket_error_buf), "Receive failed: %s",
              strerror(errno));
     return -1;
+  }
+
+  /* socket_connect records a peer but does not connect() the fd, so the
+   * kernel delivers every datagram that reaches the port. Drop anything
+   * that is not that peer; the caller treats 0 as "no usable packet". */
+  if (sock->has_remote &&
+      (from_addr.sin_family != AF_INET ||
+       from_addr.sin_addr.s_addr != sock->remote_addr.sin_addr.s_addr ||
+       from_addr.sin_port != sock->remote_addr.sin_port)) {
+    return 0;
   }
 
   return (int)received;

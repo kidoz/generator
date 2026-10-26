@@ -228,3 +228,36 @@ test('ym3438_timers', test_ym3438,
   timeout: 30,
   suite: 'catch2'
 )
+
+# Kaillera framing and the UDP peer filter. Compiled directly so they run
+# with -Dnetplay=false, which is the default: the library is not linked
+# into the emulator until a UI calls it.
+netplay_test_inc = include_directories('../src/network')
+
+test_kaillera_protocol = executable('test_kaillera_protocol',
+  'test_kaillera_protocol.cpp',
+  '../src/network/kaillera_protocol.cpp',
+  include_directories: [netplay_test_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('kaillera_protocol', test_kaillera_protocol,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+test_netplay_socket = executable('test_netplay_socket',
+  'test_netplay_socket.cpp',
+  '../src/network/socket.cpp',
+  include_directories: [netplay_test_inc],
+  dependencies: [catch2_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('netplay_socket', test_netplay_socket,
+  timeout: 30,
+  suite: 'catch2'
+)
