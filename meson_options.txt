@@ -24,8 +24,8 @@ option('gcc-version',
 
 option('netplay',
   type: 'boolean',
-  value: true,
-  description: 'Enable Kaillera network multiplayer support'
+  value: false,
+  description: 'Build the Kaillera library. Off by default: no UI calls it'
 )
 
 # Audio quality options
