@@ -729,6 +729,10 @@ int kaillera_client_modify_play_values(kaillera_client_t *client, void *input,
   if (data_size <= 0 || data_size > 16)
     return -1;
 
+  if (client->player_number < 0 ||
+      (client->player_number + 1) * data_size > size)
+    return -1;
+
   /* Build game data packet with only this client's input. */
   kaillera_game_data_t gd;
   memset(&gd, 0, sizeof(gd));
@@ -736,7 +740,10 @@ int kaillera_client_modify_play_values(kaillera_client_t *client, void *input,
   gd.player_count = 1;
   gd.data_size = (uint8_t)data_size;
 
-  memcpy(gd.player_data, input, (size_t)data_size);
+  const auto *slots = static_cast<const uint8_t *>(input);
+  memcpy(gd.player_data,
+         slots + (size_t)client->player_number * (size_t)data_size,
+         (size_t)data_size);
 
   /* Serialize and send */
   uint8_t buf[256];

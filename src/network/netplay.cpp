@@ -275,14 +275,6 @@ int netplay_sync_frame(const netplay_input_t *local, netplay_input_t *players,
   if (netplay_ctx.state != NETPLAY_IN_GAME)
     return -1;
 
-  /* Get local player index */
-  int local_player = netplay_ctx.config.local_player;
-  if (local_player < 0 || local_player > 1)
-    local_player = 0;
-
-  /* Serialize local input */
-  uint16_t local_input = netplay_serialize_input(local);
-
   int num_players = kaillera_client_get_num_players(netplay_ctx.client);
   if (num_players < 1 || num_players > KAILLERA_MAX_PLAYERS) {
     snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
@@ -291,9 +283,19 @@ int netplay_sync_frame(const netplay_input_t *local, netplay_input_t *players,
     return -1;
   }
 
-  /* Exchange inputs with server (blocking) */
+  /* The wire slot is this client's player number, not always index 0. */
+  int local_player = kaillera_client_get_player_number(netplay_ctx.client);
+  if (local_player < 0 || local_player >= num_players)
+    local_player = netplay_ctx.config.local_player;
+  if (local_player < 0 || local_player >= num_players) {
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg),
+             "Local player index is not in this match");
+    return -1;
+  }
+  netplay_ctx.config.local_player = local_player;
+
   uint16_t inputs[KAILLERA_MAX_PLAYERS] = {};
-  inputs[0] = local_input;
+  inputs[local_player] = netplay_serialize_input(local);
 
   int result = kaillera_client_modify_play_values(
       netplay_ctx.client, inputs, num_players * (int)sizeof(uint16_t));
