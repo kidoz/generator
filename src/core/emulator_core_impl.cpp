@@ -77,6 +77,11 @@ public:
     return m_machine.load_state(filename);
   }
 
+  std::expected<std::vector<uint8_t>, StateError> capture_state() override
+  {
+    return m_machine.capture_state();
+  }
+
   std::expected<void, StateError> save_state_slot(int slot) override
   {
     return m_machine.save_state_slot(slot);

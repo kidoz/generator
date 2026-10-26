@@ -10,12 +10,13 @@
 #include "state_error.hpp"
 
 #include <atomic>
+#include <ctime>
 #include <expected>
 #include <memory>
 #include <span>
 #include <string>
 #include <string_view>
-#include <ctime>
+#include <vector>
 
 namespace generator {
 
@@ -64,6 +65,8 @@ public:
 
   std::expected<void, StateError> save_state(std::string_view filename);
   std::expected<void, StateError> load_state(std::string_view filename);
+  /* The bytes save_state() would write, including the checksum. */
+  std::expected<std::vector<uint8_t>, StateError> capture_state();
   std::expected<void, StateError> save_state_slot(int slot);
   std::expected<void, StateError> load_state_slot(int slot);
   /* File mtime of the slot, or 0 when the slot does not exist. */

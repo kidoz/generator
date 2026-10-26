@@ -14,7 +14,6 @@
 #include <fstream>
 #include <iostream>
 #include <vector>
-#include <unistd.h>
 
 #include "ui.h"
 #include "generator.h"
@@ -290,44 +289,20 @@ private:
 
 /* Hash the emulator's save state after the run. The core's blob is fully
  * deterministic, so hashing it fingerprints the whole machine state at
- * once. Uses a temporary file because the save path is file-based. */
+ * once. The bytes are the same ones save_state() writes to a file. */
 static int dump_state_hash_report(EmulatorCore &core)
 {
-  char tmpl[] = "/tmp/generator-headless-state-XXXXXX";
-  const int fd = mkstemp(tmpl);
-  if (fd < 0) {
-    std::cerr << "Error: cannot create temporary state file\n";
-    return 1;
-  }
-  close(fd);
-
-  if (auto saved = core.save_state(tmpl); !saved) {
-    std::cerr << "Error: failed to save state for hashing: "
-              << state_error_message(saved.error()) << "\n";
-    unlink(tmpl);
-    return 1;
-  }
-
-  std::ifstream in(tmpl, std::ios::binary);
-  if (!in) {
-    std::cerr << "Error: cannot re-open temporary state file: " << tmpl << "\n";
-    unlink(tmpl);
+  auto blob = core.capture_state();
+  if (!blob) {
+    std::cerr << "Error: failed to capture state for hashing: "
+              << state_error_message(blob.error()) << "\n";
     return 1;
   }
   Fnv1a64 hash;
-  char buf[8192];
-  size_t total = 0;
-  while (in.read(buf, sizeof(buf)) || in.gcount() > 0) {
-    hash.update(reinterpret_cast<const uint8_t *>(buf),
-                static_cast<size_t>(in.gcount()));
-    total += static_cast<size_t>(in.gcount());
-    if (!in)
-      break;
-  }
-  unlink(tmpl);
+  hash.update(blob->data(), blob->size());
 
   printf("State hash:\n");
-  printf("  bytes: %zu\n", total);
+  printf("  bytes: %zu\n", blob->size());
   printf("  fnv1a64: %016llx\n", (unsigned long long)hash.value());
   return 0;
 }
@@ -336,21 +311,11 @@ static int dump_state_hash_report(EmulatorCore &core)
  * blob), the set the reference oracle publishes too. */
 static std::optional<uint64_t> z80_ram_fingerprint(EmulatorCore &core)
 {
-  char tmpl[] = "/tmp/generator-headless-frame-XXXXXX";
-  const int fd = mkstemp(tmpl);
-  if (fd < 0) {
+  auto blob = core.capture_state();
+  if (!blob) {
     return std::nullopt;
   }
-  close(fd);
-  if (auto saved = core.save_state(tmpl); !saved) {
-    unlink(tmpl);
-    return std::nullopt;
-  }
-  std::ifstream in(tmpl, std::ios::binary);
-  std::vector<uint8_t> blob((std::istreambuf_iterator<char>(in)),
-                            std::istreambuf_iterator<char>());
-  unlink(tmpl);
-  auto chunks = generator::StateV3::deserialize(blob);
+  auto chunks = generator::StateV3::deserialize(*blob);
   if (!chunks) {
     return std::nullopt;
   }
@@ -429,9 +394,9 @@ static void print_usage(const char *progname)
   printf("  --dump-video-hash   Fingerprint the rendered video (per-line VDP "
          "output)\n");
   printf("                      and print FNV-1a checksums after the run\n");
-  printf("  --dump-state-hash   Save the final machine state to a temporary "
-         "file and\n");
-  printf("                      print an FNV-1a checksum of the blob\n");
+  printf("  --dump-state-hash   Fingerprint the final save-state blob in "
+         "memory\n");
+  printf("                      and print an FNV-1a checksum\n");
   printf("  --hash-per-frame    Print a per-frame FNV-1a video fingerprint "
          "after each\n");
   printf("  --hash-state-per-frame  Print a per-frame FNV-1a of the Z80 "

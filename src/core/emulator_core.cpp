@@ -79,6 +79,11 @@ EmulatorCore::load_state(std::string_view filename)
   return m_impl->load_state(filename);
 }
 
+std::expected<std::vector<uint8_t>, StateError> EmulatorCore::capture_state()
+{
+  return m_impl->capture_state();
+}
+
 std::expected<void, StateError> EmulatorCore::save_state_slot(int slot)
 {
   return m_impl->save_state_slot(slot);

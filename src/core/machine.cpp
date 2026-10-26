@@ -837,14 +837,15 @@ std::expected<void, StateError> Machine::save_state(std::string_view filename)
   return save_state_impl(filename, -1);
 }
 
-std::expected<void, StateError>
-Machine::save_state_impl(std::string_view filename, int slot)
+std::expected<std::vector<uint8_t>, StateError> Machine::capture_state()
+{
+  return capture_state(-1);
+}
+
+std::expected<std::vector<uint8_t>, StateError> Machine::capture_state(int slot)
 {
   if (m_rom.empty()) {
     return std::unexpected(StateError::NotLoaded);
-  }
-  if (filename.empty()) {
-    return std::unexpected(StateError::Io);
   }
 
   /* Keep the legacy BORD identifier stable across the Board-to-Machine class
@@ -1156,7 +1157,20 @@ Machine::save_state_impl(std::string_view filename, int slot)
   blob[checksum_at + 2] = (uint8_t)((checksum >> 16) & 0xff);
   blob[checksum_at + 3] = (uint8_t)((checksum >> 24) & 0xff);
 
-  return write_file_atomic(std::filesystem::path{std::string(filename)}, blob);
+  return blob;
+}
+
+std::expected<void, StateError>
+Machine::save_state_impl(std::string_view filename, int slot)
+{
+  if (filename.empty()) {
+    return std::unexpected(StateError::Io);
+  }
+  auto blob = capture_state(slot);
+  if (!blob) {
+    return std::unexpected(blob.error());
+  }
+  return write_file_atomic(std::filesystem::path{std::string(filename)}, *blob);
 }
 
 std::expected<void, StateError> Machine::load_state(std::string_view filename)

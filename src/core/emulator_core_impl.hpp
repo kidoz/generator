@@ -22,6 +22,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace generator {
 
@@ -63,6 +64,7 @@ public:
   save_state(std::string_view filename) = 0;
   virtual std::expected<void, StateError>
   load_state(std::string_view filename) = 0;
+  virtual std::expected<std::vector<uint8_t>, StateError> capture_state() = 0;
   virtual std::expected<void, StateError> save_state_slot(int slot) = 0;
   virtual std::expected<void, StateError> load_state_slot(int slot) = 0;
   virtual time_t state_slot_date(int slot) const = 0;

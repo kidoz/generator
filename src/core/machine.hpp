@@ -72,6 +72,9 @@ public:
 
   std::expected<void, StateError> save_state(std::string_view filename);
   std::expected<void, StateError> load_state(std::string_view filename);
+  /* The bytes save_state() would write, including the checksum. Slot
+   * metadata is the free-path value, not a numbered slot. */
+  std::expected<std::vector<uint8_t>, StateError> capture_state();
 
   /* Per-ROM slots under the user data directory. Slots are 0-9. */
   std::expected<void, StateError> save_state_slot(int slot);
@@ -209,6 +212,7 @@ private:
   std::filesystem::path battery_path() const;
   void flush_battery();
   void restore_battery();
+  std::expected<std::vector<uint8_t>, StateError> capture_state(int slot);
   std::expected<void, StateError> save_state_impl(std::string_view filename,
                                                   int slot);
   static constexpr int kStateSlotCount = 10;

@@ -515,6 +515,21 @@ TEST_CASE("a machine without a ROM reports NotLoaded", "[state_slots]")
   CHECK(loaded.error() == StateError::NotLoaded);
 }
 
+TEST_CASE("capture_state matches the file save_state writes", "[state_v3]")
+{
+  TempStateDir dir;
+  const auto path = dir.path() / "blob.gst";
+
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  machine.run_frame();
+  REQUIRE(machine.save_state(path.string()).has_value());
+
+  const auto blob = machine.capture_state();
+  REQUIRE(blob.has_value());
+  CHECK(*blob == read_file(path.string().c_str()));
+}
+
 TEST_CASE("states carry META metadata and a trailing checksum", "[state_v3]")
 {
   TempStateDir dir;
