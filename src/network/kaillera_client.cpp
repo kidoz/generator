@@ -354,7 +354,8 @@ void kaillera_client_set_callbacks(kaillera_client_t *client,
 
 int kaillera_client_connect(kaillera_client_t *client, const char *host,
                             uint16_t port, const char *username,
-                            const char *emulator, uint8_t connection_type)
+                            const char *emulator, uint8_t connection_type,
+                            std::stop_token cancel)
 {
   if (client == nullptr || host == nullptr || username == nullptr)
     return -1;
@@ -415,10 +416,19 @@ int kaillera_client_connect(kaillera_client_t *client, const char *host,
 
   /* Wait for HELLO response */
   uint8_t buf[64];
-  int len = socket_recv(client->sock, buf, sizeof(buf), CONNECT_TIMEOUT_MS);
+  int len = 0;
+  uint64_t hello_start = get_time_ms();
+  while (!cancel.stop_requested() &&
+         get_time_ms() - hello_start < CONNECT_TIMEOUT_MS) {
+    len = socket_recv(client->sock, buf, sizeof(buf), RECV_TIMEOUT_MS);
+    if (len != 0)
+      break;
+  }
   if (len <= 0) {
-    snprintf(client->error_msg, sizeof(client->error_msg),
-             "Connection timeout - no response from server");
+    snprintf(client->error_msg, sizeof(client->error_msg), "%s",
+             cancel.stop_requested()
+                 ? "Connection cancelled"
+                 : "Connection timeout - no response from server");
     socket_destroy(client->sock);
     client->sock = nullptr;
     client->state = KAILLERA_STATE_ERROR;
@@ -488,8 +498,10 @@ int kaillera_client_connect(kaillera_client_t *client, const char *host,
   /* Wait for server status (indicates successful login) */
   uint64_t start = get_time_ms();
   while (client->state == KAILLERA_STATE_CONNECTING) {
-    if (get_time_ms() - start > CONNECT_TIMEOUT_MS) {
-      snprintf(client->error_msg, sizeof(client->error_msg), "Login timeout");
+    if (cancel.stop_requested() || get_time_ms() - start > CONNECT_TIMEOUT_MS) {
+      snprintf(client->error_msg, sizeof(client->error_msg), "%s",
+               cancel.stop_requested() ? "Connection cancelled"
+                                       : "Login timeout");
       socket_destroy(client->sock);
       client->sock = nullptr;
       client->state = KAILLERA_STATE_ERROR;

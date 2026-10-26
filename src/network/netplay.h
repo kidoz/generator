@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stop_token>
 
 /*
  * Button state exchanged over the wire.
@@ -104,10 +105,12 @@ void netplay_set_callbacks(const netplay_callbacks_t *callbacks);
 
 /*
  * Connect to a Kaillera server.
- * This is an asynchronous operation. Use netplay_get_state() to check status.
- * Returns 0 on success (connection initiated), -1 on failure.
+ * Blocks through the handshake and login. Run away from the UI thread.
+ * Cancellation is checked between receive attempts.
+ * Returns 0 on success, -1 on failure or cancellation.
  */
-int netplay_connect(const netplay_config_t *config);
+int netplay_connect(const netplay_config_t *config,
+                    std::stop_token cancel = {});
 
 /*
  * Disconnect from the current server.

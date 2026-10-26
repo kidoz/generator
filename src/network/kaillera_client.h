@@ -5,6 +5,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stop_token>
 #include "kaillera_protocol.h"
 
 /* Client state */
@@ -68,11 +69,12 @@ void kaillera_client_set_callbacks(kaillera_client_t *client,
 
 /*
  * Connect to a Kaillera server.
- * Returns 0 on success (connection initiated), -1 on failure.
+ * Blocks through handshake and login; returns 0 on success, -1 on failure.
  */
 int kaillera_client_connect(kaillera_client_t *client, const char *host,
                             uint16_t port, const char *username,
-                            const char *emulator, uint8_t connection_type);
+                            const char *emulator, uint8_t connection_type,
+                            std::stop_token cancel = {});
 
 /*
  * Disconnect from the server.

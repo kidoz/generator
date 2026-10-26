@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <string>
+
 #include "netplay.h"
 #include "kaillera_client.h"
 #include "kaillera_protocol.h"
@@ -76,7 +78,7 @@ void netplay_set_callbacks(const netplay_callbacks_t *callbacks)
   }
 }
 
-int netplay_connect(const netplay_config_t *config)
+int netplay_connect(const netplay_config_t *config, std::stop_token cancel)
 {
   if (!netplay_ctx.initialized || config == nullptr)
     return -1;
@@ -125,15 +127,17 @@ int netplay_connect(const netplay_config_t *config)
 
   int result = kaillera_client_connect(
       netplay_ctx.client, config->server, config->port, config->username,
-      NETPLAY_EMULATOR_NAME, (uint8_t)config->conn_type);
+      NETPLAY_EMULATOR_NAME, (uint8_t)config->conn_type, cancel);
 
   if (result < 0) {
     const char *err = kaillera_client_get_error(netplay_ctx.client);
-    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s",
-             err ? err : "Connection failed");
-    netplay_ctx.state = NETPLAY_ERROR;
+    std::string message = err ? err : "Connection failed";
+    // Destroy invokes on_disconnect; preserve the actual failure afterward.
     kaillera_client_destroy(netplay_ctx.client);
     netplay_ctx.client = nullptr;
+    snprintf(netplay_ctx.error_msg, sizeof(netplay_ctx.error_msg), "%s",
+             message.c_str());
+    netplay_ctx.state = NETPLAY_ERROR;
     return -1;
   }
 
