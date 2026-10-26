@@ -233,9 +233,16 @@ write_file_atomic(const std::filesystem::path &target,
 Machine::Machine(std::unique_ptr<IAudioBackend> audio,
                  std::unique_ptr<IVideoBackend> video,
                  std::shared_ptr<ILogger> logger)
-    : m_audio(std::move(audio)), m_video(std::move(video)),
-      m_logger(std::move(logger)), m_bus(*this), m_cpu(m_bus, *this),
-      m_z80bus(), m_z80(m_z80bus)
+    : Machine(audio.get(), video.get(), std::move(logger))
+{
+  m_owned_audio = std::move(audio);
+  m_owned_video = std::move(video);
+}
+
+Machine::Machine(IAudioBackend *audio, IVideoBackend *video,
+                 std::shared_ptr<ILogger> logger)
+    : m_audio(audio), m_video(video), m_logger(std::move(logger)), m_bus(*this),
+      m_cpu(m_bus, *this), m_z80bus(), m_z80(m_z80bus)
 {
   m_z80bus.attach_68k(&m_bus);
   /* DMA source reads go through the real 68K bus (no direct pointers):

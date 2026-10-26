@@ -18,6 +18,7 @@
 #include "state_error.hpp"
 
 #include "bus/m68k_bus.hpp"
+#include "emulator_machine.hpp"
 #include "m68k/m68k.hpp"
 #include "vdp/vdp.hpp"
 #include "z80/z80.hpp"
@@ -41,13 +42,17 @@
 
 namespace generator {
 
-class Machine : private BusDevices, private MasterClockSink {
+class Machine : public EmulatorMachine,
+                private BusDevices,
+                private MasterClockSink {
 public:
   Machine(std::unique_ptr<IAudioBackend> audio,
           std::unique_ptr<IVideoBackend> video,
           std::shared_ptr<ILogger> logger);
+  Machine(IAudioBackend *audio, IVideoBackend *video,
+          std::shared_ptr<ILogger> logger);
 
-  ~Machine();
+  ~Machine() override;
 
   Machine(const Machine &) = delete;
   Machine &operator=(const Machine &) = delete;
@@ -106,6 +111,10 @@ public:
 
   // --- Information ---
 
+  SystemKind system_kind() const override
+  {
+    return SystemKind::MegaDrive;
+  }
   const t_cartinfo *rom_info() const;
   const char *rom_name() const;
   void set_debug(int enabled);
@@ -227,8 +236,10 @@ private:
   };
   std::unique_ptr<std::FILE, FileCloser> m_zram_log;
 
-  std::unique_ptr<IAudioBackend> m_audio;
-  std::unique_ptr<IVideoBackend> m_video;
+  std::unique_ptr<IAudioBackend> m_owned_audio;
+  std::unique_ptr<IVideoBackend> m_owned_video;
+  IAudioBackend *m_audio;
+  IVideoBackend *m_video;
   std::shared_ptr<ILogger> m_logger;
 
   std::vector<uint8_t> m_rom;

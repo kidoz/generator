@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 /* EmulatorCore implementation.
  *
- * A thin adapter over Machine, the complete hardware aggregate. Several entries
+ * A thin adapter over the replaceable EmulatorMachine contract. Several entries
  * are deliberate stubs where the chip behind them has not landed yet. */
 
 #include "emulator_core_impl.hpp"
@@ -28,9 +28,11 @@ public:
                    std::unique_ptr<IVideoBackend> video,
                    std::shared_ptr<ILogger> logger)
       : CoreImplBase(audio.get(), video.get(), logger.get()),
-        m_machine(std::move(audio), std::move(video), std::move(logger))
+        m_audio_owner(std::move(audio)), m_video_owner(std::move(video)),
+        m_logger_owner(std::move(logger)),
+        m_machine(std::make_unique<Machine>(m_audio, m_video, m_logger_owner))
   {
-    m_machine.logger().log(LogLevel::Verbose, "core: machine created");
+    m_logger->log(LogLevel::Verbose, "core: machine created");
   }
 
   std::expected<void, std::string>
@@ -57,7 +59,7 @@ public:
       return unsupported_system(*detected);
     }
 
-    auto result = m_machine.load_rom_mem(*data, filename);
+    auto result = m_machine->load_rom_mem(*data, filename);
     if (result) {
       m_media_info = *detected;
     }
@@ -84,7 +86,7 @@ public:
     if (detected->system != SystemKind::MegaDrive) {
       return unsupported_system(*detected);
     }
-    auto result = m_machine.load_rom_mem(rom_data);
+    auto result = m_machine->load_rom_mem(rom_data, {});
     if (result) {
       m_media_info = *detected;
     }
@@ -93,28 +95,28 @@ public:
 
   void unload_rom() override
   {
-    m_machine.unload_rom();
+    m_machine->unload_rom();
     m_media_info = {};
   }
 
   bool rom_loaded() const override
   {
-    return m_machine.rom_loaded();
+    return m_machine->rom_loaded();
   }
 
   void run_frame() override
   {
-    m_machine.run_frame();
+    m_machine->run_frame();
   }
 
   void reset() override
   {
-    m_machine.reset();
+    m_machine->reset();
   }
 
   void soft_reset() override
   {
-    m_machine.soft_reset();
+    m_machine->soft_reset();
   }
 
   void set_paused(bool paused) override
@@ -124,47 +126,47 @@ public:
 
   std::expected<void, StateError> save_state(std::string_view filename) override
   {
-    return m_machine.save_state(filename);
+    return m_machine->save_state(filename);
   }
 
   std::expected<void, StateError> load_state(std::string_view filename) override
   {
-    return m_machine.load_state(filename);
+    return m_machine->load_state(filename);
   }
 
   std::expected<std::vector<uint8_t>, StateError> capture_state() override
   {
-    return m_machine.capture_state();
+    return m_machine->capture_state();
   }
 
   std::expected<void, StateError> save_state_slot(int slot) override
   {
-    return m_machine.save_state_slot(slot);
+    return m_machine->save_state_slot(slot);
   }
 
   std::expected<void, StateError> load_state_slot(int slot) override
   {
-    return m_machine.load_state_slot(slot);
+    return m_machine->load_state_slot(slot);
   }
 
   time_t state_slot_date(int slot) const override
   {
-    return m_machine.state_slot_date(slot);
+    return m_machine->state_slot_date(slot);
   }
 
   std::expected<void, StateError> save_sram() override
   {
-    return m_machine.save_sram();
+    return m_machine->save_sram();
   }
 
   std::expected<void, StateError> load_sram() override
   {
-    return m_machine.load_sram();
+    return m_machine->load_sram();
   }
 
   void debug_log_zram_to(const char *path) override
   {
-    m_machine.debug_log_zram_to(path);
+    m_machine->debug_log_zram_to(path);
   }
 
   void set_input(int player, unsigned int up, unsigned int down,
@@ -172,8 +174,8 @@ public:
                  unsigned int a, unsigned int b, unsigned int c, unsigned int x,
                  unsigned int y, unsigned int z, unsigned int mode) override
   {
-    m_machine.set_input(player, up, down, left, right, start, a, b, c, x, y, z,
-                        mode);
+    m_machine->set_input(player, up, down, left, right, start, a, b, c, x, y, z,
+                         mode);
   }
 
   int audio_start() override
@@ -196,51 +198,54 @@ public:
 
   void set_video_mode(int pal, int autodetect) override
   {
-    m_machine.set_video_mode(pal, autodetect);
+    m_machine->set_video_mode(pal, autodetect);
   }
 
   int video_mode() const override
   {
-    return m_machine.video_mode();
+    return m_machine->video_mode();
   }
 
   unsigned int framerate() const override
   {
-    return m_machine.framerate();
+    return m_machine->framerate();
   }
 
   void screen_size(int *width, int *height) const override
   {
-    m_machine.screen_size(width, height);
+    m_machine->screen_size(width, height);
   }
 
   const t_cartinfo *rom_info() const override
   {
-    return m_machine.rom_info();
+    return m_machine->rom_info();
   }
 
   const char *rom_name() const override
   {
-    return m_machine.rom_name();
+    return m_machine->rom_name();
   }
 
   void set_debug(int enabled) override
   {
-    m_machine.set_debug(enabled);
+    m_machine->set_debug(enabled);
   }
 
   void set_loglevel(int level) override
   {
-    m_machine.set_loglevel(level);
+    m_machine->set_loglevel(level);
   }
 
   unsigned int frame_count() const override
   {
-    return m_machine.frame_count();
+    return m_machine->frame_count();
   }
 
 private:
-  Machine m_machine;
+  std::unique_ptr<IAudioBackend> m_audio_owner;
+  std::unique_ptr<IVideoBackend> m_video_owner;
+  std::shared_ptr<ILogger> m_logger_owner;
+  std::unique_ptr<EmulatorMachine> m_machine;
   MediaInfo m_media_info{};
 };
 
