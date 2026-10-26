@@ -2,9 +2,8 @@
 
 #include <atomic>
 
+#include <glibmm/main.h>
 #include <gtkmm/picture.h>
-#include <gtkmm/widget.h>
-#include <gdkmm/frameclock.h>
 
 class EmulatorThread;
 
@@ -21,9 +20,10 @@ public:
   }
 
 private:
-  bool on_tick(const Glib::RefPtr<Gdk::FrameClock> &frame_clock);
+  bool on_poll();
   void update_texture();
 
   EmulatorThread &m_emu_thread;
+  sigc::connection m_poll;
   std::atomic<unsigned int> m_frames_since_sample{0};
 };

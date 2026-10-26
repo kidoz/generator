@@ -22,13 +22,22 @@ EmulatorView::EmulatorView(EmulatorThread &emu_thread)
   // with empty bars on the left and right when the window is wider).
   set_content_fit(Gtk::ContentFit::FILL);
 
-  add_tick_callback(sigc::mem_fun(*this, &EmulatorView::on_tick));
+  /* Not a frame-clock tick. GTK 4.22 records one presentation per clock
+   * frame; swapping the paintable from inside the tick presented that
+   * frame twice, one refresh (about 16.7ms) apart, and the late feedback
+   * then landed on a frame the clock had already discarded. A plain
+   * timeout uploads the texture between frames, so set_paintable schedules
+   * a single paint. */
+  m_poll = Glib::signal_timeout().connect(
+      sigc::mem_fun(*this, &EmulatorView::on_poll), 8);
 }
 
-EmulatorView::~EmulatorView() = default;
+EmulatorView::~EmulatorView()
+{
+  m_poll.disconnect();
+}
 
-bool EmulatorView::on_tick(
-    const Glib::RefPtr<Gdk::FrameClock> & /* frame_clock */)
+bool EmulatorView::on_poll()
 {
   extern Glib::RefPtr<GeneratorApp> g_app;
 
@@ -57,7 +66,7 @@ bool EmulatorView::on_tick(
     m_emu_thread.request_frame();
   }
 
-  return true;  // Continue ticking
+  return true;
 }
 
 void EmulatorView::update_texture()
