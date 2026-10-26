@@ -92,6 +92,16 @@ public:
     return m_machine.state_slot_date(slot);
   }
 
+  std::expected<void, StateError> save_sram() override
+  {
+    return m_machine.save_sram();
+  }
+
+  std::expected<void, StateError> load_sram() override
+  {
+    return m_machine.load_sram();
+  }
+
   void debug_log_zram_to(const char *path) override
   {
     m_machine.debug_log_zram_to(path);

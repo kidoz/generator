@@ -66,6 +66,8 @@ public:
   virtual std::expected<void, StateError> save_state_slot(int slot) = 0;
   virtual std::expected<void, StateError> load_state_slot(int slot) = 0;
   virtual time_t state_slot_date(int slot) const = 0;
+  virtual std::expected<void, StateError> save_sram() = 0;
+  virtual std::expected<void, StateError> load_sram() = 0;
 
   // --- Input ---
 

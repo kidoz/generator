@@ -94,6 +94,16 @@ time_t EmulatorCore::state_slot_date(int slot) const
   return m_impl->state_slot_date(slot);
 }
 
+std::expected<void, StateError> EmulatorCore::save_sram()
+{
+  return m_impl->save_sram();
+}
+
+std::expected<void, StateError> EmulatorCore::load_sram()
+{
+  return m_impl->load_sram();
+}
+
 void EmulatorCore::debug_log_zram_to(const char *path)
 {
   m_impl->debug_log_zram_to(path);

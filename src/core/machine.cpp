@@ -256,7 +256,10 @@ Machine::Machine(std::unique_ptr<IAudioBackend> audio,
                               (double)SOUND_SAMPLERATE);
 }
 
-Machine::~Machine() = default;
+Machine::~Machine()
+{
+  flush_battery();
+}
 
 std::expected<void, std::string> Machine::load_rom(std::string_view filename)
 {
@@ -301,6 +304,14 @@ Machine::load_rom_mem(std::span<const uint8_t> rom_data)
     return std::unexpected(normalized.error());
   }
 
+  /* Keep the previous cartridge if its battery file cannot be written.
+   * A machine with nowhere to put that file (no home directory) drops
+   * the dirty flag inside flush_battery and still switches. */
+  flush_battery();
+  if (m_bus.sram_dirty()) {
+    return std::unexpected(std::string(state_error_message(StateError::Io)));
+  }
+
   /* Detach borrowed storage before either vector can reallocate. The new
    * cartridge starts from a cold machine on the next frame. */
   m_bus.attach_rom(nullptr, 0);
@@ -309,6 +320,7 @@ Machine::load_rom_mem(std::span<const uint8_t> rom_data)
   m_rom = std::move(*normalized);
   parse_rom_header();
   setup_sram();
+  restore_battery();
   m_powered = false;
   m_halted = false;
   m_mclk_total = 0;
@@ -318,6 +330,7 @@ Machine::load_rom_mem(std::span<const uint8_t> rom_data)
 
 void Machine::unload_rom()
 {
+  flush_battery();
   m_bus.attach_rom(nullptr, 0);
   m_bus.disable_sram();
   m_sram.clear();
@@ -392,6 +405,7 @@ void Machine::run_frame()
     /* Still emit a field so backends observe time passing. */
     finish_frame_video();
     m_frames++;
+    flush_battery();
     return;
   }
   if (!m_powered) {
@@ -437,6 +451,7 @@ void Machine::run_frame()
 
   finish_frame_video();
   m_frames++;
+  flush_battery();
 }
 
 void Machine::finish_frame_video()
@@ -1563,7 +1578,7 @@ uint64_t Machine::rom_id() const
   return fnv1a64(m_rom.data(), m_rom.size());
 }
 
-std::filesystem::path Machine::state_slot_path(int slot) const
+std::filesystem::path Machine::user_data_dir() const
 {
   std::filesystem::path base;
 #if defined(_WIN32)
@@ -1591,14 +1606,36 @@ std::filesystem::path Machine::state_slot_path(int slot) const
     }
 #endif
   }
-  if (base.empty()) {
+  return base;
+}
+
+std::filesystem::path Machine::rom_state_dir() const
+{
+  const std::filesystem::path base = user_data_dir();
+  if (base.empty() || m_rom.empty()) {
     return {};
   }
-
   char id[17];
   std::snprintf(id, sizeof(id), "%016llx", (unsigned long long)rom_id());
-  return base / "generator" / "states" / id /
-         ("slot" + std::to_string(slot) + ".gst");
+  return base / "generator" / "states" / id;
+}
+
+std::filesystem::path Machine::state_slot_path(int slot) const
+{
+  const std::filesystem::path dir = rom_state_dir();
+  if (dir.empty()) {
+    return {};
+  }
+  return dir / ("slot" + std::to_string(slot) + ".gst");
+}
+
+std::filesystem::path Machine::battery_path() const
+{
+  const std::filesystem::path dir = rom_state_dir();
+  if (dir.empty()) {
+    return {};
+  }
+  return dir / "battery.sram";
 }
 
 std::expected<void, StateError> Machine::save_state_slot(int slot)
@@ -1805,32 +1842,101 @@ void Machine::setup_sram()
   }
 }
 
-int Machine::save_sram(const char *filename)
+std::expected<void, StateError> Machine::save_sram()
 {
+  if (m_rom.empty()) {
+    return std::unexpected(StateError::NotLoaded);
+  }
   if (m_sram.empty()) {
-    return -1;
+    return {};
   }
-  std::ofstream out{filename, std::ios::binary};
-  if (!out) {
-    return -1;
+  const std::filesystem::path path = battery_path();
+  if (path.empty()) {
+    return std::unexpected(StateError::Io);
   }
-  out.write(reinterpret_cast<const char *>(m_sram.data()),
-            (std::streamsize)m_sram.size());
-  return out ? 0 : -1;
+
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+  if (ec) {
+    return std::unexpected(StateError::Io);
+  }
+#if !defined(_WIN32)
+  std::filesystem::permissions(path.parent_path(),
+                               std::filesystem::perms::owner_all,
+                               std::filesystem::perm_options::replace, ec);
+  ec.clear();
+#endif
+
+  auto written = write_file_atomic(path, m_sram);
+  if (!written) {
+    return written;
+  }
+  m_bus.clear_sram_dirty();
+  return {};
 }
 
-int Machine::load_sram(const char *filename)
+std::expected<void, StateError> Machine::load_sram()
+{
+  if (m_rom.empty()) {
+    return std::unexpected(StateError::NotLoaded);
+  }
+  if (m_sram.empty()) {
+    return {};
+  }
+  const std::filesystem::path path = battery_path();
+  if (path.empty()) {
+    return std::unexpected(StateError::Io);
+  }
+
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec) || ec) {
+    return std::unexpected(StateError::NoSlot);
+  }
+  const auto file_size = std::filesystem::file_size(path, ec);
+  if (ec || file_size != m_sram.size()) {
+    return std::unexpected(StateError::Corrupt);
+  }
+
+  std::ifstream in{path, std::ios::binary};
+  if (!in) {
+    return std::unexpected(StateError::Io);
+  }
+  std::vector<uint8_t> bytes(m_sram.size());
+  in.read(reinterpret_cast<char *>(bytes.data()),
+          (std::streamsize)bytes.size());
+  if (!in) {
+    return std::unexpected(StateError::Io);
+  }
+  std::memcpy(m_sram.data(), bytes.data(), bytes.size());
+  m_bus.clear_sram_dirty();
+  return {};
+}
+
+void Machine::flush_battery()
+{
+  if (!m_bus.sram_dirty() || m_sram.empty()) {
+    return;
+  }
+  /* No home directory: nothing can be persisted, and retrying every
+   * frame would not create one. */
+  if (battery_path().empty()) {
+    m_bus.clear_sram_dirty();
+    return;
+  }
+  if (save_sram()) {
+    m_bus.clear_sram_dirty();
+  }
+}
+
+void Machine::restore_battery()
 {
   if (m_sram.empty()) {
-    return -1;
+    return;
   }
-  std::ifstream in{filename, std::ios::binary};
-  if (!in) {
-    return -1;
+  const auto loaded = load_sram();
+  if (!loaded && loaded.error() != StateError::NoSlot) {
+    m_logger->log(LogLevel::Verbose, "SRAM image ignored");
   }
-  in.read(reinterpret_cast<char *>(m_sram.data()),
-          (std::streamsize)m_sram.size());
-  return in ? 0 : -1;
 }
 
 void Machine::parse_rom_header()

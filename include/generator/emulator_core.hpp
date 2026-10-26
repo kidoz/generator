@@ -69,6 +69,12 @@ public:
   /* File mtime of the slot, or 0 when the slot does not exist. */
   time_t state_slot_date(int slot) const;
 
+  /* Battery SRAM for the loaded cartridge. The core owns the path
+   * (<data>/generator/states/<rom-id>/battery.sram) and flushes it on its
+   * own; these reload or force a flush. */
+  std::expected<void, StateError> save_sram();
+  std::expected<void, StateError> load_sram();
+
   // --- Input ---
 
   /* Debug: log every Z80-RAM write ("master_clocks addr data"). */

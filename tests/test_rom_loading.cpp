@@ -603,3 +603,85 @@ TEST_CASE("a ROM above the size cap is rejected", "[rom_loading]")
   REQUIRE_FALSE(file);
   CHECK(file.error().find("too large") != std::string::npos);
 }
+
+namespace {
+
+class ScopedEnv {
+public:
+  ScopedEnv(const char *name, const std::string &value) : m_name(name)
+  {
+    const char *old = std::getenv(name);
+    if (old != nullptr) {
+      m_had_old = true;
+      m_old = old;
+    }
+    setenv(name, value.c_str(), 1);
+  }
+  ~ScopedEnv()
+  {
+    if (m_had_old) {
+      setenv(m_name.c_str(), m_old.c_str(), 1);
+    } else {
+      unsetenv(m_name.c_str());
+    }
+  }
+  ScopedEnv(const ScopedEnv &) = delete;
+  ScopedEnv &operator=(const ScopedEnv &) = delete;
+
+private:
+  std::string m_name;
+  std::string m_old;
+  bool m_had_old = false;
+};
+
+std::vector<uint8_t> make_sram_rom()
+{
+  auto rom = make_rom(0x8000, 0x200);
+  rom[0x1B0] = 'R';
+  rom[0x1B1] = 'A';
+  rom[0x1B2] = 0xF8; /* battery-backed SRAM */
+  put_be32(rom, 0x1B4, 0x00200000);
+  put_be32(rom, 0x1B8, 0x00201FFF); /* 8 KiB, inclusive */
+  /* MOVE.W $200000,D0 / MOVE.W #$1234,$200000 / BRA.S -2.
+   * The read runs first, so a reloaded cartridge observes the value the
+   * previous run stored instead of the store it is about to repeat. */
+  put_be16(rom, 0x200, 0x3039);
+  put_be16(rom, 0x202, 0x0020);
+  put_be16(rom, 0x204, 0x0000);
+  put_be16(rom, 0x206, 0x33FC);
+  put_be16(rom, 0x208, 0x1234);
+  put_be16(rom, 0x20A, 0x0020);
+  put_be16(rom, 0x20C, 0x0000);
+  put_be16(rom, 0x20E, 0x60FE);
+  return rom;
+}
+
+}  // namespace
+
+TEST_CASE("battery SRAM is reloaded with the cartridge", "[rom_loading][sram]")
+{
+  namespace fs = std::filesystem;
+  const auto stamp =
+      std::chrono::steady_clock::now().time_since_epoch().count();
+  const fs::path dir = fs::temp_directory_path() /
+                       ("generator-sram-test-" + std::to_string(stamp));
+  std::error_code ec;
+  fs::create_directories(dir, ec);
+  REQUIRE_FALSE(ec);
+  ScopedEnv env("XDG_DATA_HOME", dir.string());
+
+  const auto rom = make_sram_rom();
+  {
+    auto machine = make_machine();
+    REQUIRE(machine.load_rom_mem(rom));
+    machine.run_frame();
+    CHECK(machine.cpu().d(0) == 0);
+    REQUIRE(machine.save_sram());
+  }
+
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(rom));
+  machine.run_frame();
+  CHECK(machine.cpu().d(0) == 0x1234);
+  fs::remove_all(dir, ec);
+}

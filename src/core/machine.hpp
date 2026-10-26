@@ -79,9 +79,12 @@ public:
   /* File mtime of the slot, or 0 when the slot does not exist. */
   time_t state_slot_date(int slot) const;
 
-  /* Battery save: persist/restore SRAM alongside the ROM file. */
-  int save_sram(const char *filename);
-  int load_sram(const char *filename);
+  /* Battery SRAM for the loaded cartridge. The file lives beside the
+   * save-state slots at <data>/generator/states/<rom-id>/battery.sram.
+   * Insertion loads it; a write flushes it at the end of the frame, and
+   * cartridge changes and destruction flush it as well. */
+  std::expected<void, StateError> save_sram();
+  std::expected<void, StateError> load_sram();
 
   // --- Input (3-button protocol plus the 6-button TH burst) ---
 
@@ -200,7 +203,12 @@ private:
 
   /* Identity of the loaded ROM, used for the per-ROM slot directory. */
   uint64_t rom_id() const;
+  std::filesystem::path user_data_dir() const;
+  std::filesystem::path rom_state_dir() const;
   std::filesystem::path state_slot_path(int slot) const;
+  std::filesystem::path battery_path() const;
+  void flush_battery();
+  void restore_battery();
   std::expected<void, StateError> save_state_impl(std::string_view filename,
                                                   int slot);
   static constexpr int kStateSlotCount = 10;
