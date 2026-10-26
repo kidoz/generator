@@ -23,6 +23,8 @@ public:
   // Bottom status bar: name of the active audio output
   void set_audio_backend(const Glib::ustring &name);
   void set_netplay_status(const Glib::ustring &status);
+  void apply_video_settings();
+  void resize_video(int factor);
 
 private:
   void setup_ui();

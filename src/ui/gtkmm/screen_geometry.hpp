@@ -3,12 +3,10 @@
 
 #pragma once
 
-/* This backend renders into fixed-stride buffers big enough for the largest
- * scaled field plus borders, and hands GDK a sub-rectangle of one. The
- * stride therefore has to agree between the code that fills the buffer
- * (ui_bridge.cpp) and the code that uploads it (emulator_view.cpp); both
- * used to carry their own copy of these macros, so changing one silently
- * corrupted the other. */
+/* Native fields use these legacy fixed-stride banks. The stride must agree
+ * between ui_bridge.cpp and the source-frame copy in emulator_view.cpp.
+ * Presentation filters allocate separate packed buffers, so xBRZ 5x/6x
+ * output is not limited by the banks' historical 4x capacity. */
 
 #define MAX_SCALE_FACTOR 4
 #define HBORDER_MAX 32

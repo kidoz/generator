@@ -6,6 +6,8 @@ gtkmm_ui_sources = files(
     'main_window.cpp',
     'emulator_thread.cpp',
     'emulator_view.cpp',
+    'video_presentation.cpp',
+    'video_presentation.hpp',
     'input_controller.cpp',
     'preferences_dialog.cpp',
     'netplay_dialog.cpp',

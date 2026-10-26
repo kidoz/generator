@@ -1,5 +1,7 @@
 #include "main_window.hpp"
 
+#include <cmath>
+
 namespace {
 
 constexpr const char *UI_CSS = R"(
@@ -180,6 +182,28 @@ void MainWindow::set_netplay_status(const Glib::ustring &status)
                                                       : "Netplay: " + status);
 }
 
+void MainWindow::apply_video_settings()
+{
+  m_view->set_video_settings(generator::gtkui::VideoSettings::load());
+}
+
+void MainWindow::resize_video(int factor)
+{
+  if (factor < 1 || factor > 4)
+    return;
+  auto settings = generator::gtkui::VideoSettings::load();
+  int height = m_view->source_height() * factor;
+  int width = settings.aspect == generator::gtkui::AspectRatio::TV
+                  ? static_cast<int>(std::lround(height * (4.0 / 3.0)))
+                  : m_view->source_width() * factor;
+  // Measure the actual chrome, including the current theme's margins.
+  int chrome_width = get_width() - m_view->get_width();
+  int chrome_height = get_height() - m_view->get_height();
+  unfullscreen();
+  unmaximize();
+  set_default_size(width + chrome_width, height + chrome_height);
+}
+
 void MainWindow::setup_ui()
 {
   install_ui_css();
@@ -234,21 +258,13 @@ void MainWindow::setup_ui()
   // (CSD)
   set_titlebar(*m_header_bar);
 
-  // Pack the emulator view into the main box, constrained to the 4:3
-  // display aspect of a real Mega Drive TV. The view itself stretches
-  // (ContentFit::FILL) inside the frame, so both H32 (256px) and H40
-  // (320px) modes fill the same 4:3 area, matching real hardware; the
-  // frame letterboxes within the window instead of distorting.
+  // The view handles aspect ratio, integer scaling and letterboxing using
+  // the native field dimensions, independently of its upscaling filter.
   m_view->add_css_class("emulator-screen");
-  auto *aspect = Gtk::make_managed<Gtk::AspectFrame>(
-      Gtk::Align::CENTER, Gtk::Align::CENTER, 4.0f / 3.0f, false);
-  aspect->set_child(*m_view);
-  aspect->set_vexpand(true);
-  aspect->set_hexpand(true);
   m_viewport.add_css_class("emulator-viewport");
   m_viewport.set_vexpand(true);
   m_viewport.set_hexpand(true);
-  m_viewport.append(*aspect);
+  m_viewport.append(*m_view);
   m_vbox.append(m_viewport);
 
   // Bottom status bar with compact runtime state.
