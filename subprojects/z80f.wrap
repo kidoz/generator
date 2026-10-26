@@ -1,6 +1,7 @@
 [wrap-git]
 url = https://github.com/kidoz/z80f.git
-revision = v1.0.1
+# Commit of tag v1.0.1. A tag can move; this revision cannot.
+revision = 665a39c82b26943df4705bb9b0505b58cc91b0ce
 clone-recursive = false
 
 [provide]
