@@ -12,8 +12,8 @@
  * two-word prefetch queue supplies opcode/extension words; handlers
  * transcribe the published fetch/operand/refill order per form.
  *
- * Time advances through MasterClockSink so sibling clock domains (VDP,
- * Z80, audio) interleave at master-clock granularity. */
+ * Time advances through MasterClockSink in 68K clocks so each machine can
+ * convert them to its own master-clock cadence. */
 
 #pragma once
 
@@ -22,13 +22,13 @@
 
 namespace generator {
 
-class M68kBus;
+class M68kBusInterface;
 
-/* Implemented by Machine: advances sibling clock domains by master ticks. */
+/* Implemented by the machine: advances sibling domains by 68K clocks. */
 class MasterClockSink {
 public:
   virtual ~MasterClockSink() = default;
-  virtual void advance_mclk(uint64_t ticks) = 0;
+  virtual void advance_68k_clocks(uint64_t clocks) = 0;
 };
 
 class M68k {
@@ -60,7 +60,7 @@ public:
     uint64_t clk;
   };
 
-  M68k(M68kBus &bus, MasterClockSink &clock);
+  M68k(M68kBusInterface &bus, MasterClockSink &clock);
 
   void power_on_reset();
 
@@ -231,7 +231,7 @@ private:
                  uint32_t borrow_in = 0);
   void flags_cmp(uint32_t a, uint32_t b, uint32_t res, int size);
 
-  M68kBus &m_bus;
+  M68kBusInterface &m_bus;
   MasterClockSink &m_clock;
 
   uint32_t m_d[8]{};

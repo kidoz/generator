@@ -526,6 +526,11 @@ void Machine::halt(const char *why)
 /* MasterClockSink                                                     */
 /* ------------------------------------------------------------------ */
 
+void Machine::advance_68k_clocks(uint64_t clocks)
+{
+  advance_mclk(clocks * 7);
+}
+
 void Machine::advance_mclk(uint64_t ticks)
 {
   const uint64_t per_second = m_pal ? kMclkPerSecondPal : kMclkPerSecondNtsc;

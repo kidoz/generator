@@ -1,10 +1,9 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "m68k.hpp"
 
-#include "m68k_bus.hpp"
+#include "bus_interface.hpp"
 
 namespace generator {
-
 
 namespace {
 
@@ -15,7 +14,6 @@ constexpr int kVecTrap0 = 32;
 constexpr int kAutovectorBase = 25; /* vectors 25..31 = levels 1..7 */
 
 constexpr int kClkPerBusAccess = 4; /* one 68K bus cycle = 4 clocks */
-constexpr int kMclkPerClk = 7;      /* 68K clock = master / 7 */
 
 /* Work-RAM refresh: the arbiter takes the bus off the CPU for two clocks
  * out of every 128 to refresh the DRAM, so the CPU only ever gets 126 of
@@ -70,7 +68,8 @@ constexpr uint32_t an_step(int reg, int size)
 
 }  // namespace
 
-M68k::M68k(M68kBus &bus, MasterClockSink &clock) : m_bus(bus), m_clock(clock)
+M68k::M68k(M68kBusInterface &bus, MasterClockSink &clock)
+    : m_bus(bus), m_clock(clock)
 {
 }
 
@@ -91,13 +90,13 @@ void M68k::set_ipl(int level)
 void M68k::advance_clk(int clocks)
 {
   m_clk += (uint64_t)clocks;
-  m_clock.advance_mclk((uint64_t)clocks * kMclkPerClk);
+  m_clock.advance_68k_clocks((uint64_t)clocks);
 
   m_refresh_acc += clocks;
   while (m_refresh_acc >= kRefreshPeriodClk - kRefreshStallClk) {
     m_refresh_acc -= kRefreshPeriodClk - kRefreshStallClk;
     m_clk += kRefreshStallClk;
-    m_clock.advance_mclk((uint64_t)kRefreshStallClk * kMclkPerClk);
+    m_clock.advance_68k_clocks((uint64_t)kRefreshStallClk);
   }
 }
 
@@ -117,7 +116,8 @@ uint16_t M68k::bus_read_word(uint32_t addr)
   }
   advance_clk(kClkPerBusAccess);
   uint16_t value = 0;
-  m_bus.read(addr, true, true, &value);
+  const int wait_states = m_bus.read(addr, true, true, &value);
+  advance_clk(wait_states);
   trace_bus(TraceEntry::Kind::Read, addr, 2, value, true, true);
   return value;
 }
@@ -127,7 +127,8 @@ uint8_t M68k::bus_read_byte(uint32_t addr)
   advance_clk(kClkPerBusAccess);
   uint16_t word = 0;
   const bool upper = (addr & 1) == 0;
-  m_bus.read(addr & ~1u, upper, !upper, &word);
+  const int wait_states = m_bus.read(addr & ~1u, upper, !upper, &word);
+  advance_clk(wait_states);
   const uint8_t value = upper ? (uint8_t)(word >> 8) : (uint8_t)word;
   trace_bus(TraceEntry::Kind::Read, addr, 1, value, upper, !upper);
   return value;
@@ -140,7 +141,8 @@ void M68k::bus_write_word(uint32_t addr, uint16_t v)
     return;
   }
   advance_clk(kClkPerBusAccess);
-  m_bus.write(addr, v, true, true);
+  const int wait_states = m_bus.write(addr, v, true, true);
+  advance_clk(wait_states);
   trace_bus(TraceEntry::Kind::Write, addr, 2, v, true, true);
 }
 
@@ -148,7 +150,9 @@ void M68k::bus_write_byte(uint32_t addr, uint8_t v)
 {
   advance_clk(kClkPerBusAccess);
   const bool upper = (addr & 1) == 0;
-  m_bus.write(addr & ~1u, (uint16_t)((uint16_t)v << 8 | v), upper, !upper);
+  const int wait_states =
+      m_bus.write(addr & ~1u, (uint16_t)((uint16_t)v << 8 | v), upper, !upper);
+  advance_clk(wait_states);
   trace_bus(TraceEntry::Kind::Write, addr, 1, v, upper, !upper);
 }
 
@@ -166,7 +170,8 @@ uint16_t M68k::fetch_stream_word()
   }
   advance_clk(kClkPerBusAccess);
   uint16_t word = 0;
-  m_bus.read(m_prefetch_addr, true, true, &word);
+  const int wait_states = m_bus.read(m_prefetch_addr, true, true, &word);
+  advance_clk(wait_states);
   trace_bus(TraceEntry::Kind::Fetch, m_prefetch_addr, 2, word, true, true);
   m_prefetch_addr += 2;
   return word;
@@ -177,7 +182,8 @@ void M68k::prefetch_fill(int words)
   while (m_queue_len < words && m_queue_len < 2) {
     advance_clk(kClkPerBusAccess);
     uint16_t word = 0;
-    m_bus.read(m_prefetch_addr, true, true, &word);
+    const int wait_states = m_bus.read(m_prefetch_addr, true, true, &word);
+    advance_clk(wait_states);
     trace_bus(TraceEntry::Kind::Fetch, m_prefetch_addr, 2, word, true, true);
     m_queue[m_queue_len++] = word;
     m_prefetch_addr += 2;

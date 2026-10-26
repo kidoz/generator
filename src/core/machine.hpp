@@ -192,7 +192,8 @@ private:
   void interrupt_ack(int level) override;
 
   // MasterClockSink
-  void advance_mclk(uint64_t ticks) override;
+  void advance_68k_clocks(uint64_t clocks) override;
+  void advance_mclk(uint64_t ticks);
 
   void parse_rom_header();
   void update_pad_th(int port, bool th);

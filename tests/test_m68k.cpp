@@ -20,9 +20,9 @@ namespace {
  * master clock sink that just counts ticks. */
 class NullClock : public MasterClockSink {
 public:
-  void advance_mclk(uint64_t ticks) override
+  void advance_68k_clocks(uint64_t clocks) override
   {
-    total += ticks;
+    total += clocks * 7;
   }
   uint64_t total = 0;
 };
@@ -2182,4 +2182,79 @@ TEST_CASE("two-cell vertical scroll leaves partial left fetch unscrolled",
   /* With a non-aligned horizontal offset, the first fetch column is left
    * of the VSRAM column range and therefore uses vertical offset zero. */
   CHECK(vdp.layer_pixel(0, 0, 0).value == 0x01);
+}
+
+TEST_CASE("bus wait states advance CPU and sibling clocks", "[m68k][cycles]")
+{
+  class WaitBus final : public M68kBusInterface {
+  public:
+    std::array<uint8_t, 0x10000> memory{};
+    int read_wait = 0;
+    int write_wait = 0;
+    int reads = 0;
+    int writes = 0;
+
+    void put16(uint32_t addr, uint16_t value)
+    {
+      memory[addr & 0xFFFF] = (uint8_t)(value >> 8);
+      memory[(addr + 1) & 0xFFFF] = (uint8_t)value;
+    }
+    void put32(uint32_t addr, uint32_t value)
+    {
+      put16(addr, (uint16_t)(value >> 16));
+      put16(addr + 2, (uint16_t)value);
+    }
+    int read(uint32_t addr, bool, bool, uint16_t *out) override
+    {
+      reads++;
+      *out = (uint16_t)((uint16_t)memory[addr & 0xFFFF] << 8 |
+                        memory[(addr + 1) & 0xFFFF]);
+      return read_wait;
+    }
+    int write(uint32_t addr, uint16_t data, bool upper, bool lower) override
+    {
+      writes++;
+      if (upper)
+        memory[addr & 0xFFFF] = (uint8_t)(data >> 8);
+      if (lower)
+        memory[(addr + 1) & 0xFFFF] = (uint8_t)data;
+      return write_wait;
+    }
+    void interrupt_ack(int) override
+    {
+    }
+  };
+
+  struct Result {
+    uint64_t clk;
+    uint64_t sibling_clocks;
+    int reads;
+    int writes;
+  };
+  auto run = [](int read_wait, int write_wait) {
+    WaitBus bus;
+    NullClock clock;
+    M68k cpu(bus, clock);
+    bus.read_wait = read_wait;
+    bus.write_wait = write_wait;
+    bus.put32(0, 0x00FF0000);
+    bus.put32(4, 0x200);
+    bus.put16(0x200, 0x33FC); /* MOVE.W #$1234,$00C00000 */
+    bus.put16(0x202, 0x1234);
+    bus.put16(0x204, 0x00C0);
+    bus.put16(0x206, 0x0000);
+    cpu.power_on_reset();
+    cpu.step();
+    REQUIRE(cpu.fault().kind == M68k::Fault::Kind::None);
+    return Result{cpu.clk(), clock.total, bus.reads, bus.writes};
+  };
+
+  const Result plain = run(0, 0);
+  const Result waited = run(2, 3);
+  REQUIRE(plain.reads == waited.reads);
+  REQUIRE(plain.writes == waited.writes);
+  CHECK(plain.sibling_clocks == plain.clk * 7);
+  CHECK(waited.sibling_clocks == waited.clk * 7);
+  CHECK(waited.clk - plain.clk ==
+        (uint64_t)(waited.reads * 2 + waited.writes * 3));
 }

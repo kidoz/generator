@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include "m68k/bus_interface.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -48,7 +50,7 @@ public:
   virtual void interrupt_ack(int level) = 0;
 };
 
-class M68kBus {
+class M68kBus : public M68kBusInterface {
 public:
   explicit M68kBus(BusDevices &devices);
 
@@ -73,12 +75,12 @@ public:
   /* One bus transfer. Returns wait states inserted before DTACK. Word
      accesses must be even (the CPU raises address errors before reaching
      the bus). Byte access selects the byte through the strobes. */
-  int read(uint32_t addr, bool upper, bool lower, uint16_t *out);
-  int write(uint32_t addr, uint16_t data, bool upper, bool lower);
+  int read(uint32_t addr, bool upper, bool lower, uint16_t *out) override;
+  int write(uint32_t addr, uint16_t data, bool upper, bool lower) override;
 
   /* Interrupt acknowledge cycle (no data transfer on this board: the MD
      terminates it with /VPA and autovectors). */
-  void interrupt_ack(int level)
+  void interrupt_ack(int level) override
   {
     m_devices.interrupt_ack(level);
   }

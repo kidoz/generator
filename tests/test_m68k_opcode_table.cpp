@@ -24,7 +24,7 @@ namespace {
 
 class NullClock : public MasterClockSink {
 public:
-  void advance_mclk(uint64_t) override
+  void advance_68k_clocks(uint64_t) override
   {
   }
 };
