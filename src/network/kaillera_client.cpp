@@ -52,7 +52,8 @@ struct kaillera_client {
 
   /* Protocol state */
   uint16_t send_seq;    /* Outgoing sequence number */
-  uint16_t recv_seq;    /* Expected incoming sequence number */
+  uint16_t recv_seq;    /* Last accepted game-data sequence */
+  bool have_game_seq;   /* recv_seq is valid */
   uint16_t frame_count; /* Frame counter for game data */
 
   /* Ping calculation */
@@ -263,6 +264,7 @@ static void client_process_message(kaillera_client_t *client,
   case KAILLERA_MSG_START_GAME:
     client->state = KAILLERA_STATE_PLAYING;
     client->frame_count = 0;
+    client->have_game_seq = false;
     if (client->callbacks.on_game_start) {
       client->callbacks.on_game_start(client->num_players,
                                       client->callbacks.user_data);
@@ -773,19 +775,31 @@ int kaillera_client_modify_play_values(kaillera_client_t *client, void *input,
       kaillera_message_t msg;
       if (kaillera_packet_get_message(&pkt, i, &msg) == 0) {
         if (msg.type == KAILLERA_MSG_GAME_DATA && msg.payload != nullptr) {
+          /* Drop a replay or a reorder. The first packet of a match sets
+           * the baseline; later ones must move forward in uint16 order. */
+          if (client->have_game_seq) {
+            uint16_t delta = (uint16_t)(msg.sequence - client->recv_seq);
+            if (delta == 0 || delta > 32768)
+              continue;
+          }
           if (kaillera_parse_game_data(msg.payload, msg.length, &response) ==
               0) {
             int total_size = response.player_count * response.data_size;
             if (response.player_count <= KAILLERA_MAX_PLAYERS &&
-                response.data_size <= 16 && total_size <= size) {
+                response.data_size <= 16 && total_size <= size &&
+                response.data_size == data_size) {
+              client->have_game_seq = true;
+              client->recv_seq = msg.sequence;
               received = true;
               break;
             }
           }
         } else if (msg.type == KAILLERA_MSG_DROP_GAME) {
-          /* Game ended */
-          client->state = KAILLERA_STATE_CONNECTED;
+          client_process_message(client, &msg);
           return -1;
+        } else {
+          /* Chat and keepalive must not be thrown away while we wait. */
+          client_process_message(client, &msg);
         }
       }
     }
