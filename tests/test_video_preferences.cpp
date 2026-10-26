@@ -9,8 +9,11 @@
 #include "input_controller.hpp"
 #include "ui_bridge.hpp"
 #include "screen_geometry.hpp"
+#include "platform/sdl3/audio_output.hpp"
+#include "gensoundp.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_approx.hpp>
 
 #include <chrono>
 #include <cstring>
@@ -226,4 +229,152 @@ TEST_CASE(
   CHECK(view.source_height() == 224);
   CHECK(view.sample_frames() == 0);
   gsk_render_node_unref(node);
+}
+
+namespace {
+
+struct AudioSettingsScope {
+  generator::gtkui::AudioSettings previous =
+      generator::gtkui::AudioSettings::load();
+  AudioSettingsScope()
+  {
+    generator::gtkui::AudioSettings{}.save();
+    generator::audio::SdlAudioOutput::set_controls(100, false);
+  }
+  ~AudioSettingsScope()
+  {
+    soundp_stop();
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    previous.save();
+    generator::audio::SdlAudioOutput::set_controls(previous.volume,
+                                                   previous.muted);
+  }
+};
+
+AdwSwitchRow *mute_row(Gtk::Window &parent)
+{
+  return ADW_SWITCH_ROW(find_in_windows(parent, [](auto *widget) {
+    return ADW_IS_SWITCH_ROW(widget) &&
+           std::strcmp(
+               adw_preferences_row_get_title(ADW_PREFERENCES_ROW(widget)),
+               "Mute") == 0;
+  }));
+}
+
+GtkWidget *restart_notice(Gtk::Window &parent)
+{
+  return find_in_windows(parent, [](auto *widget) {
+    return GTK_IS_LABEL(widget) &&
+           std::strcmp(gtk_label_get_text(GTK_LABEL(widget)),
+                       "Restart Generator to use the selected backend.") == 0;
+  });
+}
+
+}  // namespace
+
+TEST_CASE("audio controls apply gain and reset independently of video",
+          "[audio][gtk]")
+{
+  using namespace std::chrono_literals;
+  using namespace generator::gtkui;
+  using generator::audio::SdlAudioOutput;
+  if (!init_gtk())
+    SKIP("GTK display unavailable");
+  AudioSettingsScope audio;
+  SettingsScope video;
+  VideoSettings custom;
+  custom.aspect = AspectRatio::PIXELS;
+  REQUIRE(custom.save());
+  SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+  REQUIRE(soundp_start() == 0);
+  Gtk::Window parent;
+  parent.set_default_size(900, 850);
+  parent.present();
+  int audio_changes = 0;
+  PreferencesDialog preferences(
+      parent, [] {}, [](int) {}, [&] { ++audio_changes; });
+  preferences.present();
+  spin_for(100ms);
+  auto *slider = find_in_windows(
+      parent, [](auto *widget) { return GTK_IS_SCALE(widget); });
+  auto *mute = mute_row(parent);
+  REQUIRE(slider != nullptr);
+  REQUIRE(mute != nullptr);
+  gtk_range_set_value(GTK_RANGE(slider), 37);
+  CHECK(AudioSettings::load().volume == 37);
+  CHECK(SdlAudioOutput::status().gain == Catch::Approx(0.37));
+  adw_switch_row_set_active(mute, true);
+  CHECK(AudioSettings::load().volume == 37);
+  CHECK(AudioSettings::load().muted);
+  CHECK(SdlAudioOutput::status().gain == 0);
+  gtk_range_set_value(GTK_RANGE(slider), 60);
+  CHECK(SdlAudioOutput::status().gain == 0);
+  adw_switch_row_set_active(mute, false);
+  CHECK(SdlAudioOutput::status().gain == Catch::Approx(0.60));
+  CHECK(audio_changes == 4);
+  auto *backend = row(parent, "Preferred backend");
+  REQUIRE(backend != nullptr);
+  REQUIRE(g_list_model_get_n_items(adw_combo_row_get_model(backend)) > 1);
+  adw_combo_row_set_selected(backend, 1);
+  CHECK(SdlAudioOutput::status().driver == "dummy");
+  auto *notice = restart_notice(parent);
+  REQUIRE(notice != nullptr);
+  CHECK(gtk_widget_get_visible(notice));
+  auto *reset = button(parent, "Reset audio settings");
+  REQUIRE(reset != nullptr);
+  g_signal_emit_by_name(reset, "clicked");
+  CHECK(AudioSettings::load() == AudioSettings{});
+  CHECK(SdlAudioOutput::status().gain == 1);
+  CHECK(VideoSettings::load() == custom);
+  CHECK_FALSE(gtk_widget_get_visible(notice));
+  CHECK(audio_changes == 5);
+  auto *test = button(parent, "Test sound");
+  REQUIRE(test != nullptr);
+  CHECK_FALSE(gtk_widget_get_sensitive(
+      test));  // Dummy deliberately has no speaker output.
+}
+
+TEST_CASE("unavailable audio choices and pending restart survive reopening "
+          "preferences",
+          "[audio][gtk]")
+{
+  using namespace std::chrono_literals;
+  using namespace generator::gtkui;
+  if (!init_gtk())
+    SKIP("GTK display unavailable");
+  AudioSettingsScope audio;
+  AudioSettings saved;
+  saved.driver = "missing-backend";
+  REQUIRE(saved.save());
+  Gtk::Window parent;
+  parent.set_default_size(900, 850);
+  parent.present();
+  PreferencesDialog preferences(parent, [] {}, [](int) {});
+  preferences.present();
+  spin_for(100ms);
+  auto *backend = row(parent, "Preferred backend");
+  REQUIRE(backend != nullptr);
+  auto *item = adw_combo_row_get_selected_item(backend);
+  REQUIRE(GTK_IS_STRING_OBJECT(item));
+  CHECK(std::string(gtk_string_object_get_string(GTK_STRING_OBJECT(item))) ==
+        "missing-backend (unavailable)");
+  CHECK(AudioSettings::load().driver == "missing-backend");
+  adw_combo_row_set_selected(backend, 0);
+  auto *notice = restart_notice(parent);
+  REQUIRE(notice != nullptr);
+  CHECK(gtk_widget_get_visible(notice));
+  auto *dialog = find_in_windows(
+      parent, [](auto *widget) { return ADW_IS_PREFERENCES_DIALOG(widget); });
+  REQUIRE(dialog != nullptr);
+  adw_dialog_force_close(ADW_DIALOG(dialog));
+  spin_for(100ms);
+  preferences.present();
+  spin_for(100ms);
+  notice = restart_notice(parent);
+  REQUIRE(notice != nullptr);
+  CHECK(gtk_widget_get_visible(notice));
+  CHECK(adw_combo_row_get_selected(row(parent, "Preferred backend")) == 0);
+  auto *test = button(parent, "Test sound");
+  REQUIRE(test != nullptr);
+  CHECK_FALSE(gtk_widget_get_sensitive(test));
 }

@@ -116,6 +116,20 @@ test('state_machine', test_state_machine,
 )
 
 if ui_backend == 'gtk4'
+  test_audio_preferences = executable('test_audio_preferences',
+    'test_audio_preferences.cpp',
+    '../src/ui/gtkmm/audio_preferences.cpp',
+    '../src/platform/sdl3/gensoundp_sdl3.cpp',
+    test_logging_sources,
+    include_directories: [machine_test_inc, include_directories('../src/ui/gtkmm')],
+    dependencies: [catch2_dep, sdl3_dep, gtkopts_dep],
+    build_by_default: false
+  )
+  test('audio_preferences', test_audio_preferences,
+    timeout: 30,
+    suite: 'catch2',
+    env: ['SDL_AUDIODRIVER=dummy']
+  )
   video_presentation_test_sources = files(
     '../src/ui/gtkmm/video_presentation.cpp',
     '../src/video/uiplot.cpp',
@@ -135,9 +149,11 @@ if ui_backend == 'gtk4'
   test_video_preferences = executable('test_video_preferences',
     'test_video_preferences.cpp',
     '../src/ui/gtkmm/preferences_dialog.cpp',
+    '../src/ui/gtkmm/audio_preferences.cpp',
     '../src/ui/gtkmm/emulator_view.cpp',
     '../src/ui/gtkmm/emulator_thread.cpp',
-    '../src/ui/headless/soundp_null.cpp',
+    '../src/platform/sdl3/gensoundp_sdl3.cpp',
+    test_logging_sources,
     video_presentation_test_sources,
     include_directories: [machine_test_inc, include_directories('../src/ui/gtkmm')],
     dependencies: [catch2_dep, core_dep, z80f_dep, gtkmm_dep, adwaita_dep, sdl3_dep, gtkopts_dep, xbrz_dep, dependency('threads')],
@@ -145,7 +161,8 @@ if ui_backend == 'gtk4'
   )
   test('video_preferences', test_video_preferences,
     timeout: 30,
-    suite: 'catch2'
+    suite: 'catch2',
+    env: ['SDL_AUDIODRIVER=dummy']
   )
   test_emulator_thread = executable('test_emulator_thread',
     'test_emulator_thread.cpp',
