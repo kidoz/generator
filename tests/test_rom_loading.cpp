@@ -7,7 +7,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -553,4 +557,49 @@ TEST_CASE("field length on the master clock is standard-exact", "[rom_loading]")
   const uint64_t pal_delta = pal.master_clock() - pal_first;
   CHECK(pal_delta >= 10ULL * 313 * 3420 - kTolerance);
   CHECK(pal_delta <= 10ULL * 313 * 3420 + kTolerance);
+}
+
+TEST_CASE("a copier header that leaves no cartridge is rejected",
+          "[rom_loading]")
+{
+  /* SEGA at 0x300 and not at 0x100 strips 512 bytes. A file only a little
+   * longer than that used to be parsed past the end of the buffer. */
+  auto machine = make_machine();
+  std::vector<uint8_t> image(0x380, 0);
+  std::copy_n("SEGA", 4, image.begin() + 0x300);
+
+  const auto result = machine.load_rom_mem(image);
+  REQUIRE_FALSE(result);
+  CHECK(result.error().find("too small") != std::string::npos);
+}
+
+TEST_CASE("a ROM above the size cap is rejected", "[rom_loading]")
+{
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_rom(0x4000, 0x200)));
+
+  constexpr size_t kTooBig = 32u * 1024u * 1024u + 1u;
+  const std::vector<uint8_t> huge(kTooBig);
+  const auto mem = machine.load_rom_mem(huge);
+  REQUIRE_FALSE(mem);
+  CHECK(mem.error().find("too large") != std::string::npos);
+  machine.run_frame();
+  CHECK(machine.cpu().pc() == 0x200);
+
+  namespace fs = std::filesystem;
+  const auto stamp =
+      std::chrono::steady_clock::now().time_since_epoch().count();
+  const fs::path path = fs::temp_directory_path() /
+                        ("generator-rom-cap-" + std::to_string(stamp));
+  {
+    std::ofstream out{path, std::ios::binary};
+    REQUIRE(out.good());
+  }
+  std::error_code ec;
+  fs::resize_file(path, kTooBig, ec);
+  REQUIRE_FALSE(ec);
+  const auto file = machine.load_rom(path.string());
+  fs::remove(path, ec);
+  REQUIRE_FALSE(file);
+  CHECK(file.error().find("too large") != std::string::npos);
 }

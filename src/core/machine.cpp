@@ -53,6 +53,14 @@ constexpr int32_t kFmGain = 3;     /* +9.5 dB */
 constexpr int32_t kPsgGainDiv = 5; /* -14.0 dB */
 constexpr int64_t kMaxMix = 32768 * kFmGain + 32768 / kPsgGainDiv;
 
+/* A Genesis image, including a copier header and an overdump, fits in
+ * 32 MiB. A v3 state is a few hundred kilobytes; 8 MiB leaves room for
+ * every chunk twice over. Both caps are enforced before the file is
+ * copied into a vector. */
+constexpr std::uintmax_t kMaxRomBytes = 32u * 1024u * 1024u;
+constexpr std::uintmax_t kMaxStateBytes = 8u * 1024u * 1024u;
+constexpr size_t kMinRomBytes = 0x200;
+
 bool has_rom_signature(std::span<const uint8_t> image, size_t offset)
 {
   if (offset + 4 > image.size()) {
@@ -64,9 +72,27 @@ bool has_rom_signature(std::span<const uint8_t> image, size_t offset)
 }
 
 std::expected<std::vector<uint8_t>, std::string>
+accept_rom(std::vector<uint8_t> rom)
+{
+  /* The copier-header strip can shrink a file that already passed the
+   * input-size check. parse_rom_header reads through 0x1FF, so anything
+   * shorter is rejected here instead of walking off the buffer. */
+  if (rom.size() < kMinRomBytes) {
+    return std::unexpected("ROM image is too small");
+  }
+  if (rom.size() > kMaxRomBytes) {
+    return std::unexpected("ROM image is too large");
+  }
+  return rom;
+}
+
+std::expected<std::vector<uint8_t>, std::string>
 normalize_rom(std::span<const uint8_t> image)
 {
-  if (image.size() < 0x200) {
+  if (image.size() > kMaxRomBytes) {
+    return std::unexpected("ROM image is too large");
+  }
+  if (image.size() < kMinRomBytes) {
     return std::unexpected("ROM image is too small");
   }
   if (image[0] == 'P' && image[1] == 'K' &&
@@ -102,7 +128,7 @@ normalize_rom(std::span<const uint8_t> image)
         rom[target + byte * 2 + 1] = image[source + byte];
       }
     }
-    return rom;
+    return accept_rom(std::move(rom));
   }
 
   size_t offset = 0;
@@ -112,13 +138,16 @@ normalize_rom(std::span<const uint8_t> image)
   }
   std::vector<uint8_t> rom(image.begin() + (std::ptrdiff_t)offset, image.end());
 
+  if (rom.size() < kMinRomBytes) {
+    return std::unexpected("ROM image is too small");
+  }
   if (has_rom_signature(rom, 0x100) &&
       std::memcmp(rom.data() + 0x100, "ESAG", 4) == 0) {
     for (size_t byte = 0; byte + 1 < rom.size(); byte += 2) {
       std::swap(rom[byte], rom[byte + 1]);
     }
   }
-  return rom;
+  return accept_rom(std::move(rom));
 }
 
 uint64_t fnv1a64(const uint8_t *data, size_t len)
@@ -231,12 +260,25 @@ Machine::~Machine() = default;
 
 std::expected<void, std::string> Machine::load_rom(std::string_view filename)
 {
-  std::ifstream in{std::string(filename), std::ios::binary};
+  const std::filesystem::path path{std::string(filename)};
+  std::error_code ec;
+  const auto file_size = std::filesystem::file_size(path, ec);
+  if (ec) {
+    return std::unexpected("cannot open ROM file: " + std::string(filename));
+  }
+  if (file_size > kMaxRomBytes) {
+    return std::unexpected("ROM image is too large");
+  }
+
+  std::ifstream in{path, std::ios::binary};
   if (!in) {
     return std::unexpected("cannot open ROM file: " + std::string(filename));
   }
   std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)),
                             std::istreambuf_iterator<char>());
+  if (data.size() > kMaxRomBytes) {
+    return std::unexpected("ROM image is too large");
+  }
 
   auto result = load_rom_mem(data);
   if (!result) {
@@ -1111,13 +1153,25 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
     return std::unexpected(StateError::Io);
   }
 
-  std::ifstream in{std::filesystem::path{std::string(filename)},
-                   std::ios::binary};
+  const std::filesystem::path path{std::string(filename)};
+  std::error_code ec;
+  const auto file_size = std::filesystem::file_size(path, ec);
+  if (ec) {
+    return std::unexpected(StateError::Io);
+  }
+  if (file_size > kMaxStateBytes) {
+    return std::unexpected(StateError::Corrupt);
+  }
+
+  std::ifstream in{path, std::ios::binary};
   if (!in) {
     return std::unexpected(StateError::Io);
   }
   std::vector<uint8_t> blob((std::istreambuf_iterator<char>(in)),
                             std::istreambuf_iterator<char>());
+  if (blob.size() > kMaxStateBytes) {
+    return std::unexpected(StateError::Corrupt);
+  }
   auto chunks = StateV3::deserialize(blob);
   if (!chunks) {
     return std::unexpected(chunks.error() == StateV3Error::UnsupportedVersion

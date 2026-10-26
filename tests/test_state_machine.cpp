@@ -584,3 +584,27 @@ TEST_CASE("chunk order in the file does not change the load", "[state_v3]")
   REQUIRE(machine.save_state(resaved).has_value());
   CHECK(read_file(resaved.c_str()) == read_file(original.c_str()));
 }
+
+TEST_CASE("an oversized state file is rejected before it is applied",
+          "[state_slots]")
+{
+  TempStateDir dir;
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x4000, 0x200)));
+  machine.run_frame();
+  const unsigned int frames = machine.frame_count();
+
+  const auto path = dir.path() / "huge.gst";
+  {
+    std::ofstream out{path, std::ios::binary};
+    REQUIRE(out.good());
+  }
+  std::error_code ec;
+  std::filesystem::resize_file(path, 8u * 1024u * 1024u + 1u, ec);
+  REQUIRE_FALSE(ec);
+
+  const auto result = machine.load_state(path.string());
+  REQUIRE_FALSE(result.has_value());
+  CHECK(result.error() == StateError::Corrupt);
+  CHECK(machine.frame_count() == frames);
+}
