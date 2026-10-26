@@ -868,6 +868,13 @@ std::expected<std::vector<uint8_t>, StateError> Machine::capture_state(int slot)
     return std::unexpected(StateError::NotLoaded);
   }
 
+  StateChunk system_chunk{fourcc("SYS0"), {}};
+  {
+    ChunkWriter w;
+    w.u8((uint8_t)system_kind());
+    system_chunk.data = w.take_payload();
+  }
+
   /* Keep the legacy BORD identifier stable across the Board-to-Machine class
    * rename so existing v3 states remain readable. */
   StateChunk board_chunk{fourcc("BORD"), {}};
@@ -1161,12 +1168,14 @@ std::expected<std::vector<uint8_t>, StateError> Machine::capture_state(int slot)
    * serialization so it can cover the completed container. */
   StateChunk checksum_chunk{fourcc("CHKS"), std::vector<uint8_t>(4, 0)};
 
-  const StateChunk chunks[] = {
-      std::move(board_chunk), std::move(rom_chunk),     std::move(cpu_chunk),
-      std::move(ram_chunk),   std::move(zram_chunk),    std::move(z80bus_chunk),
-      std::move(z80_chunk),   std::move(vdp_chunk),     std::move(ym_chunk),
-      std::move(psg_chunk),   std::move(io_chunk),      std::move(audio_chunk),
-      std::move(meta_chunk),  std::move(checksum_chunk)};
+  const StateChunk chunks[] = {std::move(system_chunk),  std::move(board_chunk),
+                               std::move(rom_chunk),     std::move(cpu_chunk),
+                               std::move(ram_chunk),     std::move(zram_chunk),
+                               std::move(z80bus_chunk),  std::move(z80_chunk),
+                               std::move(vdp_chunk),     std::move(ym_chunk),
+                               std::move(psg_chunk),     std::move(io_chunk),
+                               std::move(audio_chunk),   std::move(meta_chunk),
+                               std::move(checksum_chunk)};
   std::vector<uint8_t> blob = StateV3::serialize(chunks);
 
   const uint32_t checksum = state_crc32(
@@ -1226,6 +1235,31 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
     return std::unexpected(chunks.error() == StateV3Error::UnsupportedVersion
                                ? StateError::UnsupportedVersion
                                : StateError::Corrupt);
+  }
+
+  /* SYS0 is optional only for legacy Genesis states. A mismatch is an
+   * identity failure, not a partially applied machine conversion. */
+  bool system_seen = false;
+  for (const StateChunk &chunk : *chunks) {
+    if (chunk.id != fourcc("SYS0")) {
+      continue;
+    }
+    if (system_seen) {
+      return std::unexpected(StateError::Corrupt);
+    }
+    ChunkReader r{chunk.data};
+    const uint8_t saved_system = r.u8();
+    if (!r.ok() || r.remaining() != 0 ||
+        saved_system > (uint8_t)SystemKind::SegaCdX32) {
+      return std::unexpected(StateError::Corrupt);
+    }
+    if (saved_system != (uint8_t)system_kind()) {
+      return std::unexpected(StateError::WrongRom);
+    }
+    system_seen = true;
+  }
+  if (!system_seen && system_kind() != SystemKind::MegaDrive) {
+    return std::unexpected(StateError::Corrupt);
   }
 
   /* Validate ROM identity before applying anything: a state for a different

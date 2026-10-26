@@ -201,7 +201,7 @@ TEST_CASE("invalid state payloads leave the running machine unchanged",
   }
   SECTION("duplicate known state")
   {
-    const char *tag = GENERATE("BORD", "M68K", "ROMI", "AUD0");
+    const char *tag = GENERATE("SYS0", "BORD", "M68K", "ROMI", "AUD0");
     const StateChunk duplicate = find_chunk(fourcc(tag));
     chunks->push_back(duplicate);
   }
@@ -532,6 +532,66 @@ TEST_CASE("capture_state matches the file save_state writes", "[state_v3]")
   const auto blob = machine.capture_state();
   REQUIRE(blob.has_value());
   CHECK(*blob == read_file(path.string().c_str()));
+}
+
+TEST_CASE("SYS0 is additive and checked before applying a state", "[state_v3]")
+{
+  TempStateDir dir;
+  const std::string path = (dir.path() / "system.gst").string();
+
+  auto machine = make_machine();
+  REQUIRE(machine.load_rom_mem(make_painter_rom(0x8000, 0x200)));
+  machine.run_frame();
+  const auto original = machine.capture_state();
+  REQUIRE(original.has_value());
+
+  auto chunks = StateV3::deserialize(*original);
+  REQUIRE(chunks.has_value());
+  StateChunk *system = nullptr;
+  for (StateChunk &chunk : *chunks) {
+    if (chunk.id == fourcc("SYS0")) {
+      system = &chunk;
+    }
+  }
+  REQUIRE(system != nullptr);
+  REQUIRE(system->data.size() == 1);
+  CHECK(system->data[0] == (uint8_t)SystemKind::MegaDrive);
+
+  SECTION("legacy states without SYS0 remain readable")
+  {
+    std::erase_if(*chunks, [](const StateChunk &chunk) {
+      return chunk.id == fourcc("SYS0") || chunk.id == fourcc("CHKS");
+    });
+    save_blob(path.c_str(), StateV3::serialize(*chunks));
+    REQUIRE(machine.load_state(path).has_value());
+    CHECK(machine.capture_state().value() == *original);
+  }
+
+  SECTION("a different system is rejected without changing the machine")
+  {
+    system->data[0] = (uint8_t)SystemKind::MasterSystem;
+    std::erase_if(*chunks, [](const StateChunk &chunk) {
+      return chunk.id == fourcc("CHKS");
+    });
+    save_blob(path.c_str(), StateV3::serialize(*chunks));
+    const auto result = machine.load_state(path);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == StateError::WrongRom);
+    CHECK(machine.capture_state().value() == *original);
+  }
+
+  SECTION("a malformed SYS0 is rejected without changing the machine")
+  {
+    system->data.clear();
+    std::erase_if(*chunks, [](const StateChunk &chunk) {
+      return chunk.id == fourcc("CHKS");
+    });
+    save_blob(path.c_str(), StateV3::serialize(*chunks));
+    const auto result = machine.load_state(path);
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error() == StateError::Corrupt);
+    CHECK(machine.capture_state().value() == *original);
+  }
 }
 
 TEST_CASE("states carry META metadata and a trailing checksum", "[state_v3]")
