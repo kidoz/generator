@@ -174,6 +174,12 @@ void MainWindow::set_audio_backend(const Glib::ustring &name)
   m_audio_label.set_text(name);
 }
 
+void MainWindow::set_netplay_status(const Glib::ustring &status)
+{
+  m_netplay_button.set_label(status == "Disconnected" ? "Netplay"
+                                                      : "Netplay: " + status);
+}
+
 void MainWindow::setup_ui()
 {
   install_ui_css();
@@ -217,6 +223,7 @@ void MainWindow::setup_ui()
   }
   menu->append_submenu("State Slot", slot_menu);
 
+  menu->append("Netplay", "app.netplay");
   menu->append("Preferences", "app.preferences");
   menu->append("About", "app.about");
   menu->append("Quit", "app.quit");
@@ -248,6 +255,10 @@ void MainWindow::setup_ui()
   m_status_bar.add_css_class("generator-status-bar");
   m_status_bar.set_spacing(8);
   m_status_bar.set_hexpand(true);
+  m_netplay_button.set_action_name("app.netplay");
+  m_netplay_button.add_css_class("flat");
+  m_netplay_button.set_tooltip_text("Manage the netplay connection and room");
+  m_status_bar.append(m_netplay_button);
 
   m_state_label.set_text("Ready");
   style_status_label(m_state_label, "accent-red");

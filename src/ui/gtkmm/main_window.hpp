@@ -22,6 +22,7 @@ public:
   void set_runtime_state(const Glib::ustring &text, bool running);
   // Bottom status bar: name of the active audio output
   void set_audio_backend(const Glib::ustring &name);
+  void set_netplay_status(const Glib::ustring &status);
 
 private:
   void setup_ui();
@@ -44,6 +45,7 @@ private:
   Gtk::Label m_system_label;
   Gtk::Label m_audio_label;
   Gtk::Label m_state_label;
+  Gtk::Button m_netplay_button{"Netplay"};
   sigc::connection m_fps_timer;
 
   // Emulator display area

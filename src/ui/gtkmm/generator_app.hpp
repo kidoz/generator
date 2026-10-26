@@ -7,6 +7,7 @@
 #include <string>
 
 #include "emulator_thread.hpp"
+#include "netplay_dialog.hpp"
 #include "preferences_dialog.hpp"
 
 class MainWindow;  // Forward declaration
@@ -26,7 +27,7 @@ public:
 
 protected:
   GeneratorApp();
-  ~GeneratorApp() override = default;
+  ~GeneratorApp() override;
 
   // Overrides from Gio::Application / Gtk::Application
   void on_startup() override;
@@ -37,11 +38,13 @@ protected:
 
 private:
   void on_action_open_rom();
+  void open_rom_dialog(Gtk::Window &parent);
   void on_action_pause();
   void on_action_save_state();
   void on_action_load_state();
   void on_action_state_slot(int slot);
   void on_action_preferences();
+  void on_action_netplay();
   void on_action_about();
   void on_action_quit();
 
@@ -61,6 +64,7 @@ private:
 
   MainWindow *m_main_window{nullptr};
   std::unique_ptr<PreferencesDialog> m_prefs_dialog;
+  std::unique_ptr<NetplayDialog> m_netplay_dialog;
   EmulatorThread m_emu_thread;
   int m_state_slot{0};
 };

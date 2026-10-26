@@ -1,6 +1,7 @@
 #include "generator_app.hpp"
 #include "main_window.hpp"
 
+#include "input_controller.hpp"
 #include "ui_bridge.hpp"
 #include <algorithm>
 #include <iostream>
@@ -8,11 +9,22 @@
 #include "generator.h"
 #include "gensoundp.h"
 
+#if defined(NETPLAY)
+#include "netplay.h"
+#endif
+
 GeneratorApp::GeneratorApp()
     : Gtk::Application("org.generator.Emulator",
                        Gio::Application::Flags::HANDLES_OPEN |
                            Gio::Application::Flags::NON_UNIQUE)
 {
+}
+
+GeneratorApp::~GeneratorApp()
+{
+  // Connection work uses the emulator thread; join it before that member dies.
+  m_netplay_dialog.reset();
+  m_emu_thread.stop();
 }
 
 Glib::RefPtr<GeneratorApp> GeneratorApp::create()
@@ -22,6 +34,13 @@ Glib::RefPtr<GeneratorApp> GeneratorApp::create()
 
 void GeneratorApp::load_rom_from_path(const std::string &path)
 {
+  if (m_netplay_dialog &&
+      (m_netplay_dialog->busy() || m_netplay_dialog->in_room())) {
+    show_error_dialog("Cannot replace ROM",
+                      "Finish the netplay operation and leave the room before "
+                      "loading another ROM.");
+    return;
+  }
   // Stop the emulation thread to prevent race conditions during reset
   m_emu_thread.stop();
   if (g_emulator_core) {
@@ -88,6 +107,7 @@ void GeneratorApp::on_startup()
              sigc::mem_fun(*this, &GeneratorApp::on_action_open_rom));
   add_action("preferences",
              sigc::mem_fun(*this, &GeneratorApp::on_action_preferences));
+  add_action("netplay", sigc::mem_fun(*this, &GeneratorApp::on_action_netplay));
   add_action("about", sigc::mem_fun(*this, &GeneratorApp::on_action_about));
   add_action("quit", sigc::mem_fun(*this, &GeneratorApp::on_action_quit));
   add_action("save-state",
@@ -134,7 +154,14 @@ void GeneratorApp::on_activate()
 void GeneratorApp::on_window_removed(Gtk::Window *window)
 {
   if (window == m_main_window) {
+    // Cancel and join connection work before tearing down its session.
+    m_netplay_dialog.reset();
     m_emu_thread.stop();
+#if defined(NETPLAY)
+    netplay_disconnect();
+    netplay_shutdown();
+#endif
+    input_set_netplay_drive(false);
     m_main_window = nullptr;
   }
   Gtk::Application::on_window_removed(window);
@@ -145,6 +172,11 @@ void GeneratorApp::on_action_open_rom()
   if (!m_main_window)
     return;
 
+  open_rom_dialog(*m_main_window);
+}
+
+void GeneratorApp::open_rom_dialog(Gtk::Window &parent)
+{
   auto dialog = Gtk::FileDialog::create();
   dialog->set_title("Open ROM");
 
@@ -166,24 +198,23 @@ void GeneratorApp::on_action_open_rom()
   dialog->set_filters(filters);
   dialog->set_default_filter(filter_roms);
 
-  dialog->open(*m_main_window,
-               [this, dialog](const Glib::RefPtr<Gio::AsyncResult> &result) {
-                 try {
-                   auto file = dialog->open_finish(result);
-                   if (!file)
-                     return;
-                   const std::string path = file->get_path();
-                   if (path.empty()) {
-                     show_error_dialog("Cannot open ROM",
-                                       "Only local files can be loaded.");
-                     return;
-                   }
-                   std::cout << "Loading ROM: " << path << std::endl;
-                   load_rom_from_path(path);
-                 } catch (const Glib::Error & /*dismissed*/) {
-                   // User cancelled — ignore.
-                 }
-               });
+  dialog->open(parent, [this,
+                        dialog](const Glib::RefPtr<Gio::AsyncResult> &result) {
+    try {
+      auto file = dialog->open_finish(result);
+      if (!file)
+        return;
+      const std::string path = file->get_path();
+      if (path.empty()) {
+        show_error_dialog("Cannot open ROM", "Only local files can be loaded.");
+        return;
+      }
+      std::cout << "Loading ROM: " << path << std::endl;
+      load_rom_from_path(path);
+    } catch (const Glib::Error & /*dismissed*/) {
+      // User cancelled — ignore.
+    }
+  });
 }
 
 void GeneratorApp::on_action_pause()
@@ -248,6 +279,37 @@ void GeneratorApp::save_or_load_state(bool save)
 
   std::cout << (save ? "State saved to slot " : "State loaded from slot ")
             << m_state_slot << std::endl;
+}
+
+void GeneratorApp::on_action_netplay()
+{
+  if (!m_main_window)
+    return;
+  if (!m_netplay_dialog) {
+    m_netplay_dialog =
+        std::make_unique<NetplayDialog>(*m_main_window, m_emu_thread, [this] {
+          open_rom_dialog(*m_netplay_dialog);
+        });
+    m_netplay_dialog->signal_session_changed.connect(
+        [this](const Glib::ustring &status, bool busy, bool in_room) {
+          if (!m_main_window)
+            return;
+          m_main_window->set_netplay_status(status);
+          for (const auto *name :
+               {"open-rom", "save-state", "load-state", "pause"}) {
+            auto action = std::dynamic_pointer_cast<Gio::SimpleAction>(
+                lookup_action(name));
+            if (action)
+              action->set_enabled(!busy && !in_room);
+          }
+          if (in_room) {
+            m_emu_thread.set_emulation_running(true);
+            m_pause_action->set_state(Glib::Variant<bool>::create(false));
+            m_main_window->set_runtime_state("Running", true);
+          }
+        });
+  }
+  m_netplay_dialog->present();
 }
 
 void GeneratorApp::on_action_preferences()

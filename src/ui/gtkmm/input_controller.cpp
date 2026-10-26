@@ -1,5 +1,6 @@
 #include "input_controller.hpp"
 
+#include <atomic>
 #include <iostream>
 #include <string>
 
@@ -19,14 +20,15 @@
 namespace {
 
 struct PadState {
-  unsigned int b[PAD_BUTTON_COUNT] = {};
+  std::atomic<unsigned int> b[PAD_BUTTON_COUNT];
 };
 
 PadState g_pads[2];
+std::atomic<bool> g_netplay_drive{false};
 
 void publish_pads()
 {
-  if (!g_emulator_core)
+  if (!g_emulator_core || g_netplay_drive.load(std::memory_order_relaxed))
     return;
 
   for (int player = 0; player < 2; player++) {
@@ -72,6 +74,24 @@ guint conf_keyval(int player, int button)
 }
 
 }  // namespace
+
+void input_copy_local_pad(int player, unsigned int *out)
+{
+  if (out == nullptr)
+    return;
+  if (player < 0 || player > 1) {
+    for (int i = 0; i < PAD_BUTTON_COUNT; i++)
+      out[i] = 0;
+    return;
+  }
+  for (int i = 0; i < PAD_BUTTON_COUNT; i++)
+    out[i] = g_pads[player].b[i].load(std::memory_order_relaxed);
+}
+
+void input_set_netplay_drive(bool on)
+{
+  g_netplay_drive.store(on, std::memory_order_relaxed);
+}
 
 InputController::InputController()
 {

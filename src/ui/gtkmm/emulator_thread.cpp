@@ -1,6 +1,6 @@
 #include "emulator_thread.hpp"
 
-
+#include "netplay_session.hpp"
 #include "ui_bridge.hpp"
 
 #include <glibmm/main.h>
@@ -129,6 +129,9 @@ void EmulatorThread::thread_loop()
     m_frame_requested = false;
     lock.unlock();
 
+    if (generator::gtkui::NetplaySession::poll)
+      generator::gtkui::NetplaySession::poll();
+
     if (m_emulation_running.load() && g_emulator_core) {
       now = g_get_monotonic_time();
       elapsed = now - last_frame_time;
@@ -157,6 +160,8 @@ void EmulatorThread::thread_loop()
                 generator::field_duration(g_emulator_core->video_mode() != 0))
                 .count();
 
+        if (netplay_on_frame)
+          netplay_on_frame(*g_emulator_core);
         g_emulator_core->run_frame();
         last_frame_time = now;
 

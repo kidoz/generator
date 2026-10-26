@@ -24,8 +24,8 @@ option('gcc-version',
 
 option('netplay',
   type: 'boolean',
-  value: false,
-  description: 'Build the Kaillera library. Off by default: no UI calls it'
+  value: true,
+  description: 'Build Kaillera netplay and the GTK Netplay window'
 )
 
 # Audio quality options

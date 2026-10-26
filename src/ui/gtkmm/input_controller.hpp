@@ -22,6 +22,12 @@ enum PadButton {
   PAD_BUTTON_COUNT
 };
 
+/* Snapshot of one local pad. out must hold PAD_BUTTON_COUNT values.
+ * While netplay drives the frame, publish_pads leaves set_input to the
+ * emulation thread. */
+void input_copy_local_pad(int player, unsigned int *out);
+void input_set_netplay_drive(bool on);
+
 struct GamepadSlot {
   SDL_Gamepad *gamepad{nullptr};
   SDL_JoystickID id{0};
