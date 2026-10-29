@@ -8,6 +8,9 @@
 
 #include "machine.hpp"
 #include "media_detect.hpp"
+#include "segacd/disc.hpp"
+#include "segacd/firmware.hpp"
+#include "segacd/sega_cd.hpp"
 #include "sms/sms_machine.hpp"
 
 #include <ctime>
@@ -76,6 +79,48 @@ public:
     return {};
   }
 
+  std::expected<void, std::string> load_disc(const MediaInfo &info,
+                                             std::string_view filename,
+                                             const MediaLoadOptions &options)
+  {
+    if (info.system != SystemKind::SegaCd) {
+      return unsupported_system(info);
+    }
+    auto disc = SegaCdDisc::load(filename);
+    if (!disc) {
+      return std::unexpected(disc.error());
+    }
+    if (!options.sega_cd_firmware) {
+      return std::unexpected(
+          "Sega CD BIOS is required; set MediaLoadOptions::sega_cd_firmware");
+    }
+    auto firmware = SegaCdFirmwareImage::load(*options.sega_cd_firmware);
+    if (!firmware) {
+      return std::unexpected(firmware.error());
+    }
+
+    const bool pal = firmware->region() == SegaCdRegion::Europe;
+    auto candidate =
+        std::make_unique<Machine>(m_audio, m_video, m_logger_owner);
+    candidate->set_video_mode(pal ? 1 : 0, 0);
+    candidate->attach_sega_cd(std::make_unique<SegaCd>(
+        std::move(*disc), pal ? 53203424ULL : 53693175ULL));
+    auto loaded = candidate->load_rom_mem(
+        firmware->bytes(), options.sega_cd_firmware->path.string());
+    if (!loaded) {
+      return loaded;
+    }
+    if (m_machine->rom_loaded()) {
+      const auto saved = m_machine->save_sram();
+      if (!saved) {
+        return std::unexpected(std::string(state_error_message(saved.error())));
+      }
+    }
+    m_machine = std::move(candidate);
+    m_media_info = info;
+    return {};
+  }
+
   std::expected<void, std::string>
   load_media(std::string_view filename,
              const MediaLoadOptions &options) override
@@ -83,6 +128,9 @@ public:
     auto detected = detect_media(filename, {}, options);
     if (!detected) {
       return std::unexpected(detected.error());
+    }
+    if (detected->kind == MediaKind::Disc) {
+      return load_disc(*detected, filename, options);
     }
     if (detected->system != SystemKind::MegaDrive &&
         detected->system != SystemKind::MasterSystem) {
