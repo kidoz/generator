@@ -10,6 +10,7 @@ core_sources = files(
   'emulator_core.cpp',
   'emulator_core_impl.cpp',
   'media_detect.cpp',
+  'state_files.cpp',
   'state_v3.cpp',
 )
 

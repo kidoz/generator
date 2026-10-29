@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "machine.hpp"
 
+#include "state_files.hpp"
 #include "state_v3.hpp"
 
 #include "gensoundp.h" /* SOUND_SAMPLERATE */
@@ -152,12 +153,7 @@ normalize_rom(std::span<const uint8_t> image)
 
 uint64_t fnv1a64(const uint8_t *data, size_t len)
 {
-  uint64_t h = 0xcbf29ce484222325ULL;
-  for (size_t i = 0; i < len; i++) {
-    h ^= data[i];
-    h *= 0x100000001b3ULL;
-  }
-  return h;
+  return state_fnv1a64(std::span<const uint8_t>{data, len});
 }
 
 void header_text(char *out, size_t out_size, const uint8_t *rom, size_t field,
@@ -179,53 +175,7 @@ std::expected<void, StateError>
 write_file_atomic(const std::filesystem::path &target,
                   std::span<const uint8_t> bytes)
 {
-  std::error_code ec;
-  std::filesystem::path temp = target;
-  temp += ".tmp";
-
-  {
-    std::ofstream out{temp, std::ios::binary | std::ios::trunc};
-    if (!out) {
-      return std::unexpected(StateError::Io);
-    }
-    out.write(reinterpret_cast<const char *>(bytes.data()),
-              (std::streamsize)bytes.size());
-    out.flush();
-    if (!out) {
-      out.close();
-      std::filesystem::remove(temp, ec);
-      return std::unexpected(StateError::Io);
-    }
-  }
-
-#if !defined(_WIN32)
-  const int fd = ::open(temp.c_str(), O_RDONLY);
-  if (fd >= 0) {
-    (void)::fsync(fd);
-    (void)::close(fd);
-  }
-  std::filesystem::permissions(temp,
-                               std::filesystem::perms::owner_read |
-                                   std::filesystem::perms::owner_write,
-                               std::filesystem::perm_options::replace, ec);
-  ec.clear();
-#endif
-
-  std::filesystem::rename(temp, target, ec);
-#if defined(_WIN32)
-  if (ec) {
-    /* Windows may refuse to replace an existing file; retry after
-     * removing it. POSIX rename is atomic and never needs this. */
-    std::filesystem::remove(target, ec);
-    ec.clear();
-    std::filesystem::rename(temp, target, ec);
-  }
-#endif
-  if (ec) {
-    std::filesystem::remove(temp, ec);
-    return std::unexpected(StateError::Io);
-  }
-  return {};
+  return state_write_atomic(target, bytes);
 }
 
 }  // namespace
@@ -1648,44 +1598,12 @@ uint64_t Machine::rom_id() const
 
 std::filesystem::path Machine::user_data_dir() const
 {
-  std::filesystem::path base;
-#if defined(_WIN32)
-  const char *local = std::getenv("LOCALAPPDATA");
-  if (local != nullptr && *local != '\0') {
-    base = local;
-  }
-#endif
-  if (base.empty()) {
-    const char *xdg = std::getenv("XDG_DATA_HOME");
-    if (xdg != nullptr && *xdg != '\0') {
-      base = xdg;
-    }
-  }
-  if (base.empty()) {
-#if defined(_WIN32)
-    const char *home = std::getenv("USERPROFILE");
-    if (home != nullptr && *home != '\0') {
-      base = home;
-    }
-#else
-    const char *home = std::getenv("HOME");
-    if (home != nullptr && *home != '\0') {
-      base = std::filesystem::path(home) / ".local" / "share";
-    }
-#endif
-  }
-  return base;
+  return state_user_data_dir();
 }
 
 std::filesystem::path Machine::rom_state_dir() const
 {
-  const std::filesystem::path base = user_data_dir();
-  if (base.empty() || m_rom.empty()) {
-    return {};
-  }
-  char id[17];
-  std::snprintf(id, sizeof(id), "%016llx", (unsigned long long)rom_id());
-  return base / "generator" / "states" / id;
+  return m_rom.empty() ? std::filesystem::path{} : state_media_dir(rom_id());
 }
 
 std::filesystem::path Machine::state_slot_path(int slot) const
