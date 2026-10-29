@@ -16,7 +16,7 @@ namespace generator::nkui {
 inline const std::vector<std::string> &rom_filters()
 {
   static const std::vector<std::string> filters = {"*.bin", "*.smd", "*.gen",
-                                                   "*.md", "*.rom"};
+                                                   "*.md",  "*.rom", "*.sms"};
   return filters;
 }
 
@@ -28,7 +28,7 @@ inline bool looks_like_rom(const std::filesystem::path &path)
     return static_cast<char>(std::tolower(c));
   });
   return ext == ".bin" || ext == ".smd" || ext == ".gen" || ext == ".md" ||
-         ext == ".rom";
+         ext == ".rom" || ext == ".sms";
 }
 
 }  // namespace generator::nkui

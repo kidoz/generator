@@ -183,12 +183,13 @@ void GeneratorApp::open_rom_dialog(Gtk::Window &parent)
   dialog->set_title("Open ROM");
 
   auto filter_roms = Gtk::FileFilter::create();
-  filter_roms->set_name("Mega Drive / Genesis ROMs");
+  filter_roms->set_name("Mega Drive / Genesis / Master System ROMs");
   filter_roms->add_pattern("*.bin");
   filter_roms->add_pattern("*.smd");
   filter_roms->add_pattern("*.gen");
   filter_roms->add_pattern("*.md");
   filter_roms->add_pattern("*.rom");
+  filter_roms->add_pattern("*.sms");
 
   auto filter_all = Gtk::FileFilter::create();
   filter_all->set_name("All files");
