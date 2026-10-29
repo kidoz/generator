@@ -71,6 +71,9 @@ TEST_CASE("media detection distinguishes each requested hardware family",
   CHECK(detect_media("game.sms", {})->system == SystemKind::MasterSystem);
   CHECK(detect_media("game.32x", {})->system == SystemKind::X32);
   CHECK(detect_media("game.cue", {})->system == SystemKind::SegaCd);
+  CHECK(detect_media("game.CHD", {})->system == SystemKind::SegaCd);
+  CHECK(detect_media("game.chd", {}, {.attach_32x = true})->system ==
+        SystemKind::SegaCdX32);
   CHECK(detect_media("game.cue", {}, {.attach_32x = true})->system ==
         SystemKind::SegaCdX32);
 

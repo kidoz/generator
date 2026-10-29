@@ -114,6 +114,137 @@ test('media', test_media,
   suite: 'catch2'
 )
 
+# Sega CD CUE/BIN layout, sector access, identity, and firmware validation.
+test_sega_cd = executable('test_sega_cd',
+  'test_sega_cd.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_media', test_sega_cd,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Synthetic CHDv5 images: track padding, gaps, CD-DA, and public core loading.
+test_sega_cd_chd = executable('test_sega_cd_chd',
+  'test_sega_cd_chd.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_chd', test_sega_cd_chd,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Sega CD second-68000 bus, execution, and deterministic clock conversion.
+test_sega_cd_sub_cpu = executable('test_sega_cd_sub_cpu',
+  'test_sega_cd_sub_cpu.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_sub_cpu', test_sega_cd_sub_cpu,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Sega CD RAM/register map and synthetic dual-CPU BIOS integration.
+test_sega_cd_machine = executable('test_sega_cd_machine',
+  'test_sega_cd_machine.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_machine', test_sega_cd_machine,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Sega CD CDD commands, TOC, 75 Hz sector delivery, and IRQ acknowledgement.
+test_sega_cd_cdd = executable('test_sega_cd_cdd',
+  'test_sega_cd_cdd.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_cdd', test_sega_cd_cdd,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Sega CD CDC buffer, streaming, DMA destination, and completion behavior.
+test_sega_cd_cdc = executable('test_sega_cd_cdc',
+  'test_sega_cd_cdc.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_cdc', test_sega_cd_cdc,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Sega CD graphics ASIC scaling, rotation, clipping, and word-RAM output.
+test_sega_cd_asic = executable('test_sega_cd_asic',
+  'test_sega_cd_asic.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_asic', test_sega_cd_asic,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Sega CD PCM, CD-DA, and Machine mixer integration.
+test_sega_cd_audio = executable('test_sega_cd_audio',
+  'test_sega_cd_audio.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_audio', test_sega_cd_audio,
+  timeout: 30,
+  suite: 'catch2'
+)
+
+# Sega CD device state serialization, identity, and deterministic restore.
+test_sega_cd_state = executable('test_sega_cd_state',
+  'test_sega_cd_state.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sega_cd_state', test_sega_cd_state,
+  timeout: 30,
+  suite: 'catch2'
+)
+
 # Master System cartridge, machine, video, input, and persistence.
 test_sms = executable('test_sms',
   'test_sms.cpp',
