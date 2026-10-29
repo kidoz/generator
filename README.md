@@ -153,7 +153,13 @@ parent CHD are rejected with an error. Disc identity hashes file content and
 layout rather than its path; CUE/BIN conversion or CHD recompression may change
 the identity.
 
-Sega CD loading requires a 128 KiB regional BIOS supplied through the core API:
+In GTK4, open **Preferences → Firmware → Sega CD**, browse for a 128 KiB BIOS
+file, and select the region matching that BIOS (Japan, North America, or
+Europe). You can also type a path and click the apply button. Settings are
+saved in the GTK4 configuration file and apply the next time you open a disc.
+The Open dialog lists both `.cue` and `.chd` disc images.
+
+Sega CD loading through the core API accepts the same BIOS and region:
 
 ```cpp
 generator::MediaLoadOptions options;
@@ -162,9 +168,9 @@ options.sega_cd_firmware = generator::SegaCdFirmware{
 auto result = core.load_media("/path/to/game.chd", options);
 ```
 
-The current UI and command-line frontends do not expose BIOS selection. Sega CD
-save states are supported through the core API; 32X combinations remain
-unsupported.
+The NodalKit, console, and headless frontends do not expose BIOS selection.
+Sega CD save states are supported through the core API; 32X combinations
+remain unsupported.
 
 ## Features
 
