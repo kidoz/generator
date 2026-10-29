@@ -129,6 +129,7 @@ TEST_CASE("Sega CD aggregate state preserves in-flight devices byte for byte",
   channel.end = 1;
   channel.loop = true;
   REQUIRE(cd.pcm().configure(0, channel));
+  cd.main_bus().write(0xA12002, 3, true, true);
 
   const auto original = serialize_segacd_state(save_segacd_state(cd));
   auto parsed = parse_segacd_state(original);
@@ -144,6 +145,7 @@ TEST_CASE("Sega CD aggregate state preserves in-flight devices byte for byte",
   CHECK(restored.cdc().dma_remaining() == 32);
   CHECK(restored.asic().pixels_remaining() == 4);
   CHECK(restored.pcm().wave_ram()[0] == 42);
+  CHECK(restored.base_state().word_ram_mode_1m);
 }
 
 TEST_CASE("Machine Sega CD state round trip is byte identical",

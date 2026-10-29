@@ -123,6 +123,45 @@ TEST_CASE("Sega CD RAM windows and communications connect both CPU buses",
   CHECK_FALSE(cd.sub_cpu().running());
 }
 
+TEST_CASE("Sega CD 1M word-RAM mode swaps independent main/sub banks",
+          "[sega_cd][machine]")
+{
+  SegaCd cd;
+  cd.power_on();
+  auto &main = cd.main_bus();
+  auto &sub = cd.sub_bus_port();
+  uint16_t value = 0;
+  main.write(0x200000, 0xAAAA, true, true);
+  main.write(0x220000, 0xBBBB, true, true);
+
+  main.write(0xA12002, 3, true, true);
+  REQUIRE(main.read(0x200000, true, true, &value) == 1);
+  CHECK(value == 0xAAAA);
+  REQUIRE(sub.read(0x080000, true, true, &value) == 1);
+  CHECK(value == 0xBBBB);
+
+  main.write(0xA12002, 2, true, true);
+  REQUIRE(main.read(0x200000, true, true, &value) == 1);
+  CHECK(value == 0xBBBB);
+  REQUIRE(sub.read(0x080000, true, true, &value) == 1);
+  CHECK(value == 0xAAAA);
+  REQUIRE(main.read(0xA12002, true, true, &value) == 0);
+  CHECK(value == 2);
+
+  SegaCdSector sector{};
+  sector.fill(0x5A);
+  REQUIRE(cd.cdc().push_sector(sector));
+  main.write(0xA12006, 0, true, true);
+  main.write(0xA1200C, 0x2002, true, true);
+  cd.advance_mclk(108);
+  CHECK(cd.word_ram()[0x20000] == 0x5A);
+  CHECK(cd.word_ram()[0x20001] == 0x5A);
+  main.write(0xA12006, 0, true, true);
+  main.write(0xA12008, 2, true, true);
+  main.write(0xA1200C, 0x2002, true, true);
+  CHECK_FALSE(cd.cdc().dma_active());
+}
+
 TEST_CASE(
     "Sega CD sub-CPU writes its communication port through the expansion bus",
     "[sega_cd][machine]")
