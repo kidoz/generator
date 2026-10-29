@@ -19,6 +19,7 @@ core_sources += z80_sources
 core_sources += bus_sources
 core_sources += vdp_sources
 core_sources += audio_sources
+core_sources += sms_sources
 
 core_lib = static_library('gen_core',
   sources: core_sources,
