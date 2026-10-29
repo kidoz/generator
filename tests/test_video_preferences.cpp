@@ -3,6 +3,7 @@
  * audio device or emulation required. */
 
 #include "preferences_dialog.hpp"
+#include "firmware_preferences.hpp"
 #include "emulator_view.hpp"
 #include "emulator_thread.hpp"
 #include "generator_app.hpp"
@@ -18,6 +19,8 @@
 #include <chrono>
 #include <cstring>
 #include <functional>
+#include <filesystem>
+#include <fstream>
 #include <thread>
 
 std::unique_ptr<generator::EmulatorCore> g_emulator_core;
@@ -377,4 +380,92 @@ TEST_CASE("unavailable audio choices and pending restart survive reopening "
   auto *test = button(parent, "Test sound");
   REQUIRE(test != nullptr);
   CHECK_FALSE(gtk_widget_get_sensitive(test));
+}
+
+TEST_CASE("firmware preferences validate BIOS paths and restore the region",
+          "[firmware][gtk]")
+{
+  using namespace std::chrono_literals;
+  using namespace generator::gtkui;
+  if (!init_gtk())
+    SKIP("GTK display unavailable");
+  struct FirmwareScope {
+    FirmwareSettings previous = FirmwareSettings::load();
+    std::filesystem::path root =
+        std::filesystem::current_path() / "test_gtk_firmware_files";
+    FirmwareScope()
+    {
+      std::filesystem::create_directories(root);
+      FirmwareSettings{}.save();
+    }
+    ~FirmwareScope()
+    {
+      previous.save();
+      std::filesystem::remove_all(root);
+    }
+  } settings;
+  auto bios = settings.root / "BIOS with spaces.bin";
+  {
+    std::vector<char> bytes(128 * 1024);
+    std::ofstream out{bios, std::ios::binary};
+    out.write(bytes.data(), (std::streamsize)bytes.size());
+  }
+  Gtk::Window parent;
+  parent.set_default_size(900, 850);
+  parent.present();
+  PreferencesDialog preferences(parent, [] {}, [](int) {});
+  preferences.present();
+  spin_for(100ms);
+  auto find_path = [&] {
+    return find_in_windows(parent, [](auto *widget) {
+      return ADW_IS_ENTRY_ROW(widget) &&
+             std::strcmp(
+                 adw_preferences_row_get_title(ADW_PREFERENCES_ROW(widget)),
+                 "BIOS file") == 0;
+    });
+  };
+  auto *path = find_path();
+  auto *region = row(parent, "BIOS region");
+  REQUIRE(path != nullptr);
+  REQUIRE(region != nullptr);
+  CHECK(g_list_model_get_n_items(adw_combo_row_get_model(region)) == 3);
+  REQUIRE(button(parent, "Browse…") != nullptr);
+  gtk_editable_set_text(GTK_EDITABLE(path), bios.c_str());
+  g_signal_emit_by_name(path, "apply");
+  adw_combo_row_set_selected(region, 2);
+  CHECK(FirmwareSettings::load().sega_cd_bios == bios.string());
+  CHECK(FirmwareSettings::load().sega_cd_region ==
+        generator::SegaCdRegion::Europe);
+
+  auto bad_bios = settings.root / "short.bin";
+  {
+    std::ofstream out{bad_bios};
+    out << "short";
+  }
+  gtk_editable_set_text(GTK_EDITABLE(path), bad_bios.c_str());
+  g_signal_emit_by_name(path, "apply");
+  CHECK(FirmwareSettings::load().sega_cd_bios == bios.string());
+  auto *error = find_in_windows(parent, [](auto *widget) {
+    return GTK_IS_LABEL(widget) && gtk_widget_has_css_class(widget, "error") &&
+           std::strstr(gtk_label_get_text(GTK_LABEL(widget)), "128 KiB");
+  });
+  REQUIRE(error != nullptr);
+  gtk_editable_set_text(GTK_EDITABLE(path), "");
+  g_signal_emit_by_name(path, "apply");
+  CHECK_FALSE(FirmwareSettings::load().media_options().sega_cd_firmware);
+  gtk_editable_set_text(GTK_EDITABLE(path), bios.c_str());
+  g_signal_emit_by_name(path, "apply");
+  auto *dialog = find_in_windows(
+      parent, [](auto *widget) { return ADW_IS_PREFERENCES_DIALOG(widget); });
+  REQUIRE(dialog != nullptr);
+  adw_dialog_force_close(ADW_DIALOG(dialog));
+  spin_for(100ms);
+  preferences.present();
+  spin_for(100ms);
+  path = find_path();
+  REQUIRE(path != nullptr);
+  CHECK(std::string(gtk_editable_get_text(GTK_EDITABLE(path))) ==
+        bios.string());
+  REQUIRE(row(parent, "BIOS region") != nullptr);
+  CHECK(adw_combo_row_get_selected(row(parent, "BIOS region")) == 2);
 }

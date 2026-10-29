@@ -277,6 +277,18 @@ test('state_machine', test_state_machine,
 )
 
 if ui_backend == 'gtk4'
+  test_firmware_preferences = executable('test_firmware_preferences',
+    'test_firmware_preferences.cpp',
+    '../src/ui/gtkmm/firmware_preferences.cpp',
+    '../src/video/uiplot_cram.cpp',
+    include_directories: [machine_test_inc, include_directories('../src/ui/gtkmm')],
+    dependencies: [catch2_dep, core_dep, z80f_dep, gtkopts_dep],
+    build_by_default: false
+  )
+  test('firmware_preferences', test_firmware_preferences,
+    timeout: 30,
+    suite: 'catch2'
+  )
   test_audio_preferences = executable('test_audio_preferences',
     'test_audio_preferences.cpp',
     '../src/ui/gtkmm/audio_preferences.cpp',
@@ -310,6 +322,7 @@ if ui_backend == 'gtk4'
   test_video_preferences = executable('test_video_preferences',
     'test_video_preferences.cpp',
     '../src/ui/gtkmm/preferences_dialog.cpp',
+    '../src/ui/gtkmm/firmware_preferences.cpp',
     '../src/ui/gtkmm/audio_preferences.cpp',
     '../src/ui/gtkmm/emulator_view.cpp',
     '../src/ui/gtkmm/emulator_thread.cpp',
