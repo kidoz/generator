@@ -4,6 +4,9 @@
 #include "state_files.hpp"
 #include "state_v3.hpp"
 
+#include "segacd/sega_cd.hpp"
+#include "segacd/state.hpp"
+
 #include "gensoundp.h" /* SOUND_SAMPLERATE */
 #include "uiplot_cram.h"
 
@@ -218,6 +221,12 @@ Machine::~Machine()
   flush_battery();
 }
 
+void Machine::attach_sega_cd(std::unique_ptr<SegaCd> sega_cd)
+{
+  m_sega_cd = std::move(sega_cd);
+  m_bus.attach_expansion(m_sega_cd ? &m_sega_cd->main_bus() : nullptr);
+}
+
 std::expected<void, std::string> Machine::load_rom(std::string_view filename)
 {
   const std::filesystem::path path{std::string(filename)};
@@ -342,6 +351,9 @@ void Machine::power_on()
   m_lp_r = 0.0;
   m_audio_left.clear();
   m_audio_right.clear();
+  if (m_sega_cd) {
+    m_sega_cd->power_on();
+  }
 
   /* Every other domain ticks through the reset hold; only then does the
      CPU fetch its vectors. */
@@ -522,10 +534,14 @@ void Machine::advance_mclk(uint64_t ticks)
      * core's /3 so the chip's own full scale reaches the mix, and the PSG
      * sits under it the way the console's mixing network puts it there. */
     const int32_t psg = m_z80bus.psg().output() / kPsgGainDiv;
+    const int32_t cd_left = m_sega_cd ? m_sega_cd->audio_left() : 0;
+    const int32_t cd_right = m_sega_cd ? m_sega_cd->audio_right() : 0;
     m_mix_acc_l +=
-        (int64_t)(m_z80bus.ym().sample_left() * kFmGain + psg) * (int64_t)chunk;
-    m_mix_acc_r += (int64_t)(m_z80bus.ym().sample_right() * kFmGain + psg) *
-                   (int64_t)chunk;
+        (int64_t)(m_z80bus.ym().sample_left() * kFmGain + psg + cd_left) *
+        (int64_t)chunk;
+    m_mix_acc_r +=
+        (int64_t)(m_z80bus.ym().sample_right() * kFmGain + psg + cd_right) *
+        (int64_t)chunk;
     m_mix_ticks += chunk;
     m_mclk_total += chunk;
 
@@ -548,6 +564,9 @@ void Machine::advance_mclk(uint64_t ticks)
     }
     if (z80_ticks != 0) {
       m_z80.advance_mclk(z80_ticks, m_z80_busreq);
+    }
+    if (m_sega_cd) {
+      m_sega_cd->advance_mclk(chunk);
     }
 
     m_audio_acc += chunk * kSampleRate;
@@ -722,7 +741,8 @@ uint16_t Machine::io_read(uint32_t addr, bool, bool)
        * hardware revision. Region-locked games branch on bits 7-6, so
        * reporting the cartridge's own flags here sends a Japan-only
        * cartridge down its foreign-machine path. */
-      return (uint16_t)(0x21 | (m_pal ? 0x40 : 0) | (m_domestic ? 0x00 : 0x80));
+      return (uint16_t)((m_sega_cd ? 0x01 : 0x21) | (m_pal ? 0x40 : 0) |
+                        (m_domestic ? 0x00 : 0x80));
     case 1:
       /* port A data: player 1 pad through the TH multiplexer */
       return read_port(0);
@@ -1118,14 +1138,27 @@ std::expected<std::vector<uint8_t>, StateError> Machine::capture_state(int slot)
    * serialization so it can cover the completed container. */
   StateChunk checksum_chunk{fourcc("CHKS"), std::vector<uint8_t>(4, 0)};
 
-  const StateChunk chunks[] = {std::move(system_chunk),  std::move(board_chunk),
-                               std::move(rom_chunk),     std::move(cpu_chunk),
-                               std::move(ram_chunk),     std::move(zram_chunk),
-                               std::move(z80bus_chunk),  std::move(z80_chunk),
-                               std::move(vdp_chunk),     std::move(ym_chunk),
-                               std::move(psg_chunk),     std::move(io_chunk),
-                               std::move(audio_chunk),   std::move(meta_chunk),
-                               std::move(checksum_chunk)};
+  std::vector<StateChunk> chunks;
+  chunks.reserve(14);
+  chunks.push_back(std::move(system_chunk));
+  chunks.push_back(std::move(board_chunk));
+  chunks.push_back(std::move(rom_chunk));
+  chunks.push_back(std::move(cpu_chunk));
+  chunks.push_back(std::move(ram_chunk));
+  chunks.push_back(std::move(zram_chunk));
+  chunks.push_back(std::move(z80bus_chunk));
+  chunks.push_back(std::move(z80_chunk));
+  chunks.push_back(std::move(vdp_chunk));
+  chunks.push_back(std::move(ym_chunk));
+  chunks.push_back(std::move(psg_chunk));
+  chunks.push_back(std::move(io_chunk));
+  chunks.push_back(std::move(audio_chunk));
+  chunks.push_back(std::move(meta_chunk));
+  if (m_sega_cd) {
+    chunks.push_back(StateChunk{
+        fourcc("SCD0"), serialize_segacd_state(save_segacd_state(*m_sega_cd))});
+  }
+  chunks.push_back(std::move(checksum_chunk));
   std::vector<uint8_t> blob = StateV3::serialize(chunks);
 
   const uint32_t checksum = state_crc32(
@@ -1238,6 +1271,31 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
   }
   if (!rom_matches) {
     return std::unexpected(StateError::WrongRom);
+  }
+
+  SegaCdState cd_state;
+  if (m_sega_cd) {
+    bool cd_seen = false;
+    for (const StateChunk &chunk : *chunks) {
+      if (chunk.id != fourcc("SCD0")) {
+        continue;
+      }
+      if (cd_seen) {
+        return std::unexpected(StateError::Corrupt);
+      }
+      cd_seen = true;
+      auto parsed = parse_segacd_state(chunk.data);
+      if (!parsed) {
+        return std::unexpected(StateError::Corrupt);
+      }
+      if (parsed->disc_identity != m_sega_cd->disc().identity()) {
+        return std::unexpected(StateError::WrongRom);
+      }
+      cd_state = std::move(*parsed);
+    }
+    if (!cd_seen || !valid_segacd_state(*m_sega_cd, cd_state)) {
+      return std::unexpected(StateError::Corrupt);
+    }
   }
 
   bool board_seen = false, cpu_seen = false;
@@ -1579,6 +1637,9 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
     /* States written before the VDP0 chunk existed carry no video state;
      * re-sync at least the field timing with the board's standard. */
     m_vdp.reset(m_pal);
+  }
+  if (m_sega_cd && !restore_segacd_state(*m_sega_cd, cd_state)) {
+    return std::unexpected(StateError::Corrupt);
   }
   m_powered = true;
   m_bus.reset();

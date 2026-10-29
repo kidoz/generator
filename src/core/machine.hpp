@@ -42,6 +42,8 @@
 
 namespace generator {
 
+class SegaCd;
+
 class Machine : public EmulatorMachine,
                 private BusDevices,
                 private MasterClockSink {
@@ -111,9 +113,14 @@ public:
 
   // --- Information ---
 
+  void attach_sega_cd(std::unique_ptr<SegaCd> sega_cd);
   SystemKind system_kind() const override
   {
-    return SystemKind::MegaDrive;
+    return m_sega_cd ? SystemKind::SegaCd : SystemKind::MegaDrive;
+  }
+  SegaCd *sega_cd_debug()
+  {
+    return m_sega_cd.get();
   }
   const t_cartinfo *rom_info() const;
   const char *rom_name() const;
@@ -246,6 +253,7 @@ private:
   t_cartinfo m_cartinfo{};
   std::array<char, 128> m_leafname{};
 
+  std::unique_ptr<SegaCd> m_sega_cd;
   M68kBus m_bus;
   M68k m_cpu;
   Vdp m_vdp;

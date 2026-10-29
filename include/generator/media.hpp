@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <optional>
 
 namespace generator {
@@ -20,9 +21,21 @@ enum class MediaKind {
   Disc,
 };
 
+enum class SegaCdRegion {
+  Japan,
+  NorthAmerica,
+  Europe,
+};
+
+struct SegaCdFirmware {
+  std::filesystem::path path;
+  SegaCdRegion region = SegaCdRegion::Japan;
+};
+
 struct MediaLoadOptions {
   std::optional<SystemKind> system;
   bool attach_32x = false;
+  std::optional<SegaCdFirmware> sega_cd_firmware;
 };
 
 struct MediaInfo {

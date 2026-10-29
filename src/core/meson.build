@@ -20,11 +20,12 @@ core_sources += bus_sources
 core_sources += vdp_sources
 core_sources += audio_sources
 core_sources += sms_sources
+core_sources += segacd_sources
 
 core_lib = static_library('gen_core',
   sources: core_sources,
   include_directories: inc,
-  dependencies: [common_deps, z80f_dep],
+  dependencies: [common_deps, z80f_dep, chdr_dep],
 )
 
 core_dep = declare_dependency(

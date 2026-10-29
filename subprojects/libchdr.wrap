@@ -1,0 +1,6 @@
+[wrap-git]
+url = https://github.com/rtissera/libchdr.git
+# Commit of v0.3.0; keep the decoder reproducible.
+revision = 93d8c239ff0d4e8d7722985992649fce12d2463b
+clone-recursive = false
+method = cmake

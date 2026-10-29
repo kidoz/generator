@@ -124,6 +124,22 @@ z80f_dep = dependency('z80f',
   fallback: ['z80f', 'z80f_dep'],
   default_options: ['tests=false', 'examples=false'])
 
+# CHD disc decoding. Prefer the system library, otherwise use pinned upstream.
+# Generator remains C++23; the external decoder is built in its own subproject.
+chdr_dep = dependency('libchdr', version: '>=0.3.0', required: false)
+if not chdr_dep.found()
+  cmake = import('cmake')
+  chdr_options = cmake.subproject_options()
+  chdr_options.add_cmake_defines({
+    'BUILD_SHARED_LIBS': false,
+    'CHDR_WANT_RAW_DATA_SECTOR': true,
+    'CHDR_WANT_SUBCODE': true,
+    'CHDR_VERIFY_BLOCK_CRC': true,
+  })
+  chdr_project = cmake.subproject('libchdr', options: chdr_options)
+  chdr_dep = chdr_project.dependency('chdr-static')
+endif
+
 # UI backend dependencies
 ui_deps = []
 
@@ -201,6 +217,7 @@ subdir('src/m68k')
 subdir('src/vdp')
 subdir('src/z80')
 subdir('src/sms')
+subdir('src/segacd')
 subdir('src/core')
 subdir('src/video')
 subdir('src/platform')
@@ -255,6 +272,7 @@ summary({
   'Logging': enable_logging,
   'Optimizations': optimum ? 'enabled' : 'disabled',
   'JPEG Support': jpeg_dep.found(),
+  'CHD Support': chdr_dep.found(),
   'Netplay': enable_netplay,
 }, section: 'Configuration')
 

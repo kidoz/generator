@@ -56,6 +56,10 @@ public:
 
   void attach_rom(const uint8_t *rom, std::size_t size);
   void attach_ram(uint8_t *ram /* 65536 bytes, borrowed */);
+  void attach_expansion(M68kBusInterface *expansion)
+  {
+    m_expansion = expansion;
+  }
   /* SRAM: enabled when the cart header declares a save area.
    * start/size are the 68K address range, write-protected per the
    * header's SRAM info bits. Offsets alias inside 32 KiB and are then
@@ -95,6 +99,7 @@ private:
   const uint8_t *m_rom = nullptr;
   std::size_t m_rom_size = 0;
   uint8_t *m_ram = nullptr;
+  M68kBusInterface *m_expansion = nullptr;
   uint16_t m_data_bus = 0;
   /* SRAM (borrowed — the Machine owns the buffer) */
   uint8_t *m_sram = nullptr;
