@@ -133,6 +133,7 @@ std::vector<uint8_t> serialize_segacd_state(const SegaCdState &state)
   w.u8(state.base.sub_reset_release ? 1 : 0);
   w.u8(state.base.sub_bus_request ? 1 : 0);
   w.u8(state.base.word_ram_main_owner ? 1 : 0);
+  w.u8(state.base.word_ram_mode_1m ? 1 : 0);
   write_sub_cpu(w, state.sub_cpu);
   w.u64(state.cdd.clock_acc);
   w.u64(state.cdd.lba);
@@ -217,6 +218,7 @@ parse_segacd_state(std::span<const uint8_t> payload)
   state.base.sub_reset_release = r.u8() != 0;
   state.base.sub_bus_request = r.u8() != 0;
   state.base.word_ram_main_owner = r.u8() != 0;
+  state.base.word_ram_mode_1m = r.u8() != 0;
   state.sub_cpu = read_sub_cpu(r);
   state.cdd.clock_acc = r.u64();
   state.cdd.lba = r.u64();

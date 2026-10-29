@@ -57,6 +57,7 @@ void SegaCd::power_on()
   m_sub_reset_release = false;
   m_sub_bus_request = false;
   m_word_ram_main_owner = true;
+  m_word_ram_mode_1m = false;
   m_sub_cpu.power_on_reset();
   m_sub_cpu.set_running(false);
   m_cdd.reset();
@@ -81,8 +82,10 @@ void SegaCd::advance_mclk(uint64_t ticks)
   while (auto transfer = m_cdc.take_dma_transfer()) {
     if (transfer->target == SegaCdCdcDmaTarget::ProgramRam) {
       m_sub_cpu.bus().program_ram()[transfer->destination] = transfer->value;
+    } else if (transfer->target == SegaCdCdcDmaTarget::WordRamMain) {
+      m_word_ram[main_word_ram_offset(transfer->destination)] = transfer->value;
     } else {
-      m_word_ram[transfer->destination] = transfer->value;
+      m_word_ram[sub_word_ram_offset(transfer->destination)] = transfer->value;
     }
   }
   m_asic.advance_mclk(ticks);
@@ -100,6 +103,26 @@ void SegaCd::advance_mclk(uint64_t ticks)
 void SegaCd::update_sub_running()
 {
   m_sub_cpu.set_running(m_sub_reset_release && !m_sub_bus_request);
+}
+
+uint32_t SegaCd::main_word_ram_offset(uint32_t offset) const
+{
+  return offset + (m_word_ram_mode_1m && !m_word_ram_main_owner ? 0x20000 : 0);
+}
+
+uint32_t SegaCd::sub_word_ram_offset(uint32_t offset) const
+{
+  return offset + (m_word_ram_mode_1m && m_word_ram_main_owner ? 0x20000 : 0);
+}
+
+void SegaCd::start_dma(SegaCdCdcDmaTarget target, uint32_t destination,
+                       uint32_t byte_count)
+{
+  if (m_word_ram_mode_1m && target != SegaCdCdcDmaTarget::ProgramRam &&
+      destination >= 0x20000) {
+    return;
+  }
+  (void)m_cdc.start_dma(target, destination, byte_count);
 }
 
 int SegaCd::MainBus::read(uint32_t addr, bool upper, bool lower, uint16_t *out)
@@ -146,11 +169,12 @@ int SegaCd::main_read(uint32_t addr, bool, bool, uint16_t *out)
   addr &= 0xFFFFFF;
   int wait_states = 0;
   if (addr >= 0x200000 && addr < 0x200000 + kWordRamSize) {
-    if (!m_word_ram_main_owner) {
+    if (!m_word_ram_mode_1m && !m_word_ram_main_owner) {
       *out = m_main_data_bus;
       return 2;
     }
-    m_main_data_bus = read_bytes(m_word_ram, addr - 0x200000);
+    m_main_data_bus =
+        read_bytes(m_word_ram, main_word_ram_offset(addr - 0x200000));
     wait_states = 1;
   } else if (addr >= 0x400000 &&
              addr < 0x400000 + SegaCdSubBus::kProgramRamSize) {
@@ -162,7 +186,8 @@ int SegaCd::main_read(uint32_t addr, bool, bool, uint16_t *out)
     m_main_data_bus =
         (uint16_t)((m_sub_bus_request ? 2 : 0) | (m_sub_reset_release ? 1 : 0));
   } else if (addr == 0xA12002) {
-    m_main_data_bus = m_word_ram_main_owner ? 1 : 0;
+    m_main_data_bus = (uint16_t)((m_word_ram_main_owner ? 1 : 0) |
+                                 (m_word_ram_mode_1m ? 2 : 0));
   } else if (addr == 0xA12004) {
     m_main_data_bus = cdd_status_word(m_cdd);
   } else if (addr == 0xA12006) {
@@ -188,10 +213,11 @@ int SegaCd::main_write(uint32_t addr, uint16_t data, bool upper, bool lower)
   m_main_data_bus = data;
   int wait_states = 0;
   if (addr >= 0x200000 && addr < 0x200000 + kWordRamSize) {
-    if (!m_word_ram_main_owner) {
+    if (!m_word_ram_mode_1m && !m_word_ram_main_owner) {
       return 2;
     }
-    write_bytes(m_word_ram, addr - 0x200000, data, upper, lower);
+    write_bytes(m_word_ram, main_word_ram_offset(addr - 0x200000), data, upper,
+                lower);
     wait_states = 1;
   } else if (addr >= 0x400000 &&
              addr < 0x400000 + SegaCdSubBus::kProgramRamSize) {
@@ -210,6 +236,7 @@ int SegaCd::main_write(uint32_t addr, uint16_t data, bool upper, bool lower)
     update_sub_running();
   } else if (addr == 0xA12002) {
     m_word_ram_main_owner = (data & 1) != 0;
+    m_word_ram_mode_1m = (data & 2) != 0;
   } else if (addr == 0xA12004) {
     (void)m_cdd.execute((SegaCdCddCommand)(data & 0xFF), m_cdd.parameter());
   } else if (addr == 0xA12006) {
@@ -219,8 +246,7 @@ int SegaCd::main_write(uint32_t addr, uint16_t data, bool upper, bool lower)
   } else if (addr == 0xA1200C) {
     const uint8_t target = data >> 12;
     if (target >= 1 && target <= 3) {
-      (void)m_cdc.start_dma((SegaCdCdcDmaTarget)target, m_cdd.parameter(),
-                            data & 0x0FFF);
+      start_dma((SegaCdCdcDmaTarget)target, m_cdd.parameter(), data & 0x0FFF);
     }
   } else if (addr >= 0xA12020 && addr < 0xA12020 + kCommunicationBytes) {
     write_bytes(m_main_communication, addr - 0xA12020, data, upper, lower);
@@ -232,12 +258,14 @@ int SegaCd::sub_read(uint32_t addr, bool, bool, uint16_t *out)
 {
   addr &= 0xFFFFFF;
   int wait_states = 0;
-  if (addr >= 0x080000 && addr < 0x080000 + kWordRamSize) {
-    if (m_word_ram_main_owner) {
+  if (addr >= 0x080000 &&
+      addr < 0x080000 + (m_word_ram_mode_1m ? 0x20000 : kWordRamSize)) {
+    if (!m_word_ram_mode_1m && m_word_ram_main_owner) {
       *out = m_sub_data_bus;
       return 2;
     }
-    m_sub_data_bus = read_bytes(m_word_ram, addr - 0x080000);
+    m_sub_data_bus =
+        read_bytes(m_word_ram, sub_word_ram_offset(addr - 0x080000));
     wait_states = 1;
   } else if (addr == 0xFF0004) {
     m_sub_data_bus = cdd_status_word(m_cdd);
@@ -262,11 +290,13 @@ int SegaCd::sub_write(uint32_t addr, uint16_t data, bool upper, bool lower)
 {
   addr &= 0xFFFFFF;
   m_sub_data_bus = data;
-  if (addr >= 0x080000 && addr < 0x080000 + kWordRamSize) {
-    if (m_word_ram_main_owner) {
+  if (addr >= 0x080000 &&
+      addr < 0x080000 + (m_word_ram_mode_1m ? 0x20000 : kWordRamSize)) {
+    if (!m_word_ram_mode_1m && m_word_ram_main_owner) {
       return 2;
     }
-    write_bytes(m_word_ram, addr - 0x080000, data, upper, lower);
+    write_bytes(m_word_ram, sub_word_ram_offset(addr - 0x080000), data, upper,
+                lower);
     return 1;
   }
   if (addr == 0xFF0004) {
@@ -278,8 +308,7 @@ int SegaCd::sub_write(uint32_t addr, uint16_t data, bool upper, bool lower)
   } else if (addr == 0xFF000C) {
     const uint8_t target = data >> 12;
     if (target >= 1 && target <= 3) {
-      (void)m_cdc.start_dma((SegaCdCdcDmaTarget)target, m_cdd.parameter(),
-                            data & 0x0FFF);
+      start_dma((SegaCdCdcDmaTarget)target, m_cdd.parameter(), data & 0x0FFF);
     }
   } else if (addr >= 0xFF0030 && addr < 0xFF0030 + kCommunicationBytes) {
     write_bytes(m_sub_communication, addr - 0xFF0030, data, upper, lower);
@@ -289,9 +318,10 @@ int SegaCd::sub_write(uint32_t addr, uint16_t data, bool upper, bool lower)
 
 SegaCd::BaseState SegaCd::base_state() const
 {
-  return BaseState{m_word_ram,        m_main_communication, m_sub_communication,
-                   m_main_data_bus,   m_sub_data_bus,       m_sub_reset_release,
-                   m_sub_bus_request, m_word_ram_main_owner};
+  return BaseState{
+      m_word_ram,        m_main_communication,  m_sub_communication,
+      m_main_data_bus,   m_sub_data_bus,        m_sub_reset_release,
+      m_sub_bus_request, m_word_ram_main_owner, m_word_ram_mode_1m};
 }
 
 void SegaCd::restore_base_state(const BaseState &state)
@@ -304,6 +334,7 @@ void SegaCd::restore_base_state(const BaseState &state)
   m_sub_reset_release = state.sub_reset_release;
   m_sub_bus_request = state.sub_bus_request;
   m_word_ram_main_owner = state.word_ram_main_owner;
+  m_word_ram_mode_1m = state.word_ram_mode_1m;
   update_sub_running();
 }
 

@@ -148,6 +148,7 @@ public:
     bool sub_reset_release = false;
     bool sub_bus_request = false;
     bool word_ram_main_owner = true;
+    bool word_ram_mode_1m = false;
   };
   BaseState base_state() const;
   void restore_base_state(const BaseState &state);
@@ -159,6 +160,10 @@ private:
   int sub_write(uint32_t addr, uint16_t data, bool upper, bool lower);
   void update_sub_running();
   void acknowledge_sub_interrupt(int level);
+  uint32_t main_word_ram_offset(uint32_t offset) const;
+  uint32_t sub_word_ram_offset(uint32_t offset) const;
+  void start_dma(SegaCdCdcDmaTarget target, uint32_t destination,
+                 uint32_t byte_count);
 
   SegaCdDisc m_disc;
   SegaCdSubCpu m_sub_cpu;
@@ -177,6 +182,7 @@ private:
   bool m_sub_reset_release = false;
   bool m_sub_bus_request = false;
   bool m_word_ram_main_owner = true;
+  bool m_word_ram_mode_1m = false;
 };
 
 }  // namespace generator
