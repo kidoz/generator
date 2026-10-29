@@ -102,7 +102,6 @@ public:
     const bool pal = firmware->region() == SegaCdRegion::Europe;
     auto candidate =
         std::make_unique<Machine>(m_audio, m_video, m_logger_owner);
-    candidate->set_video_mode(pal ? 1 : 0, 0);
     candidate->attach_sega_cd(std::make_unique<SegaCd>(
         std::move(*disc), pal ? 53203424ULL : 53693175ULL));
     auto loaded = candidate->load_rom_mem(
@@ -110,6 +109,9 @@ public:
     if (!loaded) {
       return loaded;
     }
+    // BIOS headers pass through cartridge parsing, which may reset the video
+    // mode. The explicitly selected firmware region determines CD timing.
+    candidate->set_video_mode(pal ? 1 : 0, 0);
     if (m_machine->rom_loaded()) {
       const auto saved = m_machine->save_sram();
       if (!saved) {
