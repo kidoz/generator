@@ -10,10 +10,10 @@ Generator is a Sega Genesis (Mega Drive) emulator featuring modern UI options, h
 
 ```bash
 # Install dependencies (Arch Linux)
-sudo pacman -S meson ninja gtk4 libadwaita sdl3
+sudo pacman -S meson ninja cmake gtk4 libadwaita sdl3
 
 # Install dependencies (Debian/Ubuntu)
-sudo apt-get install meson ninja-build libgtk-4-dev libadwaita-1-dev libsdl3-dev
+sudo apt-get install meson ninja-build cmake libgtk-4-dev libadwaita-1-dev libsdl3-dev
 
 # Configure and build
 meson setup build -Dui-backend=gtk4
@@ -32,11 +32,11 @@ use on macOS, where it renders through Metal.
 
 ```bash
 # macOS
-brew install meson ninja sdl3
+brew install meson ninja cmake sdl3
 
 # Linux
-sudo pacman -S meson ninja sdl3                     # Arch
-sudo apt-get install meson ninja-build libsdl3-dev  # Debian/Ubuntu
+sudo pacman -S meson ninja cmake sdl3                     # Arch
+sudo apt-get install meson ninja-build cmake libsdl3-dev  # Debian/Ubuntu
 
 meson setup build -Dui-backend=nodalkit
 meson compile -C build
@@ -48,8 +48,8 @@ meson compile -C build
 
 ```bash
 # Minimal dependencies
-sudo pacman -S meson ninja sdl3  # Arch
-sudo apt-get install meson ninja-build libsdl3-dev  # Debian/Ubuntu
+sudo pacman -S meson ninja cmake sdl3  # Arch
+sudo apt-get install meson ninja-build cmake libsdl3-dev  # Debian/Ubuntu
 
 # Build console version
 meson setup build -Dui-backend=console
@@ -136,6 +136,35 @@ meson setup build --buildtype=release -Dui-backend=gtk4
 - `.smd` - Interleaved SMD format (auto-detected)
 - `.gen` - Genesis ROM files
 - `.md` / `.rom` - Raw ROM images using alternate extensions
+- `.cue` / `.chd` - Sega CD disc images through `EmulatorCore::load_media()`
+
+Sega CD CHD loading uses [libchdr](https://github.com/rtissera/libchdr), a
+BSD-licensed reader for MAME's Compressed Hunks of Data format. Meson uses a
+system libchdr 0.3.0 or newer when available, or builds the pinned 0.3.0
+subproject with CMake. An offline build needs that dependency available locally.
+
+The disc reader supports CHD CD images with CHTR/CHT2 track metadata and
+`MODE1_RAW`, `MODE2_RAW`, and `AUDIO` tracks. It decodes sectors on demand,
+caches one hunk, skips the file's four-frame track padding, preserves stored
+and virtual pregaps and postgaps, and converts CD audio to the mixer's byte
+order. These layout rules follow [MAME's CD implementation](https://github.com/mamedev/mame/blob/master/src/lib/util/cdrom.cpp).
+Cooked tracks, legacy binary CHCD metadata, GD-ROMs, and images requiring a
+parent CHD are rejected with an error. Disc identity hashes file content and
+layout rather than its path; CUE/BIN conversion or CHD recompression may change
+the identity.
+
+Sega CD loading requires a 128 KiB regional BIOS supplied through the core API:
+
+```cpp
+generator::MediaLoadOptions options;
+options.sega_cd_firmware = generator::SegaCdFirmware{
+    "/path/to/bios.bin", generator::SegaCdRegion::NorthAmerica};
+auto result = core.load_media("/path/to/game.chd", options);
+```
+
+The current UI and command-line frontends do not expose BIOS selection. Sega CD
+save states are supported through the core API; 32X combinations remain
+unsupported.
 
 ## Features
 
