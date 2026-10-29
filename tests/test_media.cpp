@@ -107,7 +107,7 @@ TEST_CASE("unsupported systems do not replace the running cartridge", "[media]")
 
   const auto sms = core.load_media("missing.sms");
   REQUIRE_FALSE(sms);
-  CHECK(sms.error().find("Master System") != std::string::npos);
+  CHECK(sms.error().find("cannot open") != std::string::npos);
 
   const auto cd32x = core.load_media("missing.cue", {.attach_32x = true});
   REQUIRE_FALSE(cd32x);

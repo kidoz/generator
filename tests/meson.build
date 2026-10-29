@@ -114,6 +114,21 @@ test('media', test_media,
   suite: 'catch2'
 )
 
+# Master System cartridge, machine, video, input, and persistence.
+test_sms = executable('test_sms',
+  'test_sms.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sms', test_sms,
+  timeout: 30,
+  suite: 'catch2'
+)
+
 # Machine-level save-state round-trip: save, mutate, load, then the re-save
 # must match the original blob byte-for-byte.
 test_state_machine = executable('test_state_machine',
