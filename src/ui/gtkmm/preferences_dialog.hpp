@@ -9,7 +9,7 @@
 
 #include "audio_preferences.hpp"
 
-class PreferencesDialog {
+class PreferencesDialog : public sigc::trackable {
 public:
   PreferencesDialog(Gtk::Window &parent, std::function<void()> video_changed,
                     std::function<void(int)> resize_video,
@@ -22,6 +22,10 @@ private:
   void setup_ui();
   void populate_video_page(AdwPreferencesPage *page);
   void populate_audio_page(AdwPreferencesPage *page);
+  void populate_firmware_page(AdwPreferencesPage *page);
+  void browse_sega_cd_bios();
+  void on_firmware_changed();
+  void firmware_feedback(const std::string &message, bool error);
   void on_video_changed();
   void update_video_descriptions();
   void reset_video();
@@ -58,4 +62,9 @@ private:
   sigc::connection m_audio_test_timer;
   bool m_updating_audio{false};
   bool m_testing_audio{false};
+  AdwEntryRow *m_bios_path_row{nullptr};
+  AdwComboRow *m_bios_region_row{nullptr};
+  GtkWidget *m_bios_browse_button{nullptr};
+  GtkLabel *m_bios_feedback{nullptr};
+  Glib::RefPtr<Gio::Cancellable> m_bios_cancellable;
 };

@@ -12,6 +12,8 @@ gtkmm_ui_sources = files(
     'preferences_dialog.cpp',
     'audio_preferences.cpp',
     'audio_preferences.hpp',
+    'firmware_preferences.cpp',
+    'firmware_preferences.hpp',
     'netplay_dialog.cpp',
     'netplay_session.cpp',
     'ui_bridge.cpp'

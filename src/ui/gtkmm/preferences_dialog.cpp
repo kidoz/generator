@@ -2,6 +2,7 @@
 
 #include "preferences_dialog.hpp"
 #include "video_presentation.hpp"
+#include "firmware_preferences.hpp"
 
 #include <span>
 
@@ -54,6 +55,8 @@ PreferencesDialog::PreferencesDialog(Gtk::Window &parent,
 
 PreferencesDialog::~PreferencesDialog()
 {
+  if (m_bios_cancellable)
+    m_bios_cancellable->cancel();
   m_audio_timer.disconnect();
   stop_audio_test();
   if (!m_dialog)
@@ -66,6 +69,9 @@ PreferencesDialog::~PreferencesDialog()
   g_signal_handlers_disconnect_by_data(m_audio_mute_row, this);
   g_signal_handlers_disconnect_by_data(m_audio_test_button, this);
   g_signal_handlers_disconnect_by_data(m_audio_reset_button, this);
+  g_signal_handlers_disconnect_by_data(m_bios_path_row, this);
+  g_signal_handlers_disconnect_by_data(m_bios_region_row, this);
+  g_signal_handlers_disconnect_by_data(m_bios_browse_button, this);
   g_signal_handlers_disconnect_by_data(m_dialog, this);
   g_object_set_data(G_OBJECT(m_dialog), "preferences", nullptr);
   // The weak pointer must not outlive the C++ object that stores it.
@@ -87,6 +93,8 @@ void PreferencesDialog::setup_ui()
   g_object_add_weak_pointer(G_OBJECT(m_dialog), (gpointer *)&m_dialog);
   g_signal_connect_swapped(m_dialog, "closed",
                            G_CALLBACK(+[](PreferencesDialog *self) {
+                             if (self->m_bios_cancellable)
+                               self->m_bios_cancellable->cancel();
                              self->m_audio_timer.disconnect();
                              self->stop_audio_test();
                            }),
@@ -108,6 +116,157 @@ void PreferencesDialog::setup_ui()
   adw_preferences_page_set_icon_name(audio_page, "audio-speakers-symbolic");
   populate_audio_page(audio_page);
   adw_preferences_dialog_add(m_dialog, audio_page);
+
+  auto *firmware_page = ADW_PREFERENCES_PAGE(adw_preferences_page_new());
+  adw_preferences_page_set_title(firmware_page, "Firmware");
+  adw_preferences_page_set_name(firmware_page, "firmware");
+  adw_preferences_page_set_icon_name(firmware_page, "drive-harddisk-symbolic");
+  populate_firmware_page(firmware_page);
+  adw_preferences_dialog_add(m_dialog, firmware_page);
+}
+
+void PreferencesDialog::populate_firmware_page(AdwPreferencesPage *page)
+{
+  const auto settings = generator::gtkui::FirmwareSettings::load();
+  auto *group = ADW_PREFERENCES_GROUP(adw_preferences_group_new());
+  adw_preferences_group_set_title(group, "Sega CD");
+  adw_preferences_group_set_description(
+      group, "Select a 128 KiB BIOS and its region. Changes apply the next "
+             "time you open a disc.");
+  m_bios_path_row = ADW_ENTRY_ROW(adw_entry_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_bios_path_row),
+                                "BIOS file");
+  adw_entry_row_set_show_apply_button(m_bios_path_row, true);
+  gtk_editable_set_text(GTK_EDITABLE(m_bios_path_row),
+                        settings.sega_cd_bios.c_str());
+  m_bios_browse_button = gtk_button_new_with_label("Browse…");
+  gtk_widget_set_valign(m_bios_browse_button, GTK_ALIGN_CENTER);
+  adw_entry_row_add_suffix(m_bios_path_row, m_bios_browse_button);
+  adw_preferences_group_add(group, GTK_WIDGET(m_bios_path_row));
+
+  m_bios_region_row = ADW_COMBO_ROW(adw_combo_row_new());
+  adw_preferences_row_set_title(ADW_PREFERENCES_ROW(m_bios_region_row),
+                                "BIOS region");
+  adw_action_row_set_subtitle(ADW_ACTION_ROW(m_bios_region_row),
+                              "Match the region of your BIOS file.");
+  const char *regions[] = {"Japan", "North America", "Europe", nullptr};
+  auto *model = gtk_string_list_new(regions);
+  adw_combo_row_set_model(m_bios_region_row, G_LIST_MODEL(model));
+  g_object_unref(model);
+  adw_combo_row_set_selected(m_bios_region_row,
+                             static_cast<guint>(settings.sega_cd_region));
+  adw_preferences_group_add(group, GTK_WIDGET(m_bios_region_row));
+  m_bios_feedback = GTK_LABEL(gtk_label_new(nullptr));
+  gtk_label_set_wrap(m_bios_feedback, true);
+  gtk_label_set_xalign(m_bios_feedback, 0);
+  gtk_widget_set_margin_top(GTK_WIDGET(m_bios_feedback), 8);
+  adw_preferences_group_add(group, GTK_WIDGET(m_bios_feedback));
+  adw_preferences_page_add(page, group);
+  const auto valid = settings.validate();
+  firmware_feedback(!valid ? valid.error()
+                    : settings.sega_cd_bios.empty()
+                        ? "No BIOS selected. Browse for a BIOS file, "
+                          "or enter a path and apply it."
+                        : "128 KiB BIOS ready. Open a disc to use it.",
+                    !valid);
+  g_signal_connect_swapped(
+      m_bios_path_row, "apply",
+      G_CALLBACK(+[](PreferencesDialog *self) { self->on_firmware_changed(); }),
+      this);
+  g_signal_connect_swapped(
+      m_bios_region_row, "notify::selected",
+      G_CALLBACK(+[](PreferencesDialog *self) { self->on_firmware_changed(); }),
+      this);
+  g_signal_connect_swapped(
+      m_bios_browse_button, "clicked",
+      G_CALLBACK(+[](PreferencesDialog *self) { self->browse_sega_cd_bios(); }),
+      this);
+}
+
+void PreferencesDialog::firmware_feedback(const std::string &message,
+                                          bool error)
+{
+  gtk_label_set_text(m_bios_feedback, message.c_str());
+  if (error)
+    gtk_widget_add_css_class(GTK_WIDGET(m_bios_feedback), "error");
+  else
+    gtk_widget_remove_css_class(GTK_WIDGET(m_bios_feedback), "error");
+}
+
+void PreferencesDialog::on_firmware_changed()
+{
+  generator::gtkui::FirmwareSettings settings;
+  settings.sega_cd_bios = gtk_editable_get_text(GTK_EDITABLE(m_bios_path_row));
+  settings.sega_cd_region = static_cast<generator::SegaCdRegion>(
+      adw_combo_row_get_selected(m_bios_region_row));
+  auto valid = settings.validate();
+  if (!valid) {
+    firmware_feedback(valid.error(), true);
+    return;
+  }
+  if (!settings.save()) {
+    firmware_feedback("Could not save the BIOS settings. Use a shorter path "
+                      "without line breaks or trailing spaces.",
+                      true);
+    return;
+  }
+  firmware_feedback(settings.sega_cd_bios.empty()
+                        ? "No BIOS selected. Sega CD discs require a BIOS."
+                        : "128 KiB BIOS ready. Open a disc to use it.",
+                    false);
+}
+
+void PreferencesDialog::browse_sega_cd_bios()
+{
+  if (m_bios_cancellable)
+    m_bios_cancellable->cancel();
+  m_bios_cancellable = Gio::Cancellable::create();
+  auto cancellable = m_bios_cancellable;
+  auto chooser = Gtk::FileDialog::create();
+  chooser->set_title("Select Sega CD BIOS");
+  auto bios = Gtk::FileFilter::create();
+  bios->set_name("BIOS files (*.bin, *.rom)");
+  for (const char *pattern : {"*.bin", "*.BIN", "*.rom", "*.ROM"})
+    bios->add_pattern(pattern);
+  auto all = Gtk::FileFilter::create();
+  all->set_name("All files");
+  all->add_pattern("*");
+  auto filters = Gio::ListStore<Gtk::FileFilter>::create();
+  filters->append(bios);
+  filters->append(all);
+  chooser->set_filters(filters);
+  chooser->set_default_filter(bios);
+  const std::string path = gtk_editable_get_text(GTK_EDITABLE(m_bios_path_row));
+  if (!path.empty())
+    chooser->set_initial_file(Gio::File::create_for_path(path));
+  chooser->open(m_parent,
+                sigc::track_object(
+                    [this, chooser, cancellable](
+                        const Glib::RefPtr<Gio::AsyncResult> &result) {
+                      try {
+                        auto file = chooser->open_finish(result);
+                        if (cancellable->is_cancelled() || !m_dialog || !file)
+                          return;
+                        auto selected = file->get_path();
+                        if (selected.empty()) {
+                          firmware_feedback("Select a local BIOS file.", true);
+                          return;
+                        }
+                        gtk_editable_set_text(GTK_EDITABLE(m_bios_path_row),
+                                              selected.c_str());
+                        on_firmware_changed();
+                      } catch (const Gtk::DialogError &error) {
+                        if (!cancellable->is_cancelled() && m_dialog &&
+                            error.code() == Gtk::DialogError::Code::FAILED)
+                          firmware_feedback(
+                              "Could not open the BIOS file chooser.", true);
+                      } catch (const Glib::Error &error) {
+                        if (!cancellable->is_cancelled() && m_dialog)
+                          firmware_feedback(error.what(), true);
+                      }
+                    },
+                    *this),
+                cancellable);
 }
 
 void PreferencesDialog::populate_video_page(AdwPreferencesPage *page)

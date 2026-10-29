@@ -2,6 +2,7 @@
 #include "main_window.hpp"
 
 #include "input_controller.hpp"
+#include "firmware_preferences.hpp"
 #include "ui_bridge.hpp"
 #include <algorithm>
 #include <iostream>
@@ -45,9 +46,17 @@ void GeneratorApp::load_rom_from_path(const std::string &path)
   // Stop the emulation thread to prevent race conditions during reset
   m_emu_thread.stop();
   if (g_emulator_core) {
-    auto res = g_emulator_core->load_rom(path);
+    auto options = generator::gtkui::FirmwareSettings::load().media_options();
+    auto res = g_emulator_core->load_media(path, options);
     if (!res) {
-      show_error_dialog("Failed to load ROM", res.error());
+      auto message = res.error();
+      if (message.find("BIOS") != std::string::npos) {
+        if (!options.sega_cd_firmware)
+          message = "A Sega CD BIOS is required.";
+        message += "\n\nSelect the Sega CD BIOS and its region in "
+                   "Preferences → Firmware, then open the disc again.";
+      }
+      show_error_dialog("Failed to load ROM", message);
     }
   }
   m_emu_thread.start();
@@ -183,13 +192,17 @@ void GeneratorApp::open_rom_dialog(Gtk::Window &parent)
   dialog->set_title("Open ROM");
 
   auto filter_roms = Gtk::FileFilter::create();
-  filter_roms->set_name("Mega Drive / Genesis / Master System ROMs");
+  filter_roms->set_name("Genesis / Master System / Sega CD games");
   filter_roms->add_pattern("*.bin");
   filter_roms->add_pattern("*.smd");
   filter_roms->add_pattern("*.gen");
   filter_roms->add_pattern("*.md");
   filter_roms->add_pattern("*.rom");
   filter_roms->add_pattern("*.sms");
+  filter_roms->add_pattern("*.cue");
+  filter_roms->add_pattern("*.CUE");
+  filter_roms->add_pattern("*.chd");
+  filter_roms->add_pattern("*.CHD");
 
   auto filter_all = Gtk::FileFilter::create();
   filter_all->set_name("All files");
