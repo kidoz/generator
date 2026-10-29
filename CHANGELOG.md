@@ -1,8 +1,28 @@
 # Changelog
 
-## 0.50 (2025-01-19)
+All notable changes to this project will be documented in this file.
 
-### New Features
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+
+- Sega Master System emulation with the Z80 CPU, Mode 4 VDP, SN76489 PSG, and NTSC/PAL timing
+- Sega and Codemasters cartridge mappers with battery-backed SRAM persistence
+- Master System save states with per-ROM slot storage
+- `.sms` ROM support in the core and in the GTK4 and NodalKit file pickers
+
+### Changed
+
+- Save states record the emulated system and reject states saved for another system
+- Genesis and Master System save data share the state identity and atomic file helpers
+
+## [0.50] - 2026-01-19
+
+### Added
+
 - Complete GTK4/libadwaita UI rewrite
 - Meson build system (replacing autotools)
 - SDL3 audio/input backend
@@ -10,31 +30,36 @@
 - Scale2x/3x/4x algorithms
 - Netplay/Kaillera support
 - 6-button controller support
-
-### Sound Improvements
 - Two-pole Butterworth low-pass filter (~14 kHz cutoff)
 - DC blocking high-pass filter (~15 Hz cutoff)
 - Improved FM/PSG mixing ratio (7:3)
 - DAC ladder effect for authentic YM2612 sound
 - Internal oversampling support
+- ROM save functionality
 
-### Improvements
+### Changed
+
 - C23 standard compliance
 - SPDX license identifiers in all source files
-- Fixed audio slowdown on Wayland focus loss
-- Fixed 64K RAM boundary corruption bug
-- Fixed buffer overflow in Z80 disassembler
-- Fixed unsafe string handling in config parser
 - Migrated to AdwPreferencesDialog (libadwaita 1.4+)
-- Implemented ROM save functionality
 - Improved memory allocation error handling
 
+### Fixed
+
+- Fixed audio slowdown on Wayland focus loss
+- Fixed 64K RAM boundary corruption bug
+- Fixed buffer overflow in the Z80 disassembler
+- Fixed unsafe string handling in the config parser
+
 ### Removed
+
 - Legacy backends (SVGALib, Allegro, Tcl/Tk, SDL1)
 
 ---
 
 ## Original Generator Changelog (James Ponder)
+
+The entries below predate this changelog and are preserved verbatim.
 
 ### 0.35
 
@@ -272,3 +297,6 @@
 ### 0.03
 
 - First release
+
+[Unreleased]: https://github.com/kidoz/generator/compare/v0.50...HEAD
+[0.50]: https://github.com/kidoz/generator/releases/tag/v0.50
