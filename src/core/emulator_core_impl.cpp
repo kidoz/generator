@@ -8,6 +8,7 @@
 
 #include "machine.hpp"
 #include "media_detect.hpp"
+#include "sms/sms_machine.hpp"
 
 #include <ctime>
 #include <utility>
@@ -35,6 +36,46 @@ public:
     m_logger->log(LogLevel::Verbose, "core: machine created");
   }
 
+  std::expected<void, std::string> load_detected(const MediaInfo &info,
+                                                 std::span<const uint8_t> data,
+                                                 std::string_view filename)
+  {
+    if (info.system != SystemKind::MegaDrive &&
+        info.system != SystemKind::MasterSystem) {
+      return unsupported_system(info);
+    }
+
+    if (m_machine->system_kind() == info.system) {
+      auto result = m_machine->load_rom_mem(data, filename);
+      if (result) {
+        m_media_info = info;
+      }
+      return result;
+    }
+
+    std::unique_ptr<EmulatorMachine> candidate;
+    if (info.system == SystemKind::MasterSystem) {
+      candidate = std::make_unique<MasterSystemMachine>(m_audio, m_video,
+                                                        m_logger_owner);
+    } else {
+      candidate = std::make_unique<Machine>(m_audio, m_video, m_logger_owner);
+    }
+
+    auto result = candidate->load_rom_mem(data, filename);
+    if (!result) {
+      return result;
+    }
+    if (m_machine->rom_loaded()) {
+      const auto saved = m_machine->save_sram();
+      if (!saved) {
+        return std::unexpected(std::string(state_error_message(saved.error())));
+      }
+    }
+    m_machine = std::move(candidate);
+    m_media_info = info;
+    return {};
+  }
+
   std::expected<void, std::string>
   load_media(std::string_view filename,
              const MediaLoadOptions &options) override
@@ -43,7 +84,8 @@ public:
     if (!detected) {
       return std::unexpected(detected.error());
     }
-    if (detected->system != SystemKind::MegaDrive) {
+    if (detected->system != SystemKind::MegaDrive &&
+        detected->system != SystemKind::MasterSystem) {
       return unsupported_system(*detected);
     }
 
@@ -55,15 +97,7 @@ public:
     if (!detected) {
       return std::unexpected(detected.error());
     }
-    if (detected->system != SystemKind::MegaDrive) {
-      return unsupported_system(*detected);
-    }
-
-    auto result = m_machine->load_rom_mem(*data, filename);
-    if (result) {
-      m_media_info = *detected;
-    }
-    return result;
+    return load_detected(*detected, *data, filename);
   }
 
   MediaInfo media_info() const override
@@ -83,14 +117,7 @@ public:
     if (!detected) {
       return std::unexpected(detected.error());
     }
-    if (detected->system != SystemKind::MegaDrive) {
-      return unsupported_system(*detected);
-    }
-    auto result = m_machine->load_rom_mem(rom_data, {});
-    if (result) {
-      m_media_info = *detected;
-    }
-    return result;
+    return load_detected(*detected, rom_data, {});
   }
 
   void unload_rom() override
