@@ -245,6 +245,20 @@ test('sega_cd_state', test_sega_cd_state,
   suite: 'catch2'
 )
 
+# Local SH-2 interpreter instructions, memory, and delayed branches.
+test_sh2 = executable('test_sh2',
+  'test_sh2.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('sh2_core', test_sh2,
+  timeout: 30,
+  suite: 'catch2'
+)
+
 # Master System cartridge, machine, video, input, and persistence.
 test_sms = executable('test_sms',
   'test_sms.cpp',
