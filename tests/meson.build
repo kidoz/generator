@@ -259,6 +259,21 @@ test('sh2_core', test_sh2,
   suite: 'catch2'
 )
 
+# 32X adapter buses and synthetic one-SH-2 boot/media integration.
+test_x32 = executable('test_x32',
+  'test_x32.cpp',
+  '../src/video/uiplot_cram.cpp',
+  include_directories: [machine_test_inc],
+  dependencies: [catch2_dep, core_dep, z80f_dep],
+  override_options: ['cpp_std=c++23'],
+  build_by_default: false
+)
+
+test('x32', test_x32,
+  timeout: 30,
+  suite: 'catch2'
+)
+
 # Master System cartridge, machine, video, input, and persistence.
 test_sms = executable('test_sms',
   'test_sms.cpp',
