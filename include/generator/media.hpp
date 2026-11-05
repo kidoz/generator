@@ -32,10 +32,16 @@ struct SegaCdFirmware {
   SegaCdRegion region = SegaCdRegion::Japan;
 };
 
+struct X32Firmware {
+  std::filesystem::path master_boot;
+  std::filesystem::path slave_boot;
+};
+
 struct MediaLoadOptions {
   std::optional<SystemKind> system;
   bool attach_32x = false;
   std::optional<SegaCdFirmware> sega_cd_firmware;
+  std::optional<X32Firmware> x32_firmware;
 };
 
 struct MediaInfo {

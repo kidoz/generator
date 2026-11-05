@@ -43,6 +43,7 @@
 namespace generator {
 
 class SegaCd;
+class X32;
 
 class Machine : public EmulatorMachine,
                 private BusDevices,
@@ -114,13 +115,20 @@ public:
   // --- Information ---
 
   void attach_sega_cd(std::unique_ptr<SegaCd> sega_cd);
+  void attach_x32(std::unique_ptr<X32> x32);
   SystemKind system_kind() const override
   {
-    return m_sega_cd ? SystemKind::SegaCd : SystemKind::MegaDrive;
+    return m_x32       ? SystemKind::X32
+           : m_sega_cd ? SystemKind::SegaCd
+                       : SystemKind::MegaDrive;
   }
   SegaCd *sega_cd_debug()
   {
     return m_sega_cd.get();
+  }
+  X32 *x32_debug()
+  {
+    return m_x32.get();
   }
   const t_cartinfo *rom_info() const;
   const char *rom_name() const;
@@ -254,6 +262,7 @@ private:
   std::array<char, 128> m_leafname{};
 
   std::unique_ptr<SegaCd> m_sega_cd;
+  std::unique_ptr<X32> m_x32;
   M68kBus m_bus;
   M68k m_cpu;
   Vdp m_vdp;
@@ -320,6 +329,7 @@ private:
   uint64_t m_mclk_total = 0;
   unsigned int m_frames = 0;
   std::vector<uint8_t> m_blank_line;
+  std::array<uint32_t, 320> m_x32_line{};
 
   /* Audio is generated on the master clock, one output sample every
    * SOUND_SAMPLERATE-th of an emulated second, and handed to the backend

@@ -12,6 +12,7 @@
 #include "segacd/firmware.hpp"
 #include "segacd/sega_cd.hpp"
 #include "sms/sms_machine.hpp"
+#include "x32/x32.hpp"
 
 #include <ctime>
 #include <utility>
@@ -39,10 +40,13 @@ public:
     m_logger->log(LogLevel::Verbose, "core: machine created");
   }
 
-  std::expected<void, std::string> load_detected(const MediaInfo &info,
-                                                 std::span<const uint8_t> data,
-                                                 std::string_view filename)
+  std::expected<void, std::string>
+  load_detected(const MediaInfo &info, std::span<const uint8_t> data,
+                std::string_view filename, const MediaLoadOptions &options)
   {
+    if (info.system == SystemKind::X32) {
+      return load_x32(info, data, filename, options);
+    }
     if (info.system != SystemKind::MegaDrive &&
         info.system != SystemKind::MasterSystem) {
       return unsupported_system(info);
@@ -67,6 +71,46 @@ public:
     auto result = candidate->load_rom_mem(data, filename);
     if (!result) {
       return result;
+    }
+    if (m_machine->rom_loaded()) {
+      const auto saved = m_machine->save_sram();
+      if (!saved) {
+        return std::unexpected(std::string(state_error_message(saved.error())));
+      }
+    }
+    m_machine = std::move(candidate);
+    m_media_info = info;
+    return {};
+  }
+
+  std::expected<void, std::string> load_x32(const MediaInfo &info,
+                                            std::span<const uint8_t> data,
+                                            std::string_view filename,
+                                            const MediaLoadOptions &options)
+  {
+    if (!options.x32_firmware) {
+      return std::unexpected("32X master and slave boot ROMs are required; set "
+                             "MediaLoadOptions::x32_firmware");
+    }
+    auto master = read_media_file(options.x32_firmware->master_boot.string());
+    if (!master) {
+      return std::unexpected(master.error());
+    }
+    auto slave = read_media_file(options.x32_firmware->slave_boot.string());
+    if (!slave) {
+      return std::unexpected(slave.error());
+    }
+    if (master->empty() || master->size() > 0x10000 || slave->empty() ||
+        slave->size() > 0x10000) {
+      return std::unexpected("32X boot ROMs must be 1 byte to 64 KiB each");
+    }
+
+    auto candidate =
+        std::make_unique<Machine>(m_audio, m_video, m_logger_owner);
+    candidate->attach_x32(std::make_unique<X32>(data, *master, *slave));
+    auto loaded = candidate->load_rom_mem(data, filename);
+    if (!loaded) {
+      return loaded;
     }
     if (m_machine->rom_loaded()) {
       const auto saved = m_machine->save_sram();
@@ -135,7 +179,8 @@ public:
       return load_disc(*detected, filename, options);
     }
     if (detected->system != SystemKind::MegaDrive &&
-        detected->system != SystemKind::MasterSystem) {
+        detected->system != SystemKind::MasterSystem &&
+        detected->system != SystemKind::X32) {
       return unsupported_system(*detected);
     }
 
@@ -147,7 +192,7 @@ public:
     if (!detected) {
       return std::unexpected(detected.error());
     }
-    return load_detected(*detected, *data, filename);
+    return load_detected(*detected, *data, filename, options);
   }
 
   MediaInfo media_info() const override
@@ -167,7 +212,7 @@ public:
     if (!detected) {
       return std::unexpected(detected.error());
     }
-    return load_detected(*detected, rom_data, {});
+    return load_detected(*detected, rom_data, {}, MediaLoadOptions{});
   }
 
   void unload_rom() override

@@ -21,6 +21,7 @@ core_sources += vdp_sources
 core_sources += audio_sources
 core_sources += sms_sources
 core_sources += segacd_sources
+core_sources += x32_sources
 core_sources += sh2_sources
 
 core_lib = static_library('gen_core',

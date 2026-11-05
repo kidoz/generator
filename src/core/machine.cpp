@@ -6,6 +6,8 @@
 
 #include "segacd/sega_cd.hpp"
 #include "segacd/state.hpp"
+#include "x32/state.hpp"
+#include "x32/x32.hpp"
 
 #include "gensoundp.h" /* SOUND_SAMPLERATE */
 #include "uiplot_cram.h"
@@ -19,6 +21,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <system_error>
 #include <utility>
 
@@ -227,6 +230,14 @@ void Machine::attach_sega_cd(std::unique_ptr<SegaCd> sega_cd)
   m_bus.attach_expansion(m_sega_cd ? &m_sega_cd->main_bus() : nullptr);
 }
 
+void Machine::attach_x32(std::unique_ptr<X32> x32)
+{
+  m_x32 = std::move(x32);
+  if (m_x32)
+    m_x32->set_pal(m_pal);
+  m_bus.attach_expansion(m_x32 ? &m_x32->main_bus() : nullptr);
+}
+
 std::expected<void, std::string> Machine::load_rom(std::string_view filename)
 {
   const std::filesystem::path path{std::string(filename)};
@@ -354,6 +365,9 @@ void Machine::power_on()
   if (m_sega_cd) {
     m_sega_cd->power_on();
   }
+  if (m_x32) {
+    m_x32->power_on();
+  }
 
   /* Every other domain ticks through the reset hold; only then does the
      CPU fetch its vectors. */
@@ -374,6 +388,8 @@ void Machine::reset()
 void Machine::soft_reset()
 {
   reset();
+  if (m_x32)
+    m_x32->request_reset();
 }
 
 void Machine::run_frame()
@@ -442,9 +458,17 @@ void Machine::finish_frame_video()
    * an H32 field with 64 columns of backdrop and leaves the picture
    * sitting against the left edge. */
   const std::size_t width = m_vdp.visible_width();
+  const bool composite_x32 = m_x32 && !m_x32->video_blank();
   for (int line = 0; line < height; line++) {
-    m_video->render_line(line, std::span<const uint8_t>(
-                                   m_vdp.line_pixels((uint32_t)line), width));
+    const std::span<const uint8_t> md_pixels(m_vdp.line_pixels((uint32_t)line),
+                                             width);
+    if (composite_x32) {
+      const std::span<uint32_t> output(m_x32_line.data(), width);
+      m_x32->composite_line((uint32_t)line, md_pixels, m_vdp.cram(), output);
+      m_video->render_line_rgba(line, output);
+    } else {
+      m_video->render_line(line, md_pixels);
+    }
   }
   m_video->present_field();
 
@@ -523,7 +547,9 @@ void Machine::advance_mclk(uint64_t ticks)
         (scaled_remaining + kSampleRate - 1) / kSampleRate;
     const uint64_t chunk =
         std::min({ticks, to_sample, m_z80bus.ym().mclk_until_output(),
-                  m_z80bus.psg().mclk_until_output()});
+                  m_z80bus.psg().mclk_until_output(),
+                  m_x32 ? m_x32->mclk_until_pwm_update()
+                        : std::numeric_limits<uint64_t>::max()});
 
     /* Cross-chip gain stage. Each core normalises internally for its own
      * headroom (the FM channel sum is /3, the PSG sum >>3), and those
@@ -536,12 +562,14 @@ void Machine::advance_mclk(uint64_t ticks)
     const int32_t psg = m_z80bus.psg().output() / kPsgGainDiv;
     const int32_t cd_left = m_sega_cd ? m_sega_cd->audio_left() : 0;
     const int32_t cd_right = m_sega_cd ? m_sega_cd->audio_right() : 0;
-    m_mix_acc_l +=
-        (int64_t)(m_z80bus.ym().sample_left() * kFmGain + psg + cd_left) *
-        (int64_t)chunk;
-    m_mix_acc_r +=
-        (int64_t)(m_z80bus.ym().sample_right() * kFmGain + psg + cd_right) *
-        (int64_t)chunk;
+    const int32_t x32_left = m_x32 ? m_x32->audio_left() : 0;
+    const int32_t x32_right = m_x32 ? m_x32->audio_right() : 0;
+    m_mix_acc_l += (int64_t)(m_z80bus.ym().sample_left() * kFmGain + psg +
+                             cd_left + x32_left) *
+                   (int64_t)chunk;
+    m_mix_acc_r += (int64_t)(m_z80bus.ym().sample_right() * kFmGain + psg +
+                             cd_right + x32_right) *
+                   (int64_t)chunk;
     m_mix_ticks += chunk;
     m_mclk_total += chunk;
 
@@ -567,6 +595,11 @@ void Machine::advance_mclk(uint64_t ticks)
     }
     if (m_sega_cd) {
       m_sega_cd->advance_mclk(chunk);
+    }
+    if (m_x32) {
+      m_x32->set_blanking(m_vdp.in_vblank(),
+                          m_vdp.dot() >= m_vdp.visible_width());
+      m_x32->advance_mclk(chunk);
     }
 
     m_audio_acc += chunk * kSampleRate;
@@ -837,7 +870,6 @@ std::expected<std::vector<uint8_t>, StateError> Machine::capture_state(int slot)
   if (m_rom.empty()) {
     return std::unexpected(StateError::NotLoaded);
   }
-
   StateChunk system_chunk{fourcc("SYS0"), {}};
   {
     ChunkWriter w;
@@ -1158,6 +1190,10 @@ std::expected<std::vector<uint8_t>, StateError> Machine::capture_state(int slot)
     chunks.push_back(StateChunk{
         fourcc("SCD0"), serialize_segacd_state(save_segacd_state(*m_sega_cd))});
   }
+  if (m_x32) {
+    chunks.push_back(StateChunk{fourcc("X320"),
+                                serialize_x32_state(save_x32_state(*m_x32))});
+  }
   chunks.push_back(std::move(checksum_chunk));
   std::vector<uint8_t> blob = StateV3::serialize(chunks);
 
@@ -1296,6 +1332,31 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
     if (!cd_seen || !valid_segacd_state(*m_sega_cd, cd_state)) {
       return std::unexpected(StateError::Corrupt);
     }
+  }
+
+  X32State x32_state;
+  if (m_x32) {
+    bool x32_seen = false;
+    for (const StateChunk &chunk : *chunks) {
+      if (chunk.id != fourcc("X320"))
+        continue;
+      if (x32_seen)
+        return std::unexpected(StateError::Corrupt);
+      x32_seen = true;
+      auto parsed = parse_x32_state(chunk.data);
+      if (!parsed)
+        return std::unexpected(StateError::Corrupt);
+      x32_state = std::move(*parsed);
+    }
+    if (!x32_seen)
+      return std::unexpected(StateError::Corrupt);
+    if (x32_state.master_boot_hash != state_fnv1a64(m_x32->master_boot()) ||
+        x32_state.slave_boot_hash != state_fnv1a64(m_x32->slave_boot()) ||
+        x32_state.master_boot_size != m_x32->master_boot().size() ||
+        x32_state.slave_boot_size != m_x32->slave_boot().size())
+      return std::unexpected(StateError::WrongRom);
+    if (!valid_x32_state(*m_x32, x32_state))
+      return std::unexpected(StateError::Corrupt);
   }
 
   bool board_seen = false, cpu_seen = false;
@@ -1641,6 +1702,8 @@ std::expected<void, StateError> Machine::load_state(std::string_view filename)
   if (m_sega_cd && !restore_segacd_state(*m_sega_cd, cd_state)) {
     return std::unexpected(StateError::Corrupt);
   }
+  if (m_x32 && !restore_x32_state(*m_x32, x32_state))
+    return std::unexpected(StateError::Corrupt);
   m_powered = true;
   m_bus.reset();
   m_bus.attach_rom(m_rom.data(), m_rom.size());
@@ -1811,6 +1874,8 @@ void Machine::set_video_mode(int pal, int autodetect)
   if (!m_autodetect) {
     m_pal = pal != 0;
     m_vdp.reset(m_pal);
+    if (m_x32)
+      m_x32->set_pal(m_pal);
   }
 }
 

@@ -16,6 +16,7 @@ enum class StateError {
   Corrupt,            /* framing, bounds or checksum failure */
   WrongRom,           /* the state belongs to a different ROM */
   UnsupportedVersion, /* state format newer (or older) than this build reads */
+  UnsupportedFeature, /* this machine does not support state capture yet */
 };
 
 inline constexpr std::string_view state_error_message(StateError error)
@@ -35,6 +36,8 @@ inline constexpr std::string_view state_error_message(StateError error)
     return "Save state belongs to a different ROM";
   case StateError::UnsupportedVersion:
     return "Save state version is not supported";
+  case StateError::UnsupportedFeature:
+    return "Save state is not supported for this system";
   }
   return "Unknown save-state error";
 }
