@@ -161,10 +161,13 @@ uint32_t Sh2Dmac::adjusted(uint32_t address, uint32_t mode,
   return address;
 }
 
-void Sh2Dmac::transfer(Channel &channel)
+bool Sh2Dmac::transfer(Channel &channel)
 {
   const uint32_t size = (channel.chcr >> 10) & 3;
   const uint32_t width = size == 3 ? 4 : 1u << size;
+  if (!m_bus.can_access(channel.sar, false) ||
+      !m_bus.can_access(channel.dar, true))
+    return false;
   uint32_t value;
   if (width == 1)
     value = m_bus.read8(channel.sar);
@@ -191,6 +194,7 @@ void Sh2Dmac::transfer(Channel &channel)
       channel.active = false;
     }
   }
+  return true;
 }
 
 void Sh2Dmac::advance_channel(Channel &channel, uint32_t &credits)
@@ -204,7 +208,11 @@ void Sh2Dmac::advance_channel(Channel &channel, uint32_t &credits)
   }
   credits -= channel.unit_cycles;
   channel.unit_cycles = 2;
-  transfer(channel);
+  if (!transfer(channel)) {
+    channel.unit_cycles = 0;
+    credits = 0;
+    return;
+  }
   const size_t index = &channel == &m_channels[1] ? 1 : 0;
   if (channel.chcr & 0x40) {
     m_edge_pending[index] = false;

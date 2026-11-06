@@ -22,6 +22,14 @@ public:
   virtual void write8(uint32_t addr, uint8_t value) = 0;
   virtual void write16(uint32_t addr, uint16_t value) = 0;
   virtual void write32(uint32_t addr, uint32_t value) = 0;
+  virtual bool can_access(uint32_t, bool) const
+  {
+    return true;
+  }
+  virtual bool take_access_wait()
+  {
+    return false;
+  }
 };
 
 class Sh2 {
@@ -166,6 +174,26 @@ public:
   }
 
 private:
+  struct RetryState {
+    std::array<uint32_t, 16> r{};
+    uint32_t mach = 0;
+    uint32_t macl = 0;
+    uint32_t pr = 0;
+    uint32_t gbr = 0;
+    uint32_t vbr = 0;
+    uint32_t pc = 0;
+    uint32_t branch_target = 0;
+    uint32_t stall_cycles = 0;
+    uint16_t sr = 0;
+    uint8_t delay_slots = 0;
+    uint8_t pending_vector = 0;
+    uint8_t pending_level = 0;
+    Fault fault = Fault::None;
+  };
+
+  RetryState retry_state() const;
+  void restore_retry_state(const RetryState &state);
+  uint32_t execute_step();
   uint16_t fetch16();
   void branch(uint32_t target, bool link);
   uint32_t enter_exception(uint8_t vector, uint32_t return_pc, uint8_t level);

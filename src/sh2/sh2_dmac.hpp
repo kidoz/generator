@@ -94,7 +94,7 @@ private:
 
   bool ready(const Channel &channel) const;
   bool external_ready(size_t index) const;
-  void transfer(Channel &channel);
+  bool transfer(Channel &channel);
   void advance_channel(Channel &channel, uint32_t &credits);
   uint32_t adjusted(uint32_t address, uint32_t mode, uint32_t width) const;
 

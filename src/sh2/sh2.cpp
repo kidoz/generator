@@ -274,7 +274,54 @@ void Sh2::illegal()
   m_fault = Fault::IllegalOpcode;
 }
 
+Sh2::RetryState Sh2::retry_state() const
+{
+  return {m_r,
+          m_mach,
+          m_macl,
+          m_pr,
+          m_gbr,
+          m_vbr,
+          m_pc,
+          m_branch_target,
+          m_stall_cycles,
+          m_sr,
+          m_delay_slots,
+          m_pending_vector,
+          m_pending_level,
+          m_fault};
+}
+
+void Sh2::restore_retry_state(const RetryState &state)
+{
+  m_r = state.r;
+  m_mach = state.mach;
+  m_macl = state.macl;
+  m_pr = state.pr;
+  m_gbr = state.gbr;
+  m_vbr = state.vbr;
+  m_pc = state.pc;
+  m_branch_target = state.branch_target;
+  m_stall_cycles = state.stall_cycles;
+  m_sr = state.sr;
+  m_delay_slots = state.delay_slots;
+  m_pending_vector = state.pending_vector;
+  m_pending_level = state.pending_level;
+  m_fault = state.fault;
+}
+
 uint32_t Sh2::step()
+{
+  (void)m_bus.take_access_wait();
+  const RetryState checkpoint = retry_state();
+  const uint32_t cycles = execute_step();
+  if (!m_bus.take_access_wait())
+    return advance_cycles(cycles);
+  restore_retry_state(checkpoint);
+  return advance_cycles(1);
+}
+
+uint32_t Sh2::execute_step()
 {
   if (m_fault != Fault::None) {
     return 0;
@@ -283,7 +330,7 @@ uint32_t Sh2::step()
     const uint8_t vector = m_pending_vector;
     const uint8_t level = m_pending_level;
     m_pending_level = 0;
-    return advance_cycles(enter_exception(vector, m_pc, level));
+    return enter_exception(vector, m_pc, level);
   }
   m_stall_cycles = 0;
   const bool was_delayed = m_delay_slots != 0;
@@ -902,7 +949,7 @@ uint32_t Sh2::step()
       m_pc = delayed_target;
     }
   }
-  return advance_cycles(cycles + m_stall_cycles);
+  return cycles + m_stall_cycles;
 }
 
 }  // namespace generator
