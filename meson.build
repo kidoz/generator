@@ -154,7 +154,7 @@ elif ui_backend == 'nodalkit'
   # NodalKit (kidoz/nodalkit) supplies the widget tree, windowing and
   # rendering; SDL3 stays on for audio output and gamepad input, which
   # NodalKit deliberately does not cover.
-  nodalkit_dep = dependency('nodalkit',
+  nodalkit_dep = dependency('nodalkit', version: '>=0.3.4',
     fallback: ['nodalkit', 'nk_dep'])
   sdl3_dep = dependency('sdl3', version: '>=3.0.0')
   ui_deps = [nodalkit_dep, sdl3_dep]

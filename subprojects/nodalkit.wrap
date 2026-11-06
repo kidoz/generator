@@ -1,6 +1,7 @@
 [wrap-git]
 url = https://github.com/kidoz/nodalkit.git
-revision = ec075a50a4ac2eff1dec8d5d25a1e96acde81638
+# Commit of tag v0.3.4. A tag can move; this revision cannot.
+revision = b9cef068b8ed3a9509a5fc8be611649633afe1c5
 clone-recursive = false
 
 [provide]
