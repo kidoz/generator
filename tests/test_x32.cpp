@@ -2,6 +2,7 @@
 #include "emulator_core.hpp"
 #include "core/machine.hpp"
 #include "core/state_v3.hpp"
+#include "x32/state.hpp"
 #include "x32/x32.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -1094,5 +1095,116 @@ TEST_CASE("X32 DMAC transfers account for source and destination waits",
   device.master().set_dreq(0, true);
   CHECK(device.master().step() == 5);
   CHECK(device.master().step() == 2);
+  CHECK(device.master_bus().read32(0x06000000) == 0x11223344);
+}
+
+TEST_CASE("X32 RV wait retries cartridge fetch and survives state restore",
+          "[x32]")
+{
+  std::vector<uint8_t> cartridge(0x1000, 0);
+  put16(cartridge, 0, 0xE101);
+  put16(cartridge, 2, 0x0009);
+  std::vector<uint8_t> master(0x400, 0);
+  std::vector<uint8_t> slave(0x400, 0);
+  put32(master, 0, 0x8000);
+  put32(master, 4, 0x02000000);
+  put32(slave, 0, 0x8000);
+  put32(slave, 4, 0x100);
+  put16(slave, 0x100, 0x0009);
+  put16(slave, 0x102, 0x0009);
+  put16(slave, 0x104, 0x0009);
+  X32 device(cartridge, master, slave);
+  device.power_on();
+  write_main(device, 0xA15100, 0x83);
+  write_main(device, 0xA15106, 1);
+  device.master().set_sr(0);
+  device.slave().set_sr(0);
+  device.advance_mclk(21);
+  CHECK(device.master().pc() == 0x02000000);
+  CHECK(device.master().r(1) == 0);
+  CHECK(device.slave().pc() > 0x100);
+
+  const auto saved = serialize_x32_state(save_x32_state(device));
+  const auto parsed = parse_x32_state(saved);
+  REQUIRE(parsed);
+  X32 restored(cartridge, master, slave);
+  restored.power_on();
+  REQUIRE(restore_x32_state(restored, *parsed));
+  CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
+
+  write_main(device, 0xA15106, 0);
+  write_main(restored, 0xA15106, 0);
+  REQUIRE(advance_until(device, [&] { return device.master().r(1) == 1; }));
+  REQUIRE(advance_until(restored, [&] { return restored.master().r(1) == 1; }));
+  CHECK(serialize_x32_state(save_x32_state(device)) ==
+        serialize_x32_state(save_x32_state(restored)));
+}
+
+TEST_CASE("X32 FM wait lets the other SH-2 release VDP ownership", "[x32]")
+{
+  std::vector<uint8_t> cartridge;
+  std::vector<uint8_t> master(0x400, 0);
+  std::vector<uint8_t> slave(0x400, 0);
+  put32(master, 0, 0x8000);
+  put32(master, 4, 0x100);
+  put32(slave, 0, 0x8000);
+  put32(slave, 4, 0x100);
+  for (uint32_t address = 0x100; address <= 0x104; address += 2) {
+    put16(master, address, address == 0x100 ? 0x2121 : 0x0009);
+    put16(slave, address, address == 0x100 ? 0x2121 : 0x0009);
+  }
+  X32 device(cartridge, master, slave);
+  device.power_on();
+  write_main(device, 0xA15100, 0x83);
+  write_main(device, 0xA15200, 0x1234);
+  device.master().set_sr(0);
+  device.slave().set_sr(0);
+  device.master().set_r(1, 0x20004200);
+  device.master().set_r(2, 0xABCD);
+  device.slave().set_r(1, 0x20004000);
+  device.slave().set_r(2, 0x8000);
+
+  device.advance_mclk(3);
+  CHECK(device.master().pc() == 0x100);
+  CHECK(device.slave().pc() == 0x100);
+  CHECK(read_main(device, 0xA15200) == 0x1234);
+  device.advance_mclk(2);
+  CHECK(device.master().pc() == 0x100);
+  CHECK(device.slave().pc() == 0x102);
+  CHECK(read_main(device, 0xA15200) == 0);
+
+  REQUIRE(advance_until(device, [&] { return device.master().pc() == 0x102; }));
+  CHECK(device.master_bus().read16(0x20004200) == 0xABCD);
+}
+
+TEST_CASE("X32 DMAC waits for RV without changing its destination", "[x32]")
+{
+  std::vector<uint8_t> cartridge(0x1000, 0);
+  put32(cartridge, 0, 0x11223344);
+  std::vector<uint8_t> master(0x400, 0);
+  std::vector<uint8_t> slave(0x400, 0);
+  put32(master, 0, 0x8000);
+  put32(master, 4, 0x100);
+  for (uint32_t address = 0x100; address <= 0x110; address += 2)
+    put16(master, address, address <= 0x10A ? 0x2122 : 0x0009);
+  X32 device(cartridge, master, slave);
+  device.power_on();
+  write_main(device, 0xA15100, 0x83);
+  device.master().set_sr(0);
+  cpu_write32(device, master, 0xFFFFFF88, 1);
+  cpu_write32(device, master, 0xFFFFFF80, 0x02000000);
+  cpu_write32(device, master, 0xFFFFFF84, 0x06000000);
+  cpu_write32(device, master, 0xFFFFFFA0, 0x40);
+  cpu_write32(device, master, 0xFFFFFFB0, 1);
+  device.master_bus().write32(0x06000000, 0x89ABCDEF);
+  write_main(device, 0xA15106, 1);
+  cpu_write32(device, master, 0xFFFFFF8C, 0x5E01);
+
+  device.master().step();
+  CHECK(device.master().save().dmac.channels[0].tcr == 1);
+  CHECK(device.master_bus().read32(0x06000000) == 0x89ABCDEF);
+  write_main(device, 0xA15106, 0);
+  device.master().step();
+  CHECK(device.master().save().dmac.channels[0].tcr == 0);
   CHECK(device.master_bus().read32(0x06000000) == 0x11223344);
 }
