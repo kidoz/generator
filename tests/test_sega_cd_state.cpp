@@ -129,7 +129,7 @@ TEST_CASE("Sega CD aggregate state preserves in-flight devices byte for byte",
   channel.end = 1;
   channel.loop = true;
   REQUIRE(cd.pcm().configure(0, channel));
-  cd.main_bus().write(0xA12002, 3, true, true);
+  cd.sub_bus_port().write(0xFF8002, 5, true, true);
 
   const auto original = serialize_segacd_state(save_segacd_state(cd));
   auto parsed = parse_segacd_state(original);
@@ -146,6 +146,58 @@ TEST_CASE("Sega CD aggregate state preserves in-flight devices byte for byte",
   CHECK(restored.asic().pixels_remaining() == 4);
   CHECK(restored.pcm().wave_ram()[0] == 42);
   CHECK(restored.base_state().word_ram_mode_1m);
+}
+
+TEST_CASE("Sega CD boot-control state restores banking and deferred reset",
+          "[sega_cd][state]")
+{
+  // The aggregate includes RAM; keep two machines off the ASan test stack.
+  auto original_cd = std::make_unique<SegaCd>();
+  auto &cd = *original_cd;
+  cd.power_on();
+  cd.main_bus().write(0xA12002, 0x0182, true, true);
+  cd.main_bus().write(0xA12000, 3, false, true);
+  auto ram = cd.sub_cpu().bus().program_ram();
+  ram[1] = 7;  // SSP $00070000, PC $00000100
+  ram[6] = 1;
+  ram[0x100] = 0x60;
+  ram[0x101] = 0xFE;
+  const auto payload = serialize_segacd_state(save_segacd_state(cd));
+  auto parsed = parse_segacd_state(payload);
+  REQUIRE(parsed);
+  CHECK(parsed->base.program_ram_bank == 2);
+  CHECK(parsed->base.write_protect == 1);
+  CHECK(parsed->base.word_ram_dmna);
+  CHECK(parsed->base.sub_reset_pending);
+
+  auto restored_cd = std::make_unique<SegaCd>();
+  auto &restored = *restored_cd;
+  restored.power_on();
+  REQUIRE(restore_segacd_state(restored, *parsed));
+  CHECK(serialize_segacd_state(save_segacd_state(restored)) == payload);
+  restored.main_bus().write(0xA12000, 1, false, true);
+  CHECK(restored.sub_cpu().cpu().pc() == 0x100);
+  CHECK(restored.sub_cpu().cpu().a(7) == 0x70000);
+  cd.main_bus().write(0xA12000, 1, false, true);
+  cd.advance_mclk(321);
+  restored.advance_mclk(321);
+  CHECK(serialize_segacd_state(save_segacd_state(restored)) ==
+        serialize_segacd_state(save_segacd_state(cd)));
+  restored.sub_cpu().bus().write(0x100, 0, true, true);
+  CHECK(restored.sub_cpu().bus().program_ram()[0x100] == 0x60);
+
+  // The old SCD0 payload ends before the four-byte boot-control extension.
+  auto legacy =
+      parse_segacd_state(std::span(payload).first(payload.size() - 4));
+  REQUIRE(legacy);
+  CHECK(legacy->base.program_ram_bank == 0);
+  CHECK(legacy->base.write_protect == 0);
+  CHECK_FALSE(legacy->base.sub_reset_pending);
+  for (size_t tail = 1; tail < 4; tail++)
+    CHECK_FALSE(parse_segacd_state(
+        std::span(payload).first(payload.size() - 4 + tail)));
+  parsed->base.program_ram_bank = 4;
+  CHECK_FALSE(restore_segacd_state(restored, *parsed));
 }
 
 TEST_CASE("Machine Sega CD state round trip is byte identical",

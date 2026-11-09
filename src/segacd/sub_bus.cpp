@@ -26,7 +26,7 @@ int SegaCdSubBus::write(uint32_t addr, uint16_t data, bool upper, bool lower)
   if (m_expansion != nullptr && addr >= kProgramRamSize) {
     return m_expansion->write(addr, data, upper, lower);
   }
-  if (addr >= kProgramRamSize) {
+  if (addr >= kProgramRamSize || addr < m_write_protect_bytes) {
     return 0;
   }
   if (upper) {

@@ -17,8 +17,17 @@ void SegaCdSubCpu::power_on_reset()
   m_clock_acc = 0;
   m_clock_credit = 0;
   m_bus.reset();
-  m_cpu.power_on_reset();
+  reset();
   m_clock_credit = 0;
+}
+
+void SegaCdSubCpu::reset()
+{
+  // A reset-line release fetches the newly uploaded vectors without resetting
+  // the scheduler's elapsed time or clearing program RAM.
+  m_running = false;
+  m_clock_credit = 0;
+  m_cpu.power_on_reset();
   m_running = true;
 }
 

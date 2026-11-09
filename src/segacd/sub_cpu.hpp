@@ -16,6 +16,7 @@ public:
   explicit SegaCdSubCpu(uint64_t master_frequency = kDefaultMasterFrequency);
 
   void power_on_reset();
+  void reset();
   void set_running(bool running);
   bool running() const
   {

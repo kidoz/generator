@@ -221,6 +221,7 @@ private:
   void advance_mclk(uint64_t ticks);
 
   void parse_rom_header();
+  void update_expansion_bus();
   void update_pad_th(int port, bool th);
   uint16_t read_port(int port);
   void emit_audio_sample();

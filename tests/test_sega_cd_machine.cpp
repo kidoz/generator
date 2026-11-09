@@ -97,13 +97,13 @@ TEST_CASE("Sega CD RAM windows and communications connect both CPU buses",
   auto &sub = cd.sub_bus_port();
   uint16_t value = 0;
 
-  main.write(0x400200, 0x1234, true, true);
+  main.write(0x020200, 0x1234, true, true);
   CHECK(cd.sub_cpu().bus().program_ram()[0x200] == 0x12);
   CHECK(cd.sub_cpu().bus().program_ram()[0x201] == 0x34);
 
   main.write(0x200100, 0xABCD, true, true);
   CHECK(sub.read(0x080100, true, true, &value) == 2);
-  main.write(0xA12002, 0, true, true);
+  main.write(0xA12002, 2, true, true);
   CHECK(sub.read(0x080100, true, true, &value) == 1);
   CHECK(value == 0xABCD);
   sub.write(0x080102, 0x5678, true, true);
@@ -123,6 +123,115 @@ TEST_CASE("Sega CD RAM windows and communications connect both CPU buses",
   CHECK_FALSE(cd.sub_cpu().running());
 }
 
+TEST_CASE("Sega CD program RAM banks cover all 512 KiB through the boot window",
+          "[sega_cd][machine]")
+{
+  SegaCd cd;
+  cd.power_on();
+  auto &main = cd.main_bus();
+  auto ram = cd.sub_cpu().bus().program_ram();
+  for (unsigned bank = 0; bank < 4; bank++) {
+    main.write(0xA12002, (uint16_t)(bank << 6), false, true);
+    main.write(0x020000, (uint16_t)(0x1230 + bank), true, true);
+    main.write(0x03FFFE, (uint16_t)(0xAB00 + bank), true, true);
+    CHECK(ram[bank * 0x20000] == 0x12);
+    CHECK(ram[bank * 0x20000 + 1] == 0x30 + bank);
+    CHECK(ram[bank * 0x20000 + 0x1FFFF] == bank);
+  }
+  for (unsigned bank = 0; bank < 4; bank++) {
+    uint16_t value = 0;
+    main.write(0xA12002, (uint16_t)(bank << 6), false, true);
+    main.read(0x020000, true, true, &value);
+    CHECK(value == 0x1230 + bank);
+    main.write(0x020000, 0xEF00, true, false);
+    main.write(0x020000, 0x00CD, false, true);
+    main.read(0x020000, true, true, &value);
+    CHECK(value == 0xEFCD);
+  }
+
+  main.write(0xA12000, 1, false, true);
+  CHECK(main.write(0x020000, 0, true, true) == 2);
+  CHECK(ram[0x60000] == 0xEF);
+  main.write(0xA12000, 3, false, true);
+  main.write(0x020000, 0x5678, true, true);
+  CHECK(ram[0x60000] == 0x56);
+}
+
+TEST_CASE(
+    "Sega CD reset release fetches uploaded vectors and bus grant resumes",
+    "[sega_cd][machine]")
+{
+  SegaCd cd;
+  cd.power_on();
+  load_sub_program(cd.sub_cpu().bus());
+  auto &main = cd.main_bus();
+  main.write(0xA12000, 3, false, true);
+  CHECK_FALSE(cd.sub_cpu().running());
+  main.write(0xA12000, 1, false, true);
+  CHECK(cd.sub_cpu().cpu().pc() == 0x100);
+  CHECK(cd.sub_cpu().cpu().a(7) == 0x70000);
+  CHECK(cd.sub_cpu().clock_credit() < 0);
+  cd.advance_mclk(10000);
+  REQUIRE(cd.sub_cpu().cpu().pc() == 0x108);
+  const auto ticks = cd.sub_cpu().master_ticks();
+  main.write(0xA12000, 3, false, true);
+  main.write(0xA12000, 1, false, true);
+  CHECK(cd.sub_cpu().cpu().pc() == 0x108);
+  CHECK(cd.sub_cpu().master_ticks() == ticks);
+
+  // Upper-byte interrupt writes must leave the low-byte reset/bus lines alone.
+  main.write(0xA12000, 0, true, false);
+  CHECK(cd.sub_cpu().running());
+  main.write(0xA12000, 2, false, true);
+  write32(cd.sub_cpu().bus().program_ram(), 4, 0x108);
+  main.write(0xA12000, 3, false, true);
+  CHECK_FALSE(cd.sub_cpu().running());
+  main.write(0xA12000, 1, false, true);
+  CHECK(cd.sub_cpu().cpu().pc() == 0x108);
+  CHECK(cd.sub_cpu().master_ticks() == ticks);
+}
+
+TEST_CASE(
+    "Sega CD memory control preserves byte lanes and exchanges 2M ownership",
+    "[sega_cd][machine]")
+{
+  SegaCd cd;
+  cd.power_on();
+  auto &main = cd.main_bus();
+  auto &sub = cd.sub_bus_port();
+  uint16_t value = 0;
+  main.read(0xA12002, true, true, &value);
+  CHECK(value == 1);
+  main.write(0xA12002, 0xC4, false, true);
+  main.read(0xA12002, true, true, &value);
+  CHECK(value == 0xC1);  // MODE and RET are read-only to the main CPU.
+  main.write(0xA12002, 0x0100, true, false);
+  main.read(0xA12002, true, true, &value);
+  CHECK(value == 0x01C1);
+  main.write(0xA12002, 0xC2, false, true);
+  sub.read(0xFF8002, true, true, &value);
+  CHECK(value == 0x0102);  // Bank bits are main-side only.
+  main.write(0xA12002, 0xC1, false, true);
+  CHECK_FALSE(cd.base_state().word_ram_main_owner);
+  sub.write(0xFF8002, 0x0100, true, false);
+  CHECK_FALSE(cd.base_state().word_ram_main_owner);
+  sub.write(0xFF8002, 1, false, true);
+  main.read(0xA12002, true, true, &value);
+  CHECK(value == 0x01C1);
+
+  // Protection applies to sub-CPU writes; the main CPU can still upload BIOS.
+  main.write(0x020000, 0xABCD, true, true);
+  cd.sub_cpu().bus().write(0x60000, 0, true, true);
+  cd.sub_cpu().bus().write(0, 0, true, true);
+  CHECK(cd.sub_cpu().bus().program_ram()[0x60000] == 0);
+  main.write(0xA12002, 0, false, true);
+  main.write(0x020000, 0xABCD, true, true);
+  cd.sub_cpu().bus().write(0, 0, true, true);
+  CHECK(cd.sub_cpu().bus().program_ram()[0] == 0xAB);
+  cd.sub_cpu().bus().write(0x200, 0x1234, true, true);
+  CHECK(cd.sub_cpu().bus().program_ram()[0x200] == 0x12);
+}
+
 TEST_CASE("Sega CD 1M word-RAM mode swaps independent main/sub banks",
           "[sega_cd][machine]")
 {
@@ -134,19 +243,25 @@ TEST_CASE("Sega CD 1M word-RAM mode swaps independent main/sub banks",
   main.write(0x200000, 0xAAAA, true, true);
   main.write(0x220000, 0xBBBB, true, true);
 
-  main.write(0xA12002, 3, true, true);
+  sub.write(0xFF8002, 4, true, true);
   REQUIRE(main.read(0x200000, true, true, &value) == 1);
   CHECK(value == 0xAAAA);
-  REQUIRE(sub.read(0x080000, true, true, &value) == 1);
+  REQUIRE(sub.read(0x0C0000, true, true, &value) == 1);
   CHECK(value == 0xBBBB);
 
-  main.write(0xA12002, 2, true, true);
+  main.write(0xA12002, 0, false, true);
+  main.read(0xA12002, true, true, &value);
+  CHECK(value ==
+        6);  // A swap request keeps the banks until the sub-CPU replies.
+  main.read(0x200000, true, true, &value);
+  CHECK(value == 0xAAAA);
+  sub.write(0xFF8002, 5, true, true);
   REQUIRE(main.read(0x200000, true, true, &value) == 1);
   CHECK(value == 0xBBBB);
-  REQUIRE(sub.read(0x080000, true, true, &value) == 1);
+  REQUIRE(sub.read(0x0C0000, true, true, &value) == 1);
   CHECK(value == 0xAAAA);
   REQUIRE(main.read(0xA12002, true, true, &value) == 0);
-  CHECK(value == 2);
+  CHECK(value == 5);
 
   SegaCdSector sector{};
   sector.fill(0x5A);
@@ -195,4 +310,51 @@ TEST_CASE("Machine boots a synthetic BIOS and schedules the Sega CD sub-CPU",
   CHECK(attached->sub_communication()[1] == 42);
   CHECK((machine.io_debug_read(0xA10000) & 0x20) == 0);
   REQUIRE(machine.capture_state());
+}
+
+TEST_CASE(
+    "Machine BIOS uploads sub-CPU vectors and completes the RAM handshake",
+    "[sega_cd][machine]")
+{
+  auto machine = make_machine();
+  machine.attach_sega_cd(std::make_unique<SegaCd>());
+  auto bios = make_main_bios();
+  write32(bios, 4, 0x200);
+  uint32_t pos = 0x200;
+  const auto emit = [&](uint16_t word) {
+    write16(bios, pos, word);
+    pos += 2;
+  };
+  const auto store = [&](uint32_t addr, uint16_t word) {
+    emit(0x33FC);  // MOVE.W #word, absolute.L
+    emit(word);
+    emit((uint16_t)(addr >> 16));
+    emit((uint16_t)addr);
+  };
+  store(0xA12000, 2);  // Hold reset and request the program bus.
+  store(0xA12002, 0);  // Select program RAM bank 0.
+  const std::array<uint16_t, 4> vectors{0x0007, 0, 0, 0x0100};
+  for (size_t i = 0; i < vectors.size(); i++)
+    store(0x020000 + (uint32_t)i * 2, vectors[i]);
+  const std::array<uint16_t, 6> sub_program{0x702A, 0x33FC, 1,
+                                            0x00FF, 0x8002, 0x60FE};
+  for (size_t i = 0; i < sub_program.size(); i++)
+    store(0x020100 + (uint32_t)i * 2, sub_program[i]);
+  store(0xA12002, 2);  // Give 2M Word RAM to the sub-CPU.
+  store(0xA12000, 1);  // Release reset and the program bus.
+  emit(0x0839);        // BTST #0, $A12003; BEQ back to BTST
+  emit(0);
+  emit(0x00A1);
+  emit(0x2003);
+  emit(0x67F6);
+  emit(0x704D);  // MOVEQ #77,D0 proves that the handshake completed.
+  const uint32_t done = pos;
+  emit(0x60FE);
+  REQUIRE(machine.load_rom_mem(bios, "upload_bios.bin"));
+
+  machine.run_frame();
+  CHECK(machine.cpu_debug().pc() == done);
+  CHECK(machine.cpu_debug().d(0) == 77);
+  CHECK(machine.sega_cd_debug()->sub_cpu().cpu().d(0) == 42);
+  CHECK(machine.sega_cd_debug()->base_state().word_ram_main_owner);
 }

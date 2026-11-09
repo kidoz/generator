@@ -57,6 +57,10 @@ public:
   {
     return m_main_bus;
   }
+  void attach_main_expansion(M68kBusInterface *expansion)
+  {
+    m_main_expansion = expansion;
+  }
   M68kBusInterface &sub_bus_port()
   {
     return m_sub_bus_port;
@@ -147,8 +151,13 @@ public:
     uint16_t sub_data_bus = 0;
     bool sub_reset_release = false;
     bool sub_bus_request = false;
+    // In 1M mode this selects bank 0 for the main CPU (RET = 0).
     bool word_ram_main_owner = true;
     bool word_ram_mode_1m = false;
+    uint8_t program_ram_bank = 0;
+    uint8_t write_protect = 0;
+    bool word_ram_dmna = false;
+    bool sub_reset_pending = true;
   };
   BaseState base_state() const;
   void restore_base_state(const BaseState &state);
@@ -159,6 +168,9 @@ private:
   int sub_read(uint32_t addr, bool upper, bool lower, uint16_t *out);
   int sub_write(uint32_t addr, uint16_t data, bool upper, bool lower);
   void update_sub_running();
+  uint16_t memory_mode(bool main) const;
+  void write_main_memory_mode(uint16_t data, bool upper, bool lower);
+  void write_sub_memory_mode(uint16_t data, bool lower);
   void acknowledge_sub_interrupt(int level);
   uint32_t main_word_ram_offset(uint32_t offset) const;
   uint32_t sub_word_ram_offset(uint32_t offset) const;
@@ -172,6 +184,7 @@ private:
   SegaCdAsic m_asic;
   SegaCdPcm m_pcm;
   SegaCdAudio m_cd_audio;
+  M68kBusInterface *m_main_expansion = nullptr;
   MainBus m_main_bus;
   SubBusPort m_sub_bus_port;
   std::array<uint8_t, kWordRamSize> m_word_ram{};
@@ -183,6 +196,10 @@ private:
   bool m_sub_bus_request = false;
   bool m_word_ram_main_owner = true;
   bool m_word_ram_mode_1m = false;
+  uint8_t m_program_ram_bank = 0;
+  uint8_t m_write_protect = 0;
+  bool m_word_ram_dmna = false;
+  bool m_sub_reset_pending = true;
 };
 
 }  // namespace generator

@@ -38,6 +38,10 @@ public:
   {
     m_program_ram_wait_states = clocks;
   }
+  void set_write_protect(uint32_t bytes)
+  {
+    m_write_protect_bytes = bytes;
+  }
   unsigned int interrupt_ack_count() const
   {
     return m_interrupt_acks;
@@ -63,6 +67,7 @@ private:
   M68kBusInterface *m_expansion = nullptr;
   uint16_t m_data_bus = 0;
   int m_program_ram_wait_states = 0;
+  uint32_t m_write_protect_bytes = 0;
   unsigned int m_interrupt_acks = 0;
   int m_acknowledged_level = 0;
 };

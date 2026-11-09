@@ -227,7 +227,7 @@ Machine::~Machine()
 void Machine::attach_sega_cd(std::unique_ptr<SegaCd> sega_cd)
 {
   m_sega_cd = std::move(sega_cd);
-  m_bus.attach_expansion(m_sega_cd ? &m_sega_cd->main_bus() : nullptr);
+  update_expansion_bus();
 }
 
 void Machine::attach_x32(std::unique_ptr<X32> x32)
@@ -235,7 +235,17 @@ void Machine::attach_x32(std::unique_ptr<X32> x32)
   m_x32 = std::move(x32);
   if (m_x32)
     m_x32->set_pal(m_pal);
-  m_bus.attach_expansion(m_x32 ? &m_x32->main_bus() : nullptr);
+  update_expansion_bus();
+}
+
+void Machine::update_expansion_bus()
+{
+  if (m_sega_cd) {
+    m_sega_cd->attach_main_expansion(m_x32 ? &m_x32->main_bus() : nullptr);
+    m_bus.attach_expansion(&m_sega_cd->main_bus(), 0x020000, 0x040000);
+  } else {
+    m_bus.attach_expansion(m_x32 ? &m_x32->main_bus() : nullptr);
+  }
 }
 
 std::expected<void, std::string> Machine::load_rom(std::string_view filename)

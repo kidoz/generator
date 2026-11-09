@@ -18,6 +18,7 @@ SegaCdState save_segacd_state(const SegaCd &cd)
 bool valid_segacd_state(const SegaCd &cd, const SegaCdState &state)
 {
   return state.disc_identity == cd.disc().identity() &&
+         state.base.program_ram_bank < 4 &&
          cd.sub_cpu().valid_saved_state(state.sub_cpu) &&
          cd.cdd().valid_saved_state(state.cdd) &&
          cd.cdc().valid_saved_state(state.cdc) &&
@@ -193,6 +194,11 @@ std::vector<uint8_t> serialize_segacd_state(const SegaCdState &state)
   w.u8(state.cd_audio.volume);
   w.u32((uint32_t)state.cd_audio.left);
   w.u32((uint32_t)state.cd_audio.right);
+  // Additive boot-control tail; the original SCD0 prefix stays readable.
+  w.u8(state.base.program_ram_bank);
+  w.u8(state.base.write_protect);
+  w.u8(state.base.word_ram_dmna ? 1 : 0);
+  w.u8(state.base.sub_reset_pending ? 1 : 0);
   return w.take_payload();
 }
 
@@ -287,6 +293,15 @@ parse_segacd_state(std::span<const uint8_t> payload)
   state.cd_audio.volume = r.u8();
   state.cd_audio.left = (int32_t)r.u32();
   state.cd_audio.right = (int32_t)r.u32();
+  state.base.word_ram_dmna =
+      !state.base.word_ram_mode_1m && !state.base.word_ram_main_owner;
+  state.base.sub_reset_pending = !state.base.sub_reset_release;
+  if (r.remaining() != 0) {
+    state.base.program_ram_bank = r.u8();
+    state.base.write_protect = r.u8();
+    state.base.word_ram_dmna = r.u8() != 0;
+    state.base.sub_reset_pending = r.u8() != 0;
+  }
   if (!r.ok() || r.remaining() != 0) {
     return std::unexpected("invalid Sega CD state payload");
   }
