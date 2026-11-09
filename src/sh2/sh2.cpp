@@ -76,6 +76,7 @@ uint16_t Sh2::read16(uint32_t address, bool pc_relative, bool instruction)
     return 0;
   switch (address) {
   case 0xFFFFFEE2:
+  case 0xFFFFFEE0:
   case 0xFFFFFE60:
   case 0xFFFFFE62:
   case 0xFFFFFE64:
@@ -145,6 +146,7 @@ void Sh2::write16(uint32_t address, uint16_t value)
     return;
   switch (address) {
   case 0xFFFFFEE2:
+  case 0xFFFFFEE0:
   case 0xFFFFFE60:
   case 0xFFFFFE62:
   case 0xFFFFFE64:
@@ -227,7 +229,15 @@ uint32_t Sh2::advance_cycles(uint32_t cycles)
     request_interrupt(m_intc.frt_compare_vector(), m_intc.frt_priority());
   if (m_frt.overflow_interrupt_pending())
     request_interrupt(m_intc.frt_overflow_vector(), m_intc.frt_priority());
+  if (m_intc.irl_level() != 0)
+    request_interrupt(m_intc.irl_vector(), m_intc.irl_level());
   return cycles + m_stall_cycles;
+}
+
+void Sh2::set_nmi_level(bool asserted)
+{
+  if (m_intc.set_nmi_level(asserted))
+    request_nmi();
 }
 
 void Sh2::reset()

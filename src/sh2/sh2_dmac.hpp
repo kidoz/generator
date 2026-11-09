@@ -28,6 +28,7 @@ public:
     uint8_t next_channel = 1;
     bool dreq_level[2]{};
     bool edge_pending[2]{};
+    bool module_pending[2]{};
   };
 
   explicit Sh2Dmac(Sh2BusInterface &bus);
@@ -37,6 +38,7 @@ public:
   void write8(uint32_t address, uint8_t value);
   void write32(uint32_t address, uint32_t value);
   void set_dreq(size_t channel, bool asserted);
+  void set_module_request(size_t channel, bool asserted);
   void set_nmi();
   void advance(uint32_t cycles);
 
@@ -61,6 +63,8 @@ public:
     state.dreq_level[1] = m_dreq_level[1];
     state.edge_pending[0] = m_edge_pending[0];
     state.edge_pending[1] = m_edge_pending[1];
+    state.module_pending[0] = m_module_pending[0];
+    state.module_pending[1] = m_module_pending[1];
     return state;
   }
   void restore(const SavedState &state)
@@ -80,6 +84,8 @@ public:
     m_dreq_level[1] = state.dreq_level[1];
     m_edge_pending[0] = state.edge_pending[0];
     m_edge_pending[1] = state.edge_pending[1];
+    m_module_pending[0] = state.module_pending[0];
+    m_module_pending[1] = state.module_pending[1];
   }
 
 private:
@@ -108,6 +114,7 @@ private:
   uint8_t m_next_channel = 1;
   bool m_dreq_level[2]{};
   bool m_edge_pending[2]{};
+  bool m_module_pending[2]{};
   bool m_address_error_pending = false;
 };
 

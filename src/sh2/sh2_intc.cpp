@@ -12,6 +12,10 @@ void Sh2Intc::reset()
   m_vcrc = 0;
   m_vcrd = 0;
   m_vcrwdt = 0;
+  m_icr = 0x8000;
+  m_nmi_level = true;
+  m_irl_level = 0;
+  m_irl_vector = 0;
 }
 
 uint16_t Sh2Intc::read16(uint32_t address) const
@@ -31,6 +35,8 @@ uint16_t Sh2Intc::read16(uint32_t address) const
     return m_vcrd;
   case 0xFFFFFEE4:
     return m_vcrwdt;
+  case 0xFFFFFEE0:
+    return m_icr;
   default:
     return 0;
   }
@@ -60,9 +66,27 @@ void Sh2Intc::write16(uint32_t address, uint16_t value)
   case 0xFFFFFEE4:
     m_vcrwdt = value & 0x7F7F;
     break;
+  case 0xFFFFFEE0:
+    m_icr = (m_icr & 0x8000) | (value & 0x101);
+    break;
   default:
     break;
   }
+}
+
+bool Sh2Intc::set_nmi_level(bool asserted)
+{
+  const bool selected = asserted == ((m_icr & 0x100) != 0);
+  const bool edge = asserted != m_nmi_level && selected;
+  m_nmi_level = asserted;
+  m_icr = (m_icr & 0x7FFF) | (asserted ? 0x8000 : 0);
+  return edge;
+}
+
+void Sh2Intc::set_irl_level(uint8_t level, uint8_t vector)
+{
+  m_irl_level = level <= 15 ? level : 0;
+  m_irl_vector = vector & 0x7F;
 }
 
 }  // namespace generator

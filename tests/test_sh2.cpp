@@ -52,6 +52,22 @@ public:
     write16(addr, value >> 16);
     write16(addr + 2, (uint16_t)value);
   }
+  uint32_t dma_read_device(size_t, uint32_t width) override
+  {
+    device_reads++;
+    device_width = width;
+    return device_read_value;
+  }
+  void dma_write_device(size_t, uint32_t width, uint32_t value) override
+  {
+    device_writes++;
+    device_width = width;
+    device_written_value = value;
+  }
+  void set_dack(size_t, bool asserted, bool active_high) override
+  {
+    dack_events.push_back({asserted, active_high});
+  }
 };
 
 void put16(FlatBus &bus, uint32_t addr, uint16_t value)
@@ -1688,6 +1704,208 @@ TEST_CASE("SH-2 DMA address errors preserve registers and use vector 10",
   CHECK(cpu.r(15) == 0x8000);
   CHECK(cpu.fault() == Sh2::Fault::None);
 }
+
+
+TEST_CASE("SH-2 single-address DMA transfers only the memory-side address",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  put32(bus, 0x200, 0x11223344);
+  Sh2 cpu(bus);
+  cpu.reset();
+
+  SECTION("memory to device")
+  {
+    peripheral_write32(cpu, bus, 0xFFFFFF80, 0x200);
+    peripheral_write32(cpu, bus, 0xFFFFFF84, 0xDEADBEEF);
+    peripheral_write32(cpu, bus, 0xFFFFFF88, 1);
+    peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
+    cpu.set_dreq(0, false);
+    peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x1809);
+    peripheral_nops(cpu, bus, 1);
+    CHECK(bus.device_writes == 1);
+    CHECK(bus.device_reads == 0);
+    CHECK(bus.device_width == 4);
+    CHECK(bus.device_written_value == 0x11223344);
+    CHECK(bus.read32(0x400) == 0);
+    const auto state = cpu.save().dmac;
+    CHECK(state.channels[0].sar == 0x204);
+    CHECK(state.channels[0].dar == 0xDEADBEEF);
+    CHECK(state.channels[0].tcr == 0);
+    REQUIRE(bus.dack_events.size() == 2);
+    CHECK(bus.dack_events[0].asserted);
+    CHECK_FALSE(bus.dack_events[0].active_high);
+    CHECK_FALSE(bus.dack_events[1].asserted);
+  }
+  SECTION("device to memory")
+  {
+    bus.device_read_value = 0xAABB;
+    peripheral_write32(cpu, bus, 0xFFFFFF80, 0xDEADBEEF);
+    peripheral_write32(cpu, bus, 0xFFFFFF84, 0x400);
+    peripheral_write32(cpu, bus, 0xFFFFFF88, 1);
+    peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
+    cpu.set_dreq(0, false);
+    peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x4589);
+    peripheral_nops(cpu, bus, 1);
+    CHECK(bus.device_reads == 1);
+    CHECK(bus.device_writes == 0);
+    CHECK(bus.device_width == 2);
+    CHECK(bus.read16(0x400) == 0xAABB);
+    const auto state = cpu.save().dmac;
+    CHECK(state.channels[0].sar == 0xDEADBEEF);
+    CHECK(state.channels[0].dar == 0x402);
+    CHECK(state.channels[0].tcr == 0);
+    REQUIRE(bus.dack_events.size() == 2);
+    CHECK(bus.dack_events[0].active_high);
+  }
+  SECTION("auto-request is not valid in single-address mode")
+  {
+    peripheral_write32(cpu, bus, 0xFFFFFF80, 0x200);
+    peripheral_write32(cpu, bus, 0xFFFFFF84, 0x400);
+    peripheral_write32(cpu, bus, 0xFFFFFF88, 1);
+    peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
+    peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x1A09);
+    peripheral_nops(cpu, bus, 3);
+    CHECK(bus.device_writes == 0);
+    CHECK(cpu.save().dmac.channels[0].tcr == 1);
+    CHECK(bus.dack_events.empty());
+  }
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 dual-address DMA drives DACK on the selected cycle", "[sh2]")
+{
+  auto bus = make_bus();
+  put32(bus, 0x200, 0x11223344);
+  Sh2 cpu(bus);
+  cpu.reset();
+  peripheral_write32(cpu, bus, 0xFFFFFF80, 0x200);
+  peripheral_write32(cpu, bus, 0xFFFFFF84, 0x400);
+  peripheral_write32(cpu, bus, 0xFFFFFF88, 1);
+  peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
+
+  SECTION("read cycle")
+  {
+    peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5A05);
+  }
+  SECTION("write cycle")
+  {
+    peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5B05);
+  }
+  peripheral_nops(cpu, bus, 2);
+  CHECK(bus.read32(0x400) == 0x11223344);
+  REQUIRE(bus.dack_events.size() == 2);
+  CHECK(bus.dack_events[0].asserted);
+  CHECK_FALSE(bus.dack_events[1].asserted);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 SCI DMA requests clear after each cycle-steal transfer",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  bus.memory[0x200] = 0x11;
+  bus.memory[0x201] = 0x22;
+  Sh2 cpu(bus);
+  cpu.reset();
+  peripheral_write8(cpu, bus, 0xFFFFFE71, 1);
+  peripheral_write32(cpu, bus, 0xFFFFFF80, 0x200);
+  peripheral_write32(cpu, bus, 0xFFFFFF84, 0x400);
+  peripheral_write32(cpu, bus, 0xFFFFFF88, 2);
+  peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
+    peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5001);
+  cpu.set_module_request(0, true);
+  peripheral_nops(cpu, bus, 2);
+  CHECK(bus.memory[0x400] == 0x11);
+  CHECK(bus.memory[0x401] == 0);
+  CHECK(cpu.save().dmac.channels[0].tcr == 1);
+  CHECK_FALSE(cpu.save().dmac.module_pending[0]);
+  peripheral_nops(cpu, bus, 2);
+  CHECK(cpu.save().dmac.channels[0].tcr == 1);
+  cpu.set_module_request(0, true);
+  peripheral_nops(cpu, bus, 2);
+  CHECK(bus.memory[0x401] == 0x22);
+  CHECK(cpu.save().dmac.channels[0].tcr == 0);
+  CHECK((cpu.save().dmac.channels[0].chcr & 2) != 0);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 ICR selects NMI edges and reports the pin level", "[sh2]")
+{
+  auto bus = make_bus();
+  put16(bus, 0x100, 0x452E);
+  put32(bus, 0x102C, 0x500);
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(5, 0x1000);
+  CHECK(cpu.step() == 1);
+
+  SECTION("falling edge")
+  {
+    peripheral_read16(cpu, bus, 0xFFFFFEE0);
+    CHECK((uint16_t)cpu.r(3) == 0x8000);
+    cpu.set_nmi_level(false);
+    CHECK(cpu.save().pending_level == 16);
+    CHECK(cpu.step() == 9);
+    CHECK(cpu.pc() == 0x500);
+    peripheral_read16(cpu, bus, 0xFFFFFEE0);
+    CHECK(cpu.r(3) == 0);
+  }
+  SECTION("rising edge")
+  {
+    peripheral_write16(cpu, bus, 0xFFFFFEE0, 0x100);
+    cpu.set_nmi_level(false);
+    CHECK(cpu.save().pending_level == 0);
+    cpu.set_nmi_level(true);
+    CHECK(cpu.save().pending_level == 16);
+    CHECK(cpu.step() == 9);
+    CHECK(cpu.pc() == 0x500);
+    peripheral_read16(cpu, bus, 0xFFFFFEE0);
+    CHECK((uint16_t)cpu.r(3) == 0x8100);
+  }
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 IRL pins use auto or external vectors while level asserted",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  put16(bus, 0x100, 0x452E);
+  put32(bus, 0x111C, 0x500);
+  put32(bus, 0x1154, 0x600);
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(5, 0x1000);
+  CHECK(cpu.step() == 1);
+
+  SECTION("auto vector")
+  {
+    cpu.set_irl_level(15);
+    put16(bus, cpu.pc(), 0x0009);
+    CHECK(cpu.step() == 1);
+    CHECK(cpu.save().pending_level == 0);
+    cpu.set_sr(0);
+    put16(bus, cpu.pc(), 0x0009);
+    CHECK(cpu.step() == 1);
+    CHECK(cpu.step() == 9);
+    CHECK(cpu.pc() == 0x500);
+    CHECK(cpu.sr() == 0xF0);
+  }
+  SECTION("external vector")
+  {
+    peripheral_write16(cpu, bus, 0xFFFFFEE0, 1);
+    cpu.set_sr(0);
+    cpu.set_irl_level(8, 0x55);
+    put16(bus, cpu.pc(), 0x0009);
+    CHECK(cpu.step() == 1);
+    CHECK(cpu.step() == 9);
+    CHECK(cpu.pc() == 0x600);
+    CHECK(cpu.sr() == 0x80);
+  }
+  cpu.set_irl_level(0);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
 
 TEST_CASE("SH-2 cache fills target last and reads and writes through", "[sh2]")
 {

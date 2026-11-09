@@ -35,6 +35,8 @@ void Sh2Dmac::reset()
   m_dreq_level[1] = false;
   m_edge_pending[0] = false;
   m_edge_pending[1] = false;
+  m_module_pending[0] = false;
+  m_module_pending[1] = false;
   m_address_error_pending = false;
 }
 
@@ -135,7 +137,7 @@ bool Sh2Dmac::external_ready(size_t index) const
 {
   const Channel &channel = m_channels[index];
   if (m_drcr[index] != 0)
-    return false;
+    return m_drcr[index] <= 2 && m_module_pending[index];
   if (channel.chcr & 0x40)
     return m_edge_pending[index];
   return m_dreq_level[index] == ((channel.chcr & 0x20) != 0);
@@ -146,9 +148,13 @@ bool Sh2Dmac::ready(const Channel &channel) const
   if (channel.active || (channel.chcr & 3) != 1 || !(m_dmaor & 1) ||
       (m_dmaor & 6))
     return false;
+  const size_t index = &channel == &m_channels[1] ? 1 : 0;
+  if ((channel.chcr & 8) && ((channel.chcr & 0x200) || m_drcr[index] != 0 ||
+                             ((channel.chcr >> 10) & 3) == 3))
+    return false;
   if (channel.chcr & 0x200)
     return true;
-  return external_ready(&channel == &m_channels[1] ? 1 : 0);
+  return external_ready(index);
 }
 
 void Sh2Dmac::set_dreq(size_t channel, bool asserted)
@@ -163,6 +169,12 @@ void Sh2Dmac::set_dreq(size_t channel, bool asserted)
   const bool rising = asserted && !previous;
   const bool falling = !asserted && previous;
   m_edge_pending[channel] |= (chcr & 0x20) ? rising : falling;
+}
+
+void Sh2Dmac::set_module_request(size_t channel, bool asserted)
+{
+  if (channel <= 1)
+    m_module_pending[channel] = asserted;
 }
 
 void Sh2Dmac::set_nmi()
@@ -184,31 +196,70 @@ bool Sh2Dmac::transfer(Channel &channel)
 {
   const uint32_t size = (channel.chcr >> 10) & 3;
   const uint32_t width = size == 3 ? 4 : 1u << size;
-  if (address_error(channel.sar, width) || address_error(channel.dar, width)) {
+  const bool single = (channel.chcr & 8) != 0;
+  const bool device_source = single && (channel.chcr & 0x100);
+  const size_t index = &channel == &m_channels[1] ? 1 : 0;
+  if ((!device_source && address_error(channel.sar, width)) ||
+      (device_source && address_error(channel.dar, width)) ||
+      (!single && address_error(channel.dar, width))) {
     m_dmaor |= 4;
     m_address_error_pending = true;
     channel.active = false;
     return false;
   }
-  if (!m_bus.can_access(channel.sar, false) ||
-      !m_bus.can_access(channel.dar, true))
+  if ((!device_source && !m_bus.can_access(channel.sar, false)) ||
+      (device_source && !m_bus.can_access(channel.dar, true)) ||
+      (!single && !m_bus.can_access(channel.dar, true)))
     return false;
   uint32_t value;
-  if (width == 1)
-    value = m_bus.read8(channel.sar);
-  else if (width == 2)
-    value = m_bus.read16(channel.sar);
-  else
-    value = m_bus.read32(channel.sar);
-  if (width == 1)
-    m_bus.write8(channel.dar, value);
-  else if (width == 2)
-    m_bus.write16(channel.dar, value);
-  else
-    m_bus.write32(channel.dar, value);
+  const bool acknowledge_high = (channel.chcr & 0x80) != 0;
+  if (single) {
+    m_bus.set_dack(index, true, acknowledge_high);
+    if (device_source) {
+      value = m_bus.dma_read_device(index, width);
+      if (width == 1)
+        m_bus.write8(channel.dar, value);
+      else if (width == 2)
+        m_bus.write16(channel.dar, value);
+      else
+        m_bus.write32(channel.dar, value);
+    } else {
+      if (width == 1)
+        value = m_bus.read8(channel.sar);
+      else if (width == 2)
+        value = m_bus.read16(channel.sar);
+      else
+        value = m_bus.read32(channel.sar);
+      m_bus.dma_write_device(index, width, value);
+    }
+    m_bus.set_dack(index, false, acknowledge_high);
+  } else {
+    if (!(channel.chcr & 0x100))
+      m_bus.set_dack(index, true, acknowledge_high);
+    if (width == 1)
+      value = m_bus.read8(channel.sar);
+    else if (width == 2)
+      value = m_bus.read16(channel.sar);
+    else
+      value = m_bus.read32(channel.sar);
+    if (!(channel.chcr & 0x100))
+      m_bus.set_dack(index, false, acknowledge_high);
+    if (channel.chcr & 0x100)
+      m_bus.set_dack(index, true, acknowledge_high);
+    if (width == 1)
+      m_bus.write8(channel.dar, value);
+    else if (width == 2)
+      m_bus.write16(channel.dar, value);
+    else
+      m_bus.write32(channel.dar, value);
+    if (channel.chcr & 0x100)
+      m_bus.set_dack(index, false, acknowledge_high);
+  }
   const uint32_t source_mode = size == 3 ? 1 : (channel.chcr >> 12) & 3;
-  channel.sar = adjusted(channel.sar, source_mode, width);
-  channel.dar = adjusted(channel.dar, (channel.chcr >> 14) & 3, width);
+  if (!device_source)
+    channel.sar = adjusted(channel.sar, source_mode, width);
+  if (!single || device_source)
+    channel.dar = adjusted(channel.dar, (channel.chcr >> 14) & 3, width);
   if (channel.tcr == 0) {
     channel.chcr |= 2;
     channel.active = false;
@@ -241,13 +292,23 @@ void Sh2Dmac::advance_channel(Channel &channel, uint32_t &credits)
   const size_t index = &channel == &m_channels[1] ? 1 : 0;
   if (m_dmaor & 6)
     channel.active = false;
-  if (channel.chcr & 0x40) {
-    m_edge_pending[index] = false;
-    channel.active = false;
+  if (!(channel.chcr & 0x200)) {
+    if (m_drcr[index] != 0) {
+      if (!(channel.chcr & 0x10) || channel.tcr == 0) {
+        m_module_pending[index] = false;
+        if (!(channel.chcr & 0x10))
+          channel.active = false;
+      }
+    } else {
+      if (channel.chcr & 0x40) {
+        m_edge_pending[index] = false;
+        if (!(channel.chcr & 0x10))
+          channel.active = false;
+      } else if (m_dreq_level[index] != ((channel.chcr & 0x20) != 0)) {
+        channel.active = false;
+      }
+    }
   }
-  if ((channel.chcr & 0x250) == 0 &&
-      m_dreq_level[index] != ((channel.chcr & 0x20) != 0))
-    channel.active = false;
 }
 
 void Sh2Dmac::advance(uint32_t cycles)

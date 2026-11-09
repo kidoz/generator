@@ -30,6 +30,16 @@ public:
   {
     return false;
   }
+  virtual uint32_t dma_read_device(size_t, uint32_t)
+  {
+    return 0;
+  }
+  virtual void dma_write_device(size_t, uint32_t, uint32_t)
+  {
+  }
+  virtual void set_dack(size_t, bool, bool)
+  {
+  }
 };
 
 class Sh2 {
@@ -72,6 +82,15 @@ public:
   void set_dreq(size_t channel, bool asserted)
   {
     m_dmac.set_dreq(channel, asserted);
+  }
+  void set_module_request(size_t channel, bool asserted)
+  {
+    m_dmac.set_module_request(channel, asserted);
+  }
+  void set_nmi_level(bool asserted);
+  void set_irl_level(uint8_t level, uint8_t vector = 0)
+  {
+    m_intc.set_irl_level(level, vector);
   }
 
   uint32_t r(size_t index) const
@@ -173,6 +192,7 @@ public:
            (state.pending_level < 16 ||
             (state.pending_level == 16 && state.pending_vector == 11) ||
             (state.pending_level == 17 && state.pending_vector == 10)) &&
+           state.intc.irl_level <= 15 && (state.intc.icr & 0x7EFE) == 0 &&
            state.dmac.drcr[0] <= 3 && state.dmac.drcr[1] <= 3 &&
            state.dmac.next_channel <= 1;
   }

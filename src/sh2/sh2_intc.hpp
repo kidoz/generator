@@ -15,11 +15,16 @@ public:
     uint16_t vcrc = 0;
     uint16_t vcrd = 0;
     uint16_t vcrwdt = 0;
+    uint16_t icr = 0x8000;
+    uint8_t irl_level = 0;
+    uint8_t irl_vector = 0;
   };
 
   void reset();
   uint16_t read16(uint32_t address) const;
   void write16(uint32_t address, uint16_t value);
+  bool set_nmi_level(bool asserted);
+  void set_irl_level(uint8_t level, uint8_t vector);
 
   uint8_t divu_priority() const
   {
@@ -41,9 +46,20 @@ public:
   {
     return (m_vcrd >> 8) & 0x7F;
   }
+  uint8_t irl_level() const
+  {
+    return m_irl_level;
+  }
+  uint8_t irl_vector() const
+  {
+    if (m_icr & 1)
+      return m_irl_vector;
+    return 64 + (m_irl_level - 1) / 2;
+  }
   SavedState save() const
   {
-    return {m_ipra, m_iprb, m_vcra, m_vcrb, m_vcrc, m_vcrd, m_vcrwdt};
+    return {m_ipra, m_iprb,   m_vcra, m_vcrb,      m_vcrc,
+            m_vcrd, m_vcrwdt, m_icr,  m_irl_level, m_irl_vector};
   }
   void restore(const SavedState &state)
   {
@@ -54,6 +70,10 @@ public:
     m_vcrc = state.vcrc;
     m_vcrd = state.vcrd;
     m_vcrwdt = state.vcrwdt;
+    m_icr = state.icr;
+    m_nmi_level = (state.icr & 0x8000) != 0;
+    m_irl_level = state.irl_level;
+    m_irl_vector = state.irl_vector;
   }
 
 private:
@@ -64,6 +84,10 @@ private:
   uint16_t m_vcrc = 0;
   uint16_t m_vcrd = 0;
   uint16_t m_vcrwdt = 0;
+  uint16_t m_icr = 0x8000;
+  bool m_nmi_level = true;
+  uint8_t m_irl_level = 0;
+  uint8_t m_irl_vector = 0;
 };
 
 }  // namespace generator
