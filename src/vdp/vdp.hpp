@@ -90,6 +90,8 @@ public:
   {
     return m_dot;
   }
+  uint64_t line_mclk() const;
+  uint64_t mclk_until_line_mclk(uint64_t target) const;
   uint64_t frame_index() const
   {
     return m_frames;
@@ -193,7 +195,7 @@ private:
   uint16_t data_read();
   void write_register(int index, uint8_t value);
   void service_line_events();
-  uint32_t dot_mclk() const;
+  uint32_t dot_mclk(uint32_t dot) const;
 
   uint8_t m_reg[0x18]{};
   uint8_t m_vram[0x10000]{};
@@ -209,7 +211,7 @@ private:
   bool m_dma_pending = false;
 
   bool m_pal = false;
-  uint64_t m_mclk = 0; /* master clocks into the current line */
+  uint64_t m_mclk = 0; /* master clocks into the current dot */
   uint32_t m_dot = 0;
   uint32_t m_line = 0;
   uint64_t m_frames = 0;

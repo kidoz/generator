@@ -555,11 +555,14 @@ void Machine::advance_mclk(uint64_t ticks)
     const uint64_t scaled_remaining = per_second - m_audio_acc;
     const uint64_t to_sample =
         (scaled_remaining + kSampleRate - 1) / kSampleRate;
-    const uint64_t chunk =
-        std::min({ticks, to_sample, m_z80bus.ym().mclk_until_output(),
-                  m_z80bus.psg().mclk_until_output(),
-                  m_x32 ? m_x32->mclk_until_pwm_update()
-                        : std::numeric_limits<uint64_t>::max()});
+    const uint64_t chunk = std::min(
+        {ticks, to_sample, m_z80bus.ym().mclk_until_output(),
+         m_z80bus.psg().mclk_until_output(),
+         m_x32 ? m_vdp.mclk_until_line_mclk(X32Video::kHblankStartLineMclk +
+                                            X32Video::kBitmapLatchHblankMclk)
+               : std::numeric_limits<uint64_t>::max(),
+         m_x32 ? m_x32->mclk_until_pwm_update()
+               : std::numeric_limits<uint64_t>::max()});
 
     /* Cross-chip gain stage. Each core normalises internally for its own
      * headroom (the FM channel sum is /3, the PSG sum >>3), and those
@@ -607,8 +610,13 @@ void Machine::advance_mclk(uint64_t ticks)
       m_sega_cd->advance_mclk(chunk);
     }
     if (m_x32) {
-      m_x32->set_blanking(m_vdp.in_vblank(),
-                          m_vdp.dot() >= m_vdp.visible_width());
+      const bool hblank = m_vdp.dot() >= m_vdp.visible_width();
+      const uint64_t line_mclk = m_vdp.line_mclk();
+      const uint64_t hblank_mclk =
+          hblank && line_mclk >= X32Video::kHblankStartLineMclk
+              ? line_mclk - X32Video::kHblankStartLineMclk
+              : 0;
+      m_x32->set_blanking(m_vdp.in_vblank(), hblank, hblank_mclk);
       m_x32->advance_mclk(chunk);
     }
 

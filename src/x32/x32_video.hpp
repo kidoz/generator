@@ -27,14 +27,17 @@ public:
     bool pending_buffer = false;
     bool vblank = false;
     bool hblank = false;
+    bool bitmap_latched = false;
   };
 
   static constexpr size_t kWidth = 320;
   static constexpr size_t kFramebufferSize = 0x20000;
+  static constexpr uint64_t kHblankStartLineMclk = 2560;
+  static constexpr uint64_t kBitmapLatchHblankMclk = 668;
 
   void power_on();
   void set_pal(bool pal);
-  void set_blanking(bool vblank, bool hblank);
+  void set_blanking(bool vblank, bool hblank, uint64_t hblank_mclk);
   void advance_mclk(uint64_t ticks);
 
   uint16_t read_register(uint32_t offset) const;
@@ -64,7 +67,8 @@ public:
             m_fill_data,      m_fill_remaining,
             m_fill_startup,   m_fill_subcycle,
             m_display_buffer, m_pending_buffer,
-            m_vblank,         m_hblank};
+            m_vblank,         m_hblank,
+            m_bitmap_latched};
   }
   void restore(const SavedState &state)
   {
@@ -84,6 +88,7 @@ public:
     m_pending_buffer = state.pending_buffer;
     m_vblank = state.vblank;
     m_hblank = state.hblank;
+    m_bitmap_latched = state.bitmap_latched;
   }
   static bool valid_saved_state(const SavedState &state)
   {
@@ -119,6 +124,7 @@ private:
   bool m_pending_buffer = false;
   bool m_vblank = false;
   bool m_hblank = false;
+  bool m_bitmap_latched = false;
 };
 
 }  // namespace generator

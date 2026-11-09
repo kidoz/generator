@@ -24,6 +24,7 @@ void X32Video::power_on()
   m_pending_buffer = false;
   m_vblank = false;
   m_hblank = false;
+  m_bitmap_latched = false;
 }
 
 void X32Video::advance_mclk(uint64_t ticks)
@@ -57,11 +58,14 @@ void X32Video::set_pal(bool pal)
   m_bitmap_mode_pending = (m_bitmap_mode_pending & 0x7FFF) | (pal ? 0 : 0x8000);
 }
 
-void X32Video::set_blanking(bool vblank, bool hblank)
+void X32Video::set_blanking(bool vblank, bool hblank, uint64_t hblank_mclk)
 {
-  if (!hblank && m_hblank) {
+  if (!hblank) {
+    m_bitmap_latched = false;
+  } else if (!m_bitmap_latched && hblank_mclk >= kBitmapLatchHblankMclk) {
     m_bitmap_mode = m_bitmap_mode_pending;
     m_shift = m_shift_pending;
+    m_bitmap_latched = true;
   }
   m_vblank = vblank;
   m_hblank = hblank;

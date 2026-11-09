@@ -46,9 +46,9 @@ void X32::power_on()
   m_slave.reset();
 }
 
-void X32::set_blanking(bool vblank, bool hblank)
+void X32::set_blanking(bool vblank, bool hblank, uint64_t hblank_mclk)
 {
-  m_video.set_blanking(vblank, hblank);
+  m_video.set_blanking(vblank, hblank, hblank_mclk);
   if (!hblank && m_hcount != m_hcount_pending) {
     m_hcount = m_hcount_pending;
     m_hcounter = m_hcount;

@@ -2,6 +2,7 @@
 #include "vdp.hpp"
 
 #include <algorithm>
+#include <limits>
 
 namespace generator {
 
@@ -28,6 +29,7 @@ uint32_t dma_length(uint8_t lo, uint8_t hi)
  */
 constexpr uint32_t kDotsH40 = 420;
 constexpr uint32_t kDotsH32 = 342;
+constexpr uint64_t kLineMclk = 3420;
 constexpr uint32_t kLinesNtsc = 262;
 constexpr uint32_t kLinesPal = 313;
 
@@ -498,14 +500,29 @@ void Vdp::run_dma_copy()
 }
 
 /* Master clocks charged for the dot about to complete. */
-uint32_t Vdp::dot_mclk() const
+uint32_t Vdp::dot_mclk(uint32_t dot) const
 {
   if (!h40()) {
     return 10;
   }
-  const bool slow =
-      m_dot >= kH40SlowFirst && m_dot < kH40SlowFirst + kH40SlowCount;
+  const bool slow = dot >= kH40SlowFirst && dot < kH40SlowFirst + kH40SlowCount;
   return slow ? 10 : 8;
+}
+
+uint64_t Vdp::line_mclk() const
+{
+  uint64_t clocks = m_mclk;
+  for (uint32_t dot = 0; dot < m_dot; dot++)
+    clocks += dot_mclk(dot);
+  return clocks;
+}
+
+uint64_t Vdp::mclk_until_line_mclk(uint64_t target) const
+{
+  const uint64_t current = line_mclk();
+  if (current >= target || target >= kLineMclk)
+    return std::numeric_limits<uint64_t>::max();
+  return target - current;
 }
 
 int Vdp::advance_mclk(uint64_t ticks)
@@ -515,7 +532,7 @@ int Vdp::advance_mclk(uint64_t ticks)
   /* Dot by dot: the cost varies within an H40 line, and the H mode can
    * change mid-line when the game rewrites register 12. */
   for (;;) {
-    const uint32_t cost = dot_mclk();
+    const uint32_t cost = dot_mclk(m_dot);
     if (m_mclk < cost) {
       break;
     }

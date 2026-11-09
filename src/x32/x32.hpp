@@ -102,7 +102,7 @@ public:
   {
     m_video.set_pal(pal);
   }
-  void set_blanking(bool vblank, bool hblank);
+  void set_blanking(bool vblank, bool hblank, uint64_t hblank_mclk = 0);
   uint64_t mclk_until_pwm_update() const
   {
     return m_pwm.mclk_until_update();

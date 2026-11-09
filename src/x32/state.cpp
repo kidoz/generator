@@ -456,6 +456,7 @@ std::vector<uint8_t> serialize_x32_state(const X32State &state)
   write_base(w, state.base);
   write_sh2(w, state.master);
   write_sh2(w, state.slave);
+  w.u8(state.base.video.bitmap_latched ? 1 : 0);
   return w.take_payload();
 }
 
@@ -471,6 +472,8 @@ parse_x32_state(std::span<const uint8_t> payload)
   state.base = read_base(r);
   state.master = read_sh2(r);
   state.slave = read_sh2(r);
+  if (r.has(1))
+    state.base.video.bitmap_latched = r.u8() != 0;
   if (!r.ok() || r.remaining() != 0)
     return std::unexpected("invalid X32 state payload");
   return state;

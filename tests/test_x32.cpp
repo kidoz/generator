@@ -323,7 +323,7 @@ void prepare_display_zero(X32 &device)
   device.master_bus().write16(0x20004000, 0);
   write_main(device, 0xA15100, 1);
   write_main(device, 0xA15180, 0);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.set_blanking(false, false);
   write_main(device, 0xA1518A, 1);
   device.master_bus().write16(0x20004000, 0x8000);
@@ -419,7 +419,7 @@ TEST_CASE("X32 shares video registers palette and framebuffers", "[x32]")
   device.master_bus().write16(0x20004000, 0);
   CHECK(read_main(device, 0x840004) == 0x5678);
   write_main(device, 0xA15180, 2);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.set_blanking(false, false);
   write_main(device, 0xA1518A, 0);
   CHECK((read_main(device, 0xA1518A) & 1) == 1);
@@ -443,7 +443,7 @@ TEST_CASE("X32 direct color composition honors priority and through", "[x32]")
   device.master_bus().write16(0x24000406, 0xFC00);
   show_display_zero(device);
   write_main(device, 0xA15180, 2);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.set_blanking(false, false);
 
   std::array<uint8_t, 4> md{1, 1, 0, 1};
@@ -457,7 +457,7 @@ TEST_CASE("X32 direct color composition honors priority and through", "[x32]")
   CHECK(output[3] == 0xFF0000FF);
 
   write_main(device, 0xA15180, 0x2002);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.set_blanking(false, false);
   device.composite_line(0, md, cram.data(), output);
   CHECK(output[0] == 0xFF0000FF);
@@ -485,7 +485,7 @@ TEST_CASE("X32 packed and run-length modes use palette pixels", "[x32]")
   device.master_bus().write8(0x24000403, 2);
   show_display_zero(device);
   write_main(device, 0xA15180, 1);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.set_blanking(false, false);
 
   std::array<uint8_t, 6> md{};
@@ -495,7 +495,7 @@ TEST_CASE("X32 packed and run-length modes use palette pixels", "[x32]")
   CHECK(output[0] == 0xFF0000FF);
   CHECK(output[1] == 0xFF00FF00);
   write_main(device, 0xA15182, 1);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.set_blanking(false, false);
   device.composite_line(0, md, cram.data(), output);
   CHECK(output[0] == 0xFF00FF00);
@@ -507,7 +507,7 @@ TEST_CASE("X32 packed and run-length modes use palette pixels", "[x32]")
   show_display_zero(device);
   write_main(device, 0xA15182, 0);
   write_main(device, 0xA15180, 3);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.set_blanking(false, false);
   device.composite_line(0, md, cram.data(), output);
   CHECK(output[0] == 0xFF0000FF);
@@ -631,7 +631,7 @@ TEST_CASE("X32 HINT honors the H-count interval", "[x32]")
   device.master_bus().write16(0x20004000, 4);
 
   device.set_blanking(false, false);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.master_bus().write16(0x20004004, 1);
   device.advance_mclk(5);
   CHECK(device.master().pc() == 0x300);
@@ -639,11 +639,11 @@ TEST_CASE("X32 HINT honors the H-count interval", "[x32]")
   device.master_bus().write16(0x20004018, 0);
   device.set_blanking(false, false);
   device.master().set_sr(0);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   REQUIRE(advance_until(device, [&] { return device.master().pc() == 0x302; }));
   CHECK(device.master().pc() == 0x302);
   device.set_blanking(false, false);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   REQUIRE(advance_until(device, [&] { return device.master().pc() == 0x300; }));
   CHECK(device.master().pc() == 0x300);
 }
@@ -1013,10 +1013,123 @@ TEST_CASE("X32 bitmap mode takes effect on the next line", "[x32]")
   std::array<uint32_t, 1> output{};
   device.composite_line(0, md, cram.data(), output);
   CHECK(output[0] == 0xFF000000);
-  device.set_blanking(false, true);
+  device.set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
   device.set_blanking(false, false);
   device.composite_line(0, md, cram.data(), output);
   CHECK(output[0] == 0xFF00FF00);
+}
+
+
+TEST_CASE("X32 bitmap registers latch once at HBlank clock 668", "[x32]")
+{
+  std::vector<uint8_t> cartridge;
+  std::vector<uint8_t> master;
+  std::vector<uint8_t> slave;
+  auto device = std::make_unique<X32>(cartridge, master, slave);
+  device->power_on();
+  write_main(*device, 0xA15100, 1);
+  write_main(*device, 0xA15180, 2);
+  write_main(*device, 0xA15182, 1);
+  device->set_blanking(false, true, X32Video::kBitmapLatchHblankMclk - 1);
+  auto state = std::make_unique<X32::BaseState>(device->base_state());
+  CHECK(state->video.bitmap_mode == 0x8000);
+  CHECK(state->video.shift == 0);
+
+  device->set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
+  *state = device->base_state();
+  CHECK(state->video.bitmap_mode == 0x8002);
+  CHECK(state->video.shift == 1);
+  write_main(*device, 0xA15180, 3);
+  write_main(*device, 0xA15182, 0);
+  device->set_blanking(false, true, X32Video::kBitmapLatchHblankMclk + 10);
+  *state = device->base_state();
+  CHECK(state->video.bitmap_mode == 0x8002);
+  CHECK(state->video.shift == 1);
+
+  const auto saved = serialize_x32_state(save_x32_state(*device));
+  const auto parsed = parse_x32_state(saved);
+  REQUIRE(parsed);
+  auto restored = std::make_unique<X32>(cartridge, master, slave);
+  restored->power_on();
+  REQUIRE(restore_x32_state(*restored, *parsed));
+  CHECK(serialize_x32_state(save_x32_state(*restored)) == saved);
+  restored->set_blanking(false, true, X32Video::kBitmapLatchHblankMclk + 20);
+  *state = restored->base_state();
+  CHECK(state->video.bitmap_mode == 0x8002);
+  CHECK(state->video.shift == 1);
+
+  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 1);
+  const auto legacy_parsed = parse_x32_state(legacy);
+  REQUIRE(legacy_parsed);
+  CHECK_FALSE(legacy_parsed->base.video.bitmap_latched);
+  auto legacy_device = std::make_unique<X32>(cartridge, master, slave);
+  legacy_device->power_on();
+  REQUIRE(restore_x32_state(*legacy_device, *legacy_parsed));
+  legacy_device->set_blanking(false, true,
+                              X32Video::kBitmapLatchHblankMclk + 20);
+  *state = legacy_device->base_state();
+  CHECK(state->video.bitmap_mode == 0x8003);
+  CHECK(state->video.shift == 0);
+
+  for (X32 *current : {device.get(), restored.get()}) {
+    current->set_blanking(false, false);
+    current->set_blanking(false, true, X32Video::kBitmapLatchHblankMclk - 1);
+    *state = current->base_state();
+    CHECK(state->video.bitmap_mode == 0x8002);
+    CHECK(state->video.shift == 1);
+    current->set_blanking(false, true, X32Video::kBitmapLatchHblankMclk);
+    *state = current->base_state();
+    CHECK(state->video.bitmap_mode == 0x8003);
+    CHECK(state->video.shift == 0);
+  }
+  CHECK(serialize_x32_state(save_x32_state(*device)) ==
+        serialize_x32_state(save_x32_state(*restored)));
+}
+
+TEST_CASE("Machine chunks cannot skip or repeat the X32 bitmap latch", "[x32]")
+{
+  Machine machine(std::make_unique<NullAudio>(), std::make_unique<NullVideo>(),
+                  std::make_shared<NullLogger>());
+  REQUIRE(machine.load_rom_mem(make_x32_video_rom()));
+  std::vector<uint8_t> cartridge;
+  std::vector<uint8_t> master;
+  std::vector<uint8_t> slave;
+  machine.attach_x32(std::make_unique<X32>(cartridge, master, slave));
+  machine.run_frame();
+  X32 *device = machine.x32_debug();
+  write_main(*device, 0xA15100, 1);
+  while (machine.vdp().dot() != 0)
+    machine.debug_advance_mclk(1);
+  write_main(*device, 0xA15180, 2);
+  write_main(*device, 0xA15182, 1);
+  const uint64_t latch_mclk =
+      X32Video::kHblankStartLineMclk + X32Video::kBitmapLatchHblankMclk;
+  while (machine.vdp().line_mclk() < latch_mclk - 1)
+    machine.debug_advance_mclk(1);
+  REQUIRE(machine.vdp().line_mclk() == latch_mclk - 1);
+  auto state = device->base_state();
+  CHECK(state.video.bitmap_mode == 0x8000);
+  CHECK(state.video.shift == 0);
+
+  machine.debug_advance_mclk(1000);
+  state = device->base_state();
+  CHECK(state.video.bitmap_mode == 0x8002);
+  CHECK(state.video.shift == 1);
+  write_main(*device, 0xA15180, 3);
+  write_main(*device, 0xA15182, 0);
+  machine.debug_advance_mclk(20);
+  state = device->base_state();
+  CHECK(state.video.bitmap_mode == 0x8002);
+  CHECK(state.video.shift == 1);
+
+  while (machine.vdp().dot() != 0)
+    machine.debug_advance_mclk(1);
+  while (machine.vdp().line_mclk() < latch_mclk)
+    machine.debug_advance_mclk(1);
+  CHECK(machine.vdp().line_mclk() == latch_mclk);
+  state = device->base_state();
+  CHECK(state.video.bitmap_mode == 0x8003);
+  CHECK(state.video.shift == 0);
 }
 
 
