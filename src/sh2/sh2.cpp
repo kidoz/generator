@@ -26,7 +26,7 @@ void accumulate(uint32_t &mach, uint32_t &macl, int64_t product)
 
 }  // namespace
 
-Sh2::Sh2(Sh2BusInterface &bus) : m_bus(bus), m_dmac(bus)
+Sh2::Sh2(Sh2BusInterface &bus) : m_bus(bus), m_cache(bus), m_dmac(bus)
 {
 }
 
@@ -59,10 +59,12 @@ uint8_t Sh2::read8(uint32_t address)
     stall_divu();
     return 0;
   }
-  return m_bus.read8(address);
+  const uint8_t value = m_cache.read8(address);
+  m_stall_cycles += m_cache.take_wait_states();
+  return value;
 }
 
-uint16_t Sh2::read16(uint32_t address, bool pc_relative)
+uint16_t Sh2::read16(uint32_t address, bool pc_relative, bool instruction)
 {
   if (address_error(address, 2, pc_relative))
     return 0;
@@ -84,7 +86,9 @@ uint16_t Sh2::read16(uint32_t address, bool pc_relative)
   default:
     break;
   }
-  return m_bus.read16(address);
+  const uint16_t value = m_cache.read16(address, instruction);
+  m_stall_cycles += m_cache.take_wait_states();
+  return value;
 }
 
 uint32_t Sh2::read32(uint32_t address, bool pc_relative)
@@ -99,10 +103,9 @@ uint32_t Sh2::read32(uint32_t address, bool pc_relative)
     return 0;
   if (address >= 0xFFFFFF80 && address <= 0xFFFFFFB0)
     return m_dmac.read32(address);
-  if ((address >= 0x40000000 && address < 0x60000000) ||
-      (address >= 0x60000000 && address <= 0x600003FF))
-    return m_cache.read32(address);
-  return m_bus.read32(address);
+  const uint32_t value = m_cache.read32(address);
+  m_stall_cycles += m_cache.take_wait_states();
+  return value;
 }
 
 void Sh2::write8(uint32_t address, uint8_t value)
@@ -125,7 +128,8 @@ void Sh2::write8(uint32_t address, uint8_t value)
     stall_divu();
     return;
   }
-  m_bus.write8(address, value);
+  m_cache.write8(address, value);
+  m_stall_cycles += m_cache.take_wait_states();
 }
 
 void Sh2::write16(uint32_t address, uint16_t value)
@@ -152,7 +156,8 @@ void Sh2::write16(uint32_t address, uint16_t value)
   default:
     break;
   }
-  m_bus.write16(address, value);
+  m_cache.write16(address, value);
+  m_stall_cycles += m_cache.take_wait_states();
 }
 
 void Sh2::write32(uint32_t address, uint32_t value)
@@ -170,15 +175,8 @@ void Sh2::write32(uint32_t address, uint32_t value)
     m_dmac.write32(address, value);
     return;
   }
-  if (address >= 0x40000000 && address < 0x60000000) {
-    m_cache.write32(address, value);
-    return;
-  }
-  if (address >= 0x60000000 && address <= 0x600003FF) {
-    m_cache.write32(address, value);
-    return;
-  }
-  m_bus.write32(address, value);
+  m_cache.write32(address, value);
+  m_stall_cycles += m_cache.take_wait_states();
 }
 
 uint32_t Sh2::read_operand(uint32_t address, uint32_t size)
@@ -259,7 +257,7 @@ void Sh2::reset()
 
 uint16_t Sh2::fetch16()
 {
-  const uint16_t opcode = read16(m_pc);
+  const uint16_t opcode = read16(m_pc, false, true);
   m_pc += 2;
   return opcode;
 }

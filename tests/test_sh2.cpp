@@ -13,6 +13,17 @@ namespace {
 class FlatBus final : public Sh2BusInterface {
 public:
   std::array<uint8_t, 0x10000> memory{};
+  struct DackEvent {
+    bool asserted;
+    bool active_high;
+  };
+  uint32_t device_read_value = 0;
+  uint32_t device_width = 0;
+  uint32_t device_written_value = 0;
+  size_t device_reads = 0;
+  size_t device_writes = 0;
+  std::vector<DackEvent> dack_events;
+  std::vector<uint32_t> read32_addresses;
 
   uint8_t read8(uint32_t addr) override
   {
@@ -24,6 +35,7 @@ public:
   }
   uint32_t read32(uint32_t addr) override
   {
+    read32_addresses.push_back(addr);
     return (uint32_t)read16(addr) << 16 | read16(addr + 2);
   }
   void write8(uint32_t addr, uint8_t value) override
@@ -1427,24 +1439,24 @@ TEST_CASE("SH-2 cache control supports ways and purge operations", "[sh2]")
   cpu.reset();
   peripheral_read8(cpu, bus, 0xFFFFFE92);
   CHECK(cpu.r(2) == 0);
-  peripheral_write8(cpu, bus, 0xFFFFFE92, 0xC1);
+  peripheral_write8(cpu, bus, 0xFFFFFE92, 0xC3);
   peripheral_read8(cpu, bus, 0xFFFFFE92);
-  CHECK((uint8_t)cpu.r(2) == 0xC1);
+  CHECK((uint8_t)cpu.r(2) == 0xC3);
   peripheral_write32(cpu, bus, 0x60000024, 0);
   peripheral_read32(cpu, bus, 0x60000024);
   CHECK(cpu.r(3) == 0x00000004);
-  peripheral_write8(cpu, bus, 0xFFFFFE92, 0x41);
+  peripheral_write8(cpu, bus, 0xFFFFFE92, 0x43);
   peripheral_read32(cpu, bus, 0x60000024);
   CHECK(cpu.r(3) == 0);
   peripheral_write32(cpu, bus, 0x60000024, 0);
   peripheral_read32(cpu, bus, 0x60000024);
   CHECK(cpu.r(3) == 0x00000004);
-  peripheral_write8(cpu, bus, 0xFFFFFE92, 0x11);
+  peripheral_write8(cpu, bus, 0xFFFFFE92, 0x13);
   peripheral_read8(cpu, bus, 0xFFFFFE92);
-  CHECK(cpu.r(2) == 1);
+  CHECK(cpu.r(2) == 3);
   peripheral_read32(cpu, bus, 0x60000024);
   CHECK(cpu.r(3) == 0);
-  peripheral_write8(cpu, bus, 0xFFFFFE92, 0xC1);
+  peripheral_write8(cpu, bus, 0xFFFFFE92, 0xC3);
   peripheral_write32(cpu, bus, 0x60000024, 0);
   peripheral_read32(cpu, bus, 0x60000024);
   CHECK(cpu.r(3) == 0x00000004);
@@ -1674,5 +1686,129 @@ TEST_CASE("SH-2 DMA address errors preserve registers and use vector 10",
   CHECK(cpu.step() == 1);
   CHECK(cpu.pc() == 0x10E);
   CHECK(cpu.r(15) == 0x8000);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 cache fills target last and reads and writes through", "[sh2]")
+{
+  auto bus = make_bus();
+  put32(bus, 0x200, 0x11223344);
+  put32(bus, 0x204, 0x55667788);
+  put32(bus, 0x208, 0x89ABCDEF);
+  put32(bus, 0x20C, 0x10203040);
+  Sh2Cache cache(bus);
+  cache.reset();
+  cache.write_ccr(1);
+  CHECK(cache.read32(0x204) == 0x55667788);
+  REQUIRE(bus.read32_addresses.size() == 4);
+  CHECK(bus.read32_addresses[0] == 0x208);
+  CHECK(bus.read32_addresses[1] == 0x20C);
+  CHECK(bus.read32_addresses[2] == 0x200);
+  CHECK(bus.read32_addresses[3] == 0x204);
+  CHECK(cache.take_wait_states() == 4);
+  const auto filled = cache.save();
+  CHECK(filled.entries[3][32].valid);
+  CHECK(filled.entries[3][32].data[4] == 0x55);
+  bus.write32(0x204, 0xAABBCCDD);
+  CHECK(cache.read32(0x204) == 0x55667788);
+  CHECK(bus.read32_addresses.size() == 4);
+  CHECK(cache.take_wait_states() == 0);
+  cache.write32(0x204, 0x11223344);
+  CHECK(bus.read32(0x204) == 0x11223344);
+  CHECK(cache.read32(0x204) == 0x11223344);
+}
+
+TEST_CASE("SH-2 cache replacement follows pseudo-LRU and two-way rules",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2Cache cache(bus);
+  cache.reset();
+
+  SECTION("four-way order and replacement")
+  {
+    cache.write_ccr(1);
+    cache.read32(0);
+    cache.read32(0x400);
+    cache.read32(0x800);
+    cache.read32(0xC00);
+    auto state = cache.save();
+    CHECK(state.entries[3][0].tag == 0);
+    CHECK(state.entries[2][0].tag == 0x400);
+    CHECK(state.entries[1][0].tag == 0x800);
+    CHECK(state.entries[0][0].tag == 0xC00);
+    cache.read32(0x1000);
+    state = cache.save();
+    CHECK(state.entries[3][0].tag == 0x1000);
+    CHECK(state.entries[2][0].tag == 0x400);
+  }
+  SECTION("two-way replacement")
+  {
+    cache.write_ccr(9);
+    cache.read32(0);
+    cache.read32(0x400);
+    cache.read32(0x800);
+    const auto state = cache.save();
+    CHECK(state.entries[3][0].tag == 0x800);
+    CHECK(state.entries[2][0].tag == 0x400);
+    CHECK_FALSE(state.entries[0][0].valid);
+    CHECK_FALSE(state.entries[1][0].valid);
+  }
+  SECTION("replacement disable and cache-through access")
+  {
+    cache.write_ccr(5);
+    CHECK(cache.read32(0x200) == 0);
+    CHECK(cache.take_wait_states() == 0);
+    cache.write_ccr(3);
+    CHECK(cache.read32(0x400, true) == 0);
+    CHECK(cache.take_wait_states() == 0);
+    CHECK(cache.read32(0x20000000) == 0x8000);
+    CHECK(bus.read32_addresses.size() == 3);
+    for (const auto &way : cache.save().entries) {
+      for (const auto &entry : way)
+        CHECK_FALSE(entry.valid);
+    }
+  }
+}
+
+TEST_CASE("SH-2 cache data and address arrays support direct access", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2Cache cache(bus);
+  cache.reset();
+  cache.write8(0xC0000001, 0xAA);
+  cache.write16(0xC0000402, 0xBBCC);
+  cache.write32(0xC0000804, 0x11223344);
+  CHECK(cache.read8(0xC0000001) == 0xAA);
+  CHECK(cache.read16(0xC0000402) == 0xBBCC);
+  CHECK(cache.read32(0xC0000804) == 0x11223344);
+  CHECK(bus.read32_addresses.empty());
+  const auto state = cache.save();
+  CHECK(state.entries[0][0].data[1] == 0xAA);
+  CHECK(state.entries[1][0].data[2] == 0xBB);
+  CHECK(state.entries[1][0].data[3] == 0xCC);
+  CHECK(state.entries[2][0].data[4] == 0x11);
+  cache.write32(0x60000024, 0xA0);
+  CHECK(cache.read32(0x60000024) == 0xA4);
+  cache.read32(0x40000024);
+  CHECK(cache.read32(0x60000024) == 0xA0);
+}
+
+TEST_CASE("SH-2 instruction fetch pays miss cost once per cached line", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  peripheral_write8(cpu, bus, 0xFFFFFE92, 1);
+  put16(bus, cpu.pc(), 0x0009);
+  bus.read32_addresses.clear();
+  CHECK(cpu.step() == 5);
+  REQUIRE(bus.read32_addresses.size() == 4);
+  CHECK(bus.read32_addresses[0] == 0x104);
+  CHECK(bus.read32_addresses[1] == 0x108);
+  CHECK(bus.read32_addresses[2] == 0x10C);
+  CHECK(bus.read32_addresses[3] == 0x100);
+  CHECK(cpu.step() == 1);
+  CHECK(bus.read32_addresses.size() == 4);
   CHECK(cpu.fault() == Sh2::Fault::None);
 }
