@@ -27,6 +27,31 @@ std::expected<void, std::string> unsupported_system(const MediaInfo &info)
                          " support is not implemented yet");
 }
 
+struct X32BootImages {
+  std::vector<uint8_t> master;
+  std::vector<uint8_t> slave;
+};
+
+std::expected<X32BootImages, std::string>
+read_x32_boot_images(const MediaLoadOptions &options)
+{
+  if (!options.x32_firmware) {
+    return std::unexpected("32X master and slave boot ROMs are required; set "
+                           "MediaLoadOptions::x32_firmware");
+  }
+  auto master = read_media_file(options.x32_firmware->master_boot.string());
+  if (!master)
+    return std::unexpected(master.error());
+  auto slave = read_media_file(options.x32_firmware->slave_boot.string());
+  if (!slave)
+    return std::unexpected(slave.error());
+  if (master->empty() || master->size() > 0x10000 || slave->empty() ||
+      slave->size() > 0x10000) {
+    return std::unexpected("32X boot ROMs must be 1 byte to 64 KiB each");
+  }
+  return X32BootImages{std::move(*master), std::move(*slave)};
+}
+
 class EmulatorCoreImpl final : public CoreImplBase {
 public:
   EmulatorCoreImpl(std::unique_ptr<IAudioBackend> audio,
@@ -88,26 +113,14 @@ public:
                                             std::string_view filename,
                                             const MediaLoadOptions &options)
   {
-    if (!options.x32_firmware) {
-      return std::unexpected("32X master and slave boot ROMs are required; set "
-                             "MediaLoadOptions::x32_firmware");
-    }
-    auto master = read_media_file(options.x32_firmware->master_boot.string());
-    if (!master) {
-      return std::unexpected(master.error());
-    }
-    auto slave = read_media_file(options.x32_firmware->slave_boot.string());
-    if (!slave) {
-      return std::unexpected(slave.error());
-    }
-    if (master->empty() || master->size() > 0x10000 || slave->empty() ||
-        slave->size() > 0x10000) {
-      return std::unexpected("32X boot ROMs must be 1 byte to 64 KiB each");
-    }
+    auto boot = read_x32_boot_images(options);
+    if (!boot)
+      return std::unexpected(boot.error());
 
     auto candidate =
         std::make_unique<Machine>(m_audio, m_video, m_logger_owner);
-    candidate->attach_x32(std::make_unique<X32>(data, *master, *slave));
+    candidate->attach_x32(
+        std::make_unique<X32>(data, boot->master, boot->slave));
     auto loaded = candidate->load_rom_mem(data, filename);
     if (!loaded) {
       return loaded;
@@ -127,7 +140,8 @@ public:
                                              std::string_view filename,
                                              const MediaLoadOptions &options)
   {
-    if (info.system != SystemKind::SegaCd) {
+    if (info.system != SystemKind::SegaCd &&
+        info.system != SystemKind::SegaCdX32) {
       return unsupported_system(info);
     }
     auto disc = SegaCdDisc::load(filename);
@@ -148,6 +162,13 @@ public:
         std::make_unique<Machine>(m_audio, m_video, m_logger_owner);
     candidate->attach_sega_cd(std::make_unique<SegaCd>(
         std::move(*disc), pal ? 53203424ULL : 53693175ULL));
+    if (info.system == SystemKind::SegaCdX32) {
+      auto boot = read_x32_boot_images(options);
+      if (!boot)
+        return std::unexpected(boot.error());
+      candidate->attach_x32(std::make_unique<X32>(std::span<const uint8_t>{},
+                                                  boot->master, boot->slave));
+    }
     auto loaded = candidate->load_rom_mem(
         firmware->bytes(), options.sega_cd_firmware->path.string());
     if (!loaded) {

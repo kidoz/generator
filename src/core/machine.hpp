@@ -118,9 +118,10 @@ public:
   void attach_x32(std::unique_ptr<X32> x32);
   SystemKind system_kind() const override
   {
-    return m_x32       ? SystemKind::X32
-           : m_sega_cd ? SystemKind::SegaCd
-                       : SystemKind::MegaDrive;
+    return m_x32 && m_sega_cd ? SystemKind::SegaCdX32
+           : m_x32            ? SystemKind::X32
+           : m_sega_cd        ? SystemKind::SegaCd
+                              : SystemKind::MegaDrive;
   }
   SegaCd *sega_cd_debug()
   {

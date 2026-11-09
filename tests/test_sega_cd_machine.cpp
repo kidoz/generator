@@ -2,10 +2,13 @@
 #include "core/machine.hpp"
 #include "segacd/firmware.hpp"
 #include "segacd/sega_cd.hpp"
+#include "x32/x32.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cstdio>
+#include <fstream>
 #include <memory>
 #include <span>
 #include <vector>
@@ -357,4 +360,72 @@ TEST_CASE(
   CHECK(machine.cpu_debug().d(0) == 77);
   CHECK(machine.sega_cd_debug()->sub_cpu().cpu().d(0) == 42);
   CHECK(machine.sega_cd_debug()->base_state().word_ram_main_owner);
+}
+
+TEST_CASE("Machine CD 32X routes both expansions and saves their state",
+          "[sega_cd][machine][x32]")
+{
+  auto machine = make_machine();
+  machine.attach_sega_cd(std::make_unique<SegaCd>());
+  std::vector<uint8_t> cartridge(0x1000, 0);
+  write16(cartridge, 0, 0x1122);
+  std::vector<uint8_t> master(0x400, 0);
+  std::vector<uint8_t> slave(0x400, 0);
+  for (auto *boot : {&master, &slave}) {
+    write32(*boot, 0, 0x8000);
+    write32(*boot, 4, 0x100);
+    for (uint32_t address = 0x100; address < boot->size(); address += 2)
+      write16(*boot, address, 0x0009);
+  }
+  machine.attach_x32(std::make_unique<X32>(cartridge, master, slave));
+
+  auto bios = make_main_bios();
+  uint32_t pos = 0x108;
+  const auto emit = [&](uint16_t word) {
+    write16(bios, pos, word);
+    pos += 2;
+  };
+  const auto store = [&](uint32_t addr, uint16_t word) {
+    emit(0x33FC);
+    emit(word);
+    emit((uint16_t)(addr >> 16));
+    emit((uint16_t)addr);
+  };
+  store(0x200100, 0xABCD);
+  store(0xA15120, 0x1234);
+  store(0xA15100, 0x83);
+  emit(0x3039);
+  emit(0x0088);
+  emit(0);
+  emit(0x3239);
+  emit(0x0020);
+  emit(0x0100);
+  emit(0x60FE);
+  REQUIRE(machine.load_rom_mem(bios, "cd32x_bios.bin"));
+  machine.run_frame();
+
+  CHECK(machine.system_kind() == SystemKind::SegaCdX32);
+  CHECK(machine.cpu_debug().d(0) == 0x1122);
+  CHECK(machine.cpu_debug().d(1) == 0xABCD);
+  CHECK(machine.sega_cd_debug()->word_ram()[0x100] == 0xAB);
+  CHECK(machine.sega_cd_debug()->word_ram()[0x101] == 0xCD);
+  CHECK(machine.sega_cd_debug()->sub_cpu().master_ticks() != 0);
+  CHECK(machine.x32_debug()->communication()[0] == 0x1234);
+  CHECK(machine.x32_debug()->master().pc() != 0x100);
+  CHECK(machine.x32_debug()->slave().pc() != 0x100);
+
+  const char *path = "test_cd32x_state.gst";
+  const auto saved = machine.capture_state();
+  REQUIRE(saved);
+  {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    REQUIRE(out.good());
+    out.write((const char *)saved->data(), (std::streamsize)saved->size());
+  }
+  machine.run_frame();
+  REQUIRE(machine.load_state(path));
+  const auto restored = machine.capture_state();
+  REQUIRE(restored);
+  CHECK(*restored == *saved);
+  std::remove(path);
 }

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "emulator_core.hpp"
+#include "core/state_v3.hpp"
 #include "segacd/disc.hpp"
 #include "segacd/firmware.hpp"
 
@@ -293,4 +294,50 @@ TEST_CASE(
       core.load_media((fixture.root / "missing.cue").string(), options);
   REQUIRE_FALSE(missing_cue);
   CHECK(missing_cue.error().find("cannot open CUE") != std::string::npos);
+}
+
+TEST_CASE("EmulatorCore loads a CD 32X disc with both firmware sets",
+          "[sega_cd][media][x32]")
+{
+  DiscFixture fixture;
+  auto core = make_core();
+  const auto cue = (fixture.root / "game.cue").string();
+  MediaLoadOptions options;
+  options.attach_32x = true;
+  std::vector<uint8_t> bios(SegaCdFirmwareImage::kSize, 0);
+  DiscFixture::write_binary(fixture.root / "bios.bin", bios);
+  options.sega_cd_firmware =
+      SegaCdFirmware{fixture.root / "bios.bin", SegaCdRegion::NorthAmerica};
+
+  const auto missing_boot = core.load_media(cue, options);
+  REQUIRE_FALSE(missing_boot);
+  CHECK(missing_boot.error().find("32X master and slave") != std::string::npos);
+  CHECK_FALSE(core.rom_loaded());
+
+  DiscFixture::write_binary(fixture.root / "master.boot", {1, 2, 3});
+  DiscFixture::write_binary(fixture.root / "slave.boot", {4, 5, 6});
+  options.x32_firmware =
+      X32Firmware{fixture.root / "master.boot", fixture.root / "slave.boot"};
+  const auto loaded = core.load_media(cue, options);
+  REQUIRE(loaded);
+  CHECK(core.rom_loaded());
+  CHECK(core.media_info().system == SystemKind::SegaCdX32);
+  CHECK(core.media_info().kind == MediaKind::Disc);
+
+  const auto saved = core.capture_state();
+  REQUIRE(saved);
+  const auto chunks = StateV3::deserialize(*saved);
+  REQUIRE(chunks);
+  bool cd_seen = false;
+  bool x32_seen = false;
+  for (const auto &chunk : *chunks) {
+    if (chunk.id == fourcc("SYS0")) {
+      REQUIRE(chunk.data.size() == 1);
+      CHECK(chunk.data[0] == (uint8_t)SystemKind::SegaCdX32);
+    }
+    cd_seen |= chunk.id == fourcc("SCD0");
+    x32_seen |= chunk.id == fourcc("X320");
+  }
+  CHECK(cd_seen);
+  CHECK(x32_seen);
 }

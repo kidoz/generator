@@ -114,7 +114,7 @@ TEST_CASE("unsupported systems do not replace the running cartridge", "[media]")
 
   const auto cd32x = core.load_media("missing.cue", {.attach_32x = true});
   REQUIRE_FALSE(cd32x);
-  CHECK(cd32x.error().find("Sega CD 32X") != std::string::npos);
+  CHECK(cd32x.error().find("cannot open CUE") != std::string::npos);
 }
 
 TEST_CASE("load_media loads a Genesis file through the public core", "[media]")
