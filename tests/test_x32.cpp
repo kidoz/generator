@@ -1058,7 +1058,7 @@ TEST_CASE("X32 bitmap registers latch once at HBlank clock 668", "[x32]")
   CHECK(state->video.bitmap_mode == 0x8002);
   CHECK(state->video.shift == 1);
 
-  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 1);
+  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 8205);
   const auto legacy_parsed = parse_x32_state(legacy);
   REQUIRE(legacy_parsed);
   CHECK_FALSE(legacy_parsed->base.video.bitmap_latched);
@@ -1354,4 +1354,60 @@ TEST_CASE("X32 state preserves pending NMI and the DMA halt flag", "[x32]")
   CHECK(restored.master_bus().read32(0x06007FF8) == 0x100);
   CHECK(restored.master_bus().read32(0x06007FFC) == 0x30);
   CHECK((restored.master().save().dmac.dmaor & 2) != 0);
+}
+
+
+TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
+{
+  std::vector<uint8_t> cartridge;
+  std::vector<uint8_t> master(0x400, 0);
+  std::vector<uint8_t> slave(0x400, 0);
+  put32(master, 0, 0x06008000);
+  put32(master, 4, 0x100);
+  X32 device(cartridge, master, slave);
+  device.power_on();
+  auto configured = device.master().save();
+  configured.intc.icr = 0x0101;
+  configured.intc.irl_level = 8;
+  configured.intc.irl_vector = 0x55;
+  configured.dmac.module_pending[0] = true;
+  configured.cache.ccr = 1;
+  configured.cache.entries[0][0].data[0] = 0x5A;
+  device.master().restore(configured);
+
+  const auto saved = serialize_x32_state(save_x32_state(device));
+  const auto parsed = parse_x32_state(saved);
+  REQUIRE(parsed);
+  CHECK(parsed->master.intc.icr == 0x0101);
+  CHECK(parsed->master.intc.irl_level == 8);
+  CHECK(parsed->master.intc.irl_vector == 0x55);
+  CHECK(parsed->master.dmac.module_pending[0]);
+  CHECK(parsed->master.cache.entries[0][0].data[0] == 0x5A);
+  X32 restored(cartridge, master, slave);
+  restored.power_on();
+  REQUIRE(restore_x32_state(restored, *parsed));
+  CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
+
+  auto legacy = saved;
+  legacy.resize(legacy.size() - 8204);
+  const auto legacy_parsed = parse_x32_state(legacy);
+  REQUIRE(legacy_parsed);
+  CHECK(legacy_parsed->master.intc.icr == 0x8000);
+  CHECK(legacy_parsed->master.intc.irl_level == 0);
+  CHECK(legacy_parsed->master.intc.irl_vector == 0);
+  CHECK_FALSE(legacy_parsed->master.dmac.module_pending[0]);
+  CHECK_FALSE(legacy_parsed->master.dmac.module_pending[1]);
+  CHECK(legacy_parsed->master.cache.entries[0][0].data[0] == 0);
+  X32 legacy_device(cartridge, master, slave);
+  legacy_device.power_on();
+  REQUIRE(restore_x32_state(legacy_device, *legacy_parsed));
+  CHECK(legacy_device.master().save().intc.icr == 0x8000);
+  CHECK_FALSE(legacy_device.master().save().dmac.module_pending[0]);
+
+  auto without_cache_data = saved;
+  without_cache_data.resize(without_cache_data.size() - 8192);
+  const auto cache_legacy = parse_x32_state(without_cache_data);
+  REQUIRE(cache_legacy);
+  CHECK(cache_legacy->master.intc.irl_vector == 0x55);
+  CHECK(cache_legacy->master.cache.entries[0][0].data[0] == 0);
 }

@@ -170,6 +170,43 @@ Sh2Intc::SavedState read_intc(ChunkReader &r)
   return state;
 }
 
+void write_sh2_tail(ChunkWriter &w, const Sh2::SavedState &state)
+{
+  w.u8(state.dmac.module_pending[0] ? 1 : 0);
+  w.u8(state.dmac.module_pending[1] ? 1 : 0);
+  w.u16(state.intc.icr);
+  w.u8(state.intc.irl_level);
+  w.u8(state.intc.irl_vector);
+}
+
+void read_sh2_tail(ChunkReader &r, Sh2::SavedState &state)
+{
+  state.dmac.module_pending[0] = r.u8() != 0;
+  state.dmac.module_pending[1] = r.u8() != 0;
+  state.intc.icr = r.u16();
+  state.intc.irl_level = r.u8();
+  state.intc.irl_vector = r.u8();
+}
+
+void write_cache_data(ChunkWriter &w, const Sh2Cache::SavedState &state)
+{
+  for (const auto &way : state.entries) {
+    for (const auto &entry : way)
+      w.bytes(entry.data);
+  }
+}
+
+void read_cache_data(ChunkReader &r, Sh2Cache::SavedState &state)
+{
+  for (auto &way : state.entries) {
+    for (auto &entry : way) {
+      const auto data = r.bytes(entry.data.size());
+      if (data.size() == entry.data.size())
+        std::copy_n(data.data(), data.size(), entry.data.data());
+    }
+  }
+}
+
 void write_sh2(ChunkWriter &w, const Sh2::SavedState &state)
 {
   write_cache(w, state.cache);
@@ -457,6 +494,10 @@ std::vector<uint8_t> serialize_x32_state(const X32State &state)
   write_sh2(w, state.master);
   write_sh2(w, state.slave);
   w.u8(state.base.video.bitmap_latched ? 1 : 0);
+  write_sh2_tail(w, state.master);
+  write_sh2_tail(w, state.slave);
+  write_cache_data(w, state.master.cache);
+  write_cache_data(w, state.slave.cache);
   return w.take_payload();
 }
 
@@ -474,6 +515,18 @@ parse_x32_state(std::span<const uint8_t> payload)
   state.slave = read_sh2(r);
   if (r.has(1))
     state.base.video.bitmap_latched = r.u8() != 0;
+  if (r.remaining() >= 12) {
+    read_sh2_tail(r, state.master);
+    read_sh2_tail(r, state.slave);
+  } else if (r.remaining() != 0) {
+    return std::unexpected("invalid X32 interrupt tail");
+  }
+  if (r.remaining() == 2 * 4 * 64 * 16) {
+    read_cache_data(r, state.master.cache);
+    read_cache_data(r, state.slave.cache);
+  } else if (r.remaining() != 0) {
+    return std::unexpected("invalid X32 cache data tail");
+  }
   if (!r.ok() || r.remaining() != 0)
     return std::unexpected("invalid X32 state payload");
   return state;
