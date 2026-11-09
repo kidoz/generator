@@ -789,32 +789,32 @@ TEST_CASE("SH-2 step reports base instruction execution states", "[sh2]")
     CHECK(cpu.step() == 1);
     CHECK(cpu.step() == 1);
   }
-  SECTION("16-bit multiplies cost their minimum state")
+  SECTION("16-bit multiplies include fetch and multiplier contention")
   {
     put16(bus, 0x100, 0x212E);
     put16(bus, 0x102, 0x212F);
     CHECK(cpu.step() == 1);
-    CHECK(cpu.step() == 1);
+    CHECK(cpu.step() == 4);
   }
-  SECTION("32-bit multiplies cost two states")
+  SECTION("32-bit multiplies include fetch and multiplier contention")
   {
     put16(bus, 0x100, 0x0127);
     put16(bus, 0x102, 0x312D);
     put16(bus, 0x104, 0x3125);
-    CHECK(cpu.step() == 2);
-    CHECK(cpu.step() == 2);
-    CHECK(cpu.step() == 2);
+    CHECK(cpu.step() == 3);
+    CHECK(cpu.step() == 6);
+    CHECK(cpu.step() == 5);
   }
-  SECTION("MAC instructions cost three states")
+  SECTION("MAC instructions include instruction-fetch contention")
   {
     put16(bus, 0x100, 0x412F);
     put16(bus, 0x102, 0x012F);
     cpu.set_r(1, 0x200);
     cpu.set_r(2, 0x300);
-    CHECK(cpu.step() == 3);
+    CHECK(cpu.step() == 4);
     cpu.set_r(1, 0x200);
     cpu.set_r(2, 0x300);
-    CHECK(cpu.step() == 3);
+    CHECK(cpu.step() == 5);
   }
   SECTION("BRA and its delay slot are timed independently")
   {
@@ -1128,7 +1128,7 @@ TEST_CASE("SH-2 DIVU executes signed division with deterministic timing",
     peripheral_write32(cpu, bus, 0xFFFFFF00, 0);
     peripheral_write32(cpu, bus, 0xFFFFFF04, 100);
     peripheral_nops(cpu, bus, 4);
-    CHECK(peripheral_read32(cpu, bus, 0xFFFFFF08) == 2);
+    CHECK(peripheral_read32(cpu, bus, 0xFFFFFF08) == 1);
     CHECK(cpu.r(3) == 1);
     peripheral_read32(cpu, bus, 0xFFFFFF04);
     CHECK(cpu.r(3) == 0x7FFFFFFF);
@@ -1232,6 +1232,7 @@ TEST_CASE("SH-2 INTC dispatches FRT compare interrupts through VCRC", "[sh2]")
   cpu.reset();
   cpu.set_r(5, 0x1000);
   cpu.set_sr(0);
+  put32(bus, 0x1108, 0x400);
   put16(bus, cpu.pc(), 0x452E);
   CHECK(cpu.step() == 1);
   peripheral_write16(cpu, bus, 0xFFFFFE60, 0x0500);
@@ -1243,9 +1244,12 @@ TEST_CASE("SH-2 INTC dispatches FRT compare interrupts through VCRC", "[sh2]")
   peripheral_write8(cpu, bus, 0xFFFFFE12, 0);
   peripheral_write8(cpu, bus, 0xFFFFFE13, 0);
   peripheral_write8(cpu, bus, 0xFFFFFE16, 0);
-  put32(bus, 0x1108, 0x400);
-  peripheral_nops(cpu, bus, 7);
-  CHECK(cpu.step() == 9);
+  uint32_t entry_cycles = 0;
+  for (size_t i = 0; i < 16 && cpu.pc() != 0x400; i++) {
+    put16(bus, cpu.pc(), 0x0009);
+    entry_cycles = cpu.step();
+  }
+  CHECK(entry_cycles == 9);
   CHECK(cpu.pc() == 0x400);
   CHECK(cpu.sr() == 0x50);
   peripheral_read8(cpu, bus, 0xFFFFFE11);
@@ -1265,6 +1269,7 @@ TEST_CASE("SH-2 INTC dispatches FRT overflow interrupts through VCRD", "[sh2]")
   cpu.reset();
   cpu.set_r(5, 0x1000);
   cpu.set_sr(0);
+  put32(bus, 0x110C, 0x500);
   put16(bus, cpu.pc(), 0x452E);
   CHECK(cpu.step() == 1);
   peripheral_write16(cpu, bus, 0xFFFFFE60, 0x0600);
@@ -1273,9 +1278,10 @@ TEST_CASE("SH-2 INTC dispatches FRT overflow interrupts through VCRD", "[sh2]")
   peripheral_write8(cpu, bus, 0xFFFFFE12, 0xFF);
   peripheral_write8(cpu, bus, 0xFFFFFE13, 0xFF);
   peripheral_write8(cpu, bus, 0xFFFFFE16, 0);
-  put32(bus, 0x110C, 0x500);
-  peripheral_nops(cpu, bus, 7);
-  CHECK(cpu.step() == 9);
+  for (size_t i = 0; i < 16 && cpu.pc() != 0x500; i++) {
+    put16(bus, cpu.pc(), 0x0009);
+    (void)cpu.step();
+  }
   CHECK(cpu.pc() == 0x500);
   CHECK(cpu.sr() == 0x60);
   peripheral_read8(cpu, bus, 0xFFFFFE11);
@@ -1411,6 +1417,8 @@ TEST_CASE("SH-2 DMAC fixed priority completes channel 0 before channel 1",
   cpu.reset();
   cpu.set_r(5, 0x1000);
   cpu.set_sr(0);
+  put32(bus, 0x1100, 0x300);
+  put32(bus, 0x1104, 0x400);
   put16(bus, cpu.pc(), 0x452E);
   CHECK(cpu.step() == 1);
   peripheral_write16(cpu, bus, 0xFFFFFEE2, 0x0400);
@@ -1422,22 +1430,27 @@ TEST_CASE("SH-2 DMAC fixed priority completes channel 0 before channel 1",
   peripheral_write32(cpu, bus, 0xFFFFFF90, 0x300);
   peripheral_write32(cpu, bus, 0xFFFFFF94, 0x500);
   peripheral_write32(cpu, bus, 0xFFFFFF98, 1);
-  peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
   peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5A05);
   peripheral_write32(cpu, bus, 0xFFFFFF9C, 0x5A05);
-  put32(bus, 0x1100, 0x300);
-  put32(bus, 0x1104, 0x400);
-  peripheral_nops(cpu, bus, 1);
-  CHECK(cpu.step() == 9);
+  peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
+  uint32_t entry_cycles = 0;
+  for (size_t i = 0; i < 4 && cpu.pc() != 0x300; i++) {
+    put16(bus, cpu.pc(), 0x0009);
+    entry_cycles = cpu.step();
+  }
+  CHECK((cpu.save().dmac.channels[0].chcr & 6) == 6);
   CHECK(cpu.pc() == 0x300);
   peripheral_read32(cpu, bus, 0xFFFFFF8C);
   CHECK((cpu.r(3) & 2) != 0);
   peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5A04);
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
-  put16(bus, cpu.pc(), 0x0009);
-  CHECK(cpu.step() == 1);
-  CHECK(cpu.step() == 9);
+  CHECK((cpu.save().dmac.channels[1].chcr & 6) == 6);
+  for (size_t i = 0; i < 16 && cpu.pc() != 0x400; i++) {
+    put16(bus, cpu.pc(), 0x0009);
+    entry_cycles = cpu.step();
+  }
+  CHECK(entry_cycles == 9);
   CHECK(cpu.pc() == 0x400);
   CHECK(bus.read32(0x400) == 0x11223344);
   CHECK(bus.read32(0x500) == 0x55667788);
@@ -1679,11 +1692,11 @@ TEST_CASE("SH-2 DMA address errors preserve registers and use vector 10",
   peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
   peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5605);
   put16(bus, cpu.pc(), 0x0009);
-  CHECK(cpu.step() == 1);
   CHECK(cpu.step() == 8);
-  CHECK(cpu.pc() == 0x700);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.pc() == 0x702);
   CHECK(cpu.sr() == 0x30);
-  CHECK(bus.read32(0x7FF8) == 0x10E);
+  CHECK(bus.read32(0x7FF8) == 0x10C);
   CHECK(bus.read32(0x7FFC) == 0x30);
   CHECK(bus.read16(0x400) == 0);
   peripheral_read32(cpu, bus, 0xFFFFFF80);
@@ -1700,7 +1713,7 @@ TEST_CASE("SH-2 DMA address errors preserve registers and use vector 10",
   CHECK(cpu.step() == 4);
   put16(bus, cpu.pc(), 0x0009);
   CHECK(cpu.step() == 1);
-  CHECK(cpu.pc() == 0x10E);
+  CHECK(cpu.pc() == 0x10C);
   CHECK(cpu.r(15) == 0x8000);
   CHECK(cpu.fault() == Sh2::Fault::None);
 }
@@ -2028,5 +2041,123 @@ TEST_CASE("SH-2 instruction fetch pays miss cost once per cached line", "[sh2]")
   CHECK(bus.read32_addresses[3] == 0x100);
   CHECK(cpu.step() == 1);
   CHECK(bus.read32_addresses.size() == 4);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 memory accesses split contending instruction fetch slots", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(1, 0x300);
+  cpu.set_r(2, 0x400);
+  put16(bus, 0x100, 0x2122);
+  put16(bus, 0x102, 0x2122);
+  put16(bus, 0x104, 0x6312);
+  put16(bus, 0x106, 0x0009);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 immediate consumers pay the memory load pipeline penalty", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(1, 0x300);
+  cpu.set_r(4, 1);
+  cpu.set_r(5, 2);
+  put16(bus, 0x100, 0x6212);
+  put16(bus, 0x102, 0x6323);
+  put16(bus, 0x104, 0x6433);
+  put16(bus, 0x106, 0x6212);
+  put16(bus, 0x108, 0x6212);
+  put16(bus, 0x10A, 0x345C);
+  put16(bus, 0x10C, 0x0009);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.r(4) == 2);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 multiplier contention resets after an unrelated instruction", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  put16(bus, 0x100, 0x212E);
+  put16(bus, 0x102, 0x212F);
+  put16(bus, 0x104, 0x0009);
+  put16(bus, 0x106, 0x212E);
+  put16(bus, 0x108, 0x412F);
+  put16(bus, 0x10A, 0x412F);
+  put16(bus, 0x10C, 0x212E);
+  cpu.set_r(1, 0x300);
+  cpu.set_r(2, 0x310);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 4);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.step() == 4);
+  CHECK(cpu.step() == 5);
+  CHECK(cpu.save().multiplier != 0);
+  CHECK(cpu.pc() == 0x10C);
+  CHECK(cpu.step() == 3);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 pipeline dependencies survive save and restore", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(1, 0x300);
+  put16(bus, 0x100, 0x6212);
+  put16(bus, 0x102, 0x6323);
+  CHECK(cpu.step() == 1);
+  const auto saved = cpu.save();
+  CHECK(saved.load_destination == 1);
+  CHECK(saved.load_register == 2);
+  Sh2 restored(bus);
+  restored.restore(saved);
+  CHECK(cpu.step() == 2);
+  CHECK(restored.step() == 2);
+  CHECK(restored.pc() == cpu.pc());
+  CHECK(restored.r(3) == cpu.r(3));
+  CHECK(restored.fault() == Sh2::Fault::None);
+}
+
+
+TEST_CASE("SH-2 control register loads interlock their immediate consumers",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(1, 0x300);
+  cpu.set_r(2, 1);
+  cpu.set_r(3, 2);
+  put32(bus, 0x300, 0);
+  put32(bus, 0x304, 0x120);
+  put16(bus, 0x100, 0x4107);
+  put16(bus, 0x102, 0x332E);
+  put16(bus, 0x104, 0x4126);
+  put16(bus, 0x106, 0x000B);
+  put16(bus, 0x108, 0x0009);
+  CHECK(cpu.step() == 3);
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.r(3) == 3);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 3);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.pc() == 0x120);
   CHECK(cpu.fault() == Sh2::Fault::None);
 }

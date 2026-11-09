@@ -68,6 +68,9 @@ public:
     uint8_t pending_vector = 0;
     uint8_t pending_level = 0;
     uint8_t fault = 0;
+    uint8_t load_destination = 0;
+    uint8_t load_register = 0;
+    uint8_t multiplier = 0;
   };
 
   explicit Sh2(Sh2BusInterface &bus);
@@ -161,7 +164,10 @@ public:
             m_delay_slots,
             m_pending_vector,
             m_pending_level,
-            (uint8_t)m_fault};
+            (uint8_t)m_fault,
+            m_load_destination,
+            m_load_register,
+            m_multiplier};
   }
   void restore(const SavedState &state)
   {
@@ -184,11 +190,16 @@ public:
     m_pending_vector = state.pending_vector;
     m_pending_level = state.pending_level;
     m_fault = (Fault)state.fault;
+    m_load_destination = state.load_destination;
+    m_load_register = state.load_register;
+    m_multiplier = state.multiplier;
   }
   static bool valid_saved_state(const SavedState &state)
   {
     return state.fault <= (uint8_t)Fault::IllegalOpcode &&
-           state.delay_slots <= 1 && state.pending_level <= 17 &&
+           state.load_destination <= 7 && state.load_register <= 15 &&
+           state.multiplier <= 4 && state.delay_slots <= 1 &&
+           state.pending_level <= 17 &&
            (state.pending_level < 16 ||
             (state.pending_level == 16 && state.pending_vector == 11) ||
             (state.pending_level == 17 && state.pending_vector == 10)) &&
@@ -214,6 +225,9 @@ private:
     uint8_t pending_level = 0;
     Fault fault = Fault::None;
     bool address_error = false;
+    uint8_t load_destination = 0;
+    uint8_t load_register = 0;
+    uint8_t multiplier = 0;
   };
 
   RetryState retry_state() const;
@@ -257,6 +271,9 @@ private:
   uint8_t m_pending_level = 0;
   Fault m_fault = Fault::None;
   bool m_address_error = false;
+  uint8_t m_load_destination = 0;
+  uint8_t m_load_register = 0;
+  uint8_t m_multiplier = 0;
 };
 
 }  // namespace generator

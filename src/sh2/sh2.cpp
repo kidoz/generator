@@ -24,6 +24,284 @@ void accumulate(uint32_t &mach, uint32_t &macl, int64_t product)
   macl = (uint32_t)accumulator;
 }
 
+enum LoadDestination : uint8_t {
+  LoadNone,
+  LoadRegister,
+  LoadSr,
+  LoadGbr,
+  LoadVbr,
+  LoadPr,
+  LoadMach,
+  LoadMacl,
+};
+
+enum Multiplier : uint8_t {
+  MultiplyNone,
+  MultiplyWord,
+  MultiplyMacW,
+  MultiplyMacL,
+  MultiplyDmul,
+};
+
+uint16_t register_sources(uint16_t op)
+{
+  const uint32_t n = (op >> 8) & 0xF;
+  const uint32_t m = (op >> 4) & 0xF;
+  const uint32_t low = op & 0xF;
+  const uint32_t reg_n = 1u << n;
+  const uint32_t reg_m = 1u << m;
+  switch (op >> 12) {
+  case 0:
+    if (low == 3 || low == 7 || low == 0xF)
+      return reg_n | reg_m;
+    if (low >= 4 && low <= 6)
+      return reg_n | reg_m | 1;
+    if (op == 0x002B)
+      return 1u << 15;
+    return 0;
+  case 1:
+  case 2:
+  case 3:
+    return reg_n | reg_m;
+  case 4:
+    return low >= 0xC ? reg_n | reg_m : reg_n;
+  case 5:
+    return reg_m;
+  case 6:
+    return reg_m;
+  case 7:
+    return reg_n;
+  case 8:
+    if (n <= 2)
+      return reg_m | 1;
+    if (n >= 4 && n <= 6)
+      return reg_m;
+    if (n == 8)
+      return 1;
+    return 0;
+  case 0xC:
+    if (n <= 2 || (n >= 8 && n != 0xC && n != 0xD && n != 0xE))
+      return 1;
+    if (n == 3)
+      return 1u << 15;
+    if (n >= 0xC)
+      return 1;
+    return 0;
+  default:
+    return 0;
+  }
+}
+
+bool reads_t(uint16_t op)
+{
+  if ((op & 0xF00F) == 0x3004 || (op & 0xF00F) == 0x300A ||
+      (op & 0xF00F) == 0x300E || (op & 0xF00F) == 0x600A)
+    return true;
+  if ((op & 0xF0FF) == 0x4024 || (op & 0xF0FF) == 0x4025 ||
+      (op & 0xF0FF) == 0x0029)
+    return true;
+  return (op & 0xF000) == 0x8000 &&
+         (((op >> 8) & 0xF) == 9 || ((op >> 8) & 0xF) == 0xB ||
+          ((op >> 8) & 0xF) == 0xD || ((op >> 8) & 0xF) == 0xF);
+}
+
+bool reads_gbr(uint16_t op)
+{
+  const uint32_t n = (op >> 8) & 0xF;
+  return (op >> 12) == 0xC && n != 3 && n != 7;
+}
+
+bool reads_pr(uint16_t op)
+{
+  return op == 0x000B || (op & 0xF0FF) == 0x002A || (op & 0xF0FF) == 0x4022;
+}
+
+uint8_t loaded_destination(uint16_t op, uint8_t &reg)
+{
+  const uint32_t n = (op >> 8) & 0xF;
+  const uint32_t low = op & 0xF;
+  reg = n;
+  switch (op >> 12) {
+  case 0:
+    if (low >= 0xC && low <= 0xE)
+      return LoadRegister;
+    return 0;
+  case 4:
+    switch (op & 0xFF) {
+    case 0x06:
+      return LoadMach;
+    case 0x07:
+      return LoadSr;
+    case 0x16:
+      return LoadMacl;
+    case 0x17:
+      return LoadGbr;
+    case 0x26:
+      return LoadPr;
+    case 0x27:
+      return LoadVbr;
+    default:
+      return 0;
+    }
+  case 5:
+    return LoadRegister;
+  case 6:
+    return low <= 2 || (low >= 4 && low <= 6) ? LoadRegister : LoadNone;
+  case 8:
+    reg = 0;
+    return n >= 4 && n <= 6 ? LoadRegister : LoadNone;
+  case 9:
+  case 0xD:
+    return LoadRegister;
+  case 0xC:
+    reg = 0;
+    return (n >= 4 && n <= 6) || n >= 0xC ? LoadRegister : LoadNone;
+  default:
+    return LoadNone;
+  }
+}
+
+bool load_use_conflict(uint16_t op, uint8_t destination, uint8_t reg)
+{
+  if (destination == LoadRegister) {
+    uint8_t next_reg = 0;
+    if (loaded_destination(op, next_reg) == LoadRegister && next_reg == reg)
+      return false;
+    if ((op & 0xF00F) == 0x000F || (op & 0xF00F) == 0x400F)
+      return false;
+    return (register_sources(op) & (1u << reg)) != 0;
+  }
+  if (destination == LoadSr)
+    return reads_t(op);
+  if (destination == LoadGbr)
+    return reads_gbr(op);
+  if (destination == LoadVbr)
+    return (op & 0xFF00) == 0xC300;
+  if (destination == LoadPr)
+    return reads_pr(op);
+  if (destination == LoadMach || destination == LoadMacl) {
+    if ((op & 0xF00F) == 0x000F || (op & 0xF00F) == 0x400F)
+      return true;
+    const uint32_t n = (op >> 8) & 0xF;
+    if ((op & 0xF00F) == 0x000A)
+      return n == (destination == LoadMach ? 0 : 1);
+    switch (op & 0xF0FF) {
+    case 0x4002:
+      return destination == LoadMach;
+    case 0x4012:
+      return destination == LoadMacl;
+    default:
+      return false;
+    }
+  }
+  return false;
+}
+
+uint8_t memory_accesses(uint16_t op)
+{
+  const uint32_t n = (op >> 8) & 0xF;
+  const uint32_t low = op & 0xF;
+  switch (op >> 12) {
+  case 0:
+    if (low == 7 || low == 0xF)
+      return 2;
+    if ((low >= 4 && low <= 6) || (low >= 0xC && low <= 0xE))
+      return 1;
+    if (op == 0x0028)
+      return 1;
+    return 0;
+  case 1:
+  case 5:
+  case 9:
+  case 0xD:
+    return 1;
+  case 2:
+    return low <= 6 || low >= 0xE ? 1 : 0;
+  case 3:
+    return low == 5 || low == 0xD ? 2 : 0;
+  case 4:
+    if (low == 0xF)
+      return 2;
+    switch (op & 0xFF) {
+    case 0x02:
+    case 0x03:
+    case 0x06:
+    case 0x07:
+    case 0x0A:
+    case 0x12:
+    case 0x13:
+    case 0x16:
+    case 0x17:
+    case 0x1A:
+    case 0x22:
+    case 0x23:
+    case 0x26:
+    case 0x27:
+      return 1;
+    default:
+      return 0;
+    }
+  case 6:
+    return low <= 2 || (low >= 4 && low <= 6);
+  case 8:
+    return n <= 6;
+  case 0xC:
+    return (n <= 6 && n != 3) || n >= 0xC;
+  default:
+    return 0;
+  }
+}
+
+uint8_t multiplier(uint16_t op)
+{
+  if ((op & 0xF00F) == 0x200E || (op & 0xF00F) == 0x200F)
+    return MultiplyWord;
+  if ((op & 0xF00F) == 0x0007 || (op & 0xF00F) == 0x3005 ||
+      (op & 0xF00F) == 0x300D)
+    return MultiplyDmul;
+  if ((op & 0xF00F) == 0x000F)
+    return MultiplyMacL;
+  if ((op & 0xF00F) == 0x400F)
+    return MultiplyMacW;
+  return MultiplyNone;
+}
+
+bool accesses_multiplier(uint16_t op)
+{
+  if (op == 0x0028)
+    return true;
+  const uint32_t n = (op >> 8) & 0xF;
+  if ((op & 0xF00F) == 0x000A)
+    return n < 2;
+  switch (op & 0xF0FF) {
+  case 0x4002:
+  case 0x400A:
+  case 0x4012:
+  case 0x401A:
+  case 0x4006:
+  case 0x4016:
+    return true;
+  default:
+    return false;
+  }
+}
+
+uint32_t multiplier_penalty(uint8_t previous, uint16_t op)
+{
+  if (previous == MultiplyNone)
+    return 0;
+  const uint8_t current = multiplier(op);
+  if (previous == MultiplyWord || previous == MultiplyMacW) {
+    if (current == MultiplyWord || accesses_multiplier(op))
+      return 2;
+    return 0;
+  }
+  if (current == MultiplyMacW || current == MultiplyMacL ||
+      current == MultiplyDmul || current == MultiplyWord)
+    return 2;
+  return accesses_multiplier(op) ? 4 : 0;
+}
+
 }  // namespace
 
 Sh2::Sh2(Sh2BusInterface &bus) : m_bus(bus), m_cache(bus), m_dmac(bus)
@@ -263,6 +541,9 @@ void Sh2::reset()
   m_cache.reset();
   m_fault = Fault::None;
   m_address_error = false;
+  m_load_destination = LoadNone;
+  m_load_register = 0;
+  m_multiplier = MultiplyNone;
 }
 
 uint16_t Sh2::fetch16()
@@ -347,7 +628,10 @@ Sh2::RetryState Sh2::retry_state() const
           m_pending_vector,
           m_pending_level,
           m_fault,
-          m_address_error};
+          m_address_error,
+          m_load_destination,
+          m_load_register,
+          m_multiplier};
 }
 
 void Sh2::restore_retry_state(const RetryState &state)
@@ -367,6 +651,9 @@ void Sh2::restore_retry_state(const RetryState &state)
   m_pending_level = state.pending_level;
   m_fault = state.fault;
   m_address_error = state.address_error;
+  m_load_destination = state.load_destination;
+  m_load_register = state.load_register;
+  m_multiplier = state.multiplier;
 }
 
 uint32_t Sh2::step()
@@ -398,6 +685,7 @@ uint32_t Sh2::execute_step()
   const bool was_delayed = m_delay_slots != 0;
   const uint32_t delayed_target = m_branch_target;
   const uint16_t op = fetch16();
+  const uint32_t instruction_pc = m_pc - 2;
   const uint32_t n = (op >> 8) & 0xF;
   const uint32_t m = (op >> 4) & 0xF;
   const uint32_t size = op & 3;
@@ -1011,6 +1299,22 @@ uint32_t Sh2::execute_step()
       m_pc = delayed_target;
     }
   }
+  const uint8_t accesses = memory_accesses(op);
+  uint32_t contention = m_address_error || accesses == 0
+                            ? 0
+                            : accesses - ((instruction_pc & 2) == 0);
+  const bool load_use =
+      load_use_conflict(op, m_load_destination, m_load_register);
+  if (load_use && contention == 0)
+    contention = 1;
+  else if (load_use)
+    contention--;
+  if (!m_address_error)
+    contention += multiplier_penalty(m_multiplier, op);
+  cycles += contention;
+  m_load_destination =
+      m_address_error ? LoadNone : loaded_destination(op, m_load_register);
+  m_multiplier = m_address_error ? MultiplyNone : multiplier(op);
   if (m_address_error)
     return cycles + m_stall_cycles + enter_exception(9, m_pc, 0);
   return cycles + m_stall_cycles;

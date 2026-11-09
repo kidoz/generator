@@ -1175,7 +1175,7 @@ TEST_CASE("X32 SH-2 bus accesses include per-region wait states", "[x32]")
   device.master().set_r(2, 2);
   CHECK(device.master().step() == 7);
   device.master().set_r(1, 0x06000000);
-  CHECK(device.master().step() == 4);
+  CHECK(device.master().step() == 5);
   device.master().set_r(1, 0x24000000);
   CHECK(device.master().step() == 3);
 }
