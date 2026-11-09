@@ -64,6 +64,7 @@ public:
   void reset();
   uint32_t step();
   bool request_interrupt(uint8_t vector, uint8_t level);
+  void request_nmi();
   void add_wait_states(uint32_t cycles)
   {
     m_stall_cycles += cycles;
@@ -168,7 +169,10 @@ public:
   static bool valid_saved_state(const SavedState &state)
   {
     return state.fault <= (uint8_t)Fault::IllegalOpcode &&
-           state.delay_slots <= 1 && state.pending_level <= 15 &&
+           state.delay_slots <= 1 && state.pending_level <= 17 &&
+           (state.pending_level < 16 ||
+            (state.pending_level == 16 && state.pending_vector == 11) ||
+            (state.pending_level == 17 && state.pending_vector == 10)) &&
            state.dmac.drcr[0] <= 3 && state.dmac.drcr[1] <= 3 &&
            state.dmac.next_channel <= 1;
   }
@@ -189,6 +193,7 @@ private:
     uint8_t pending_vector = 0;
     uint8_t pending_level = 0;
     Fault fault = Fault::None;
+    bool address_error = false;
   };
 
   RetryState retry_state() const;
@@ -198,9 +203,10 @@ private:
   void branch(uint32_t target, bool link);
   uint32_t enter_exception(uint8_t vector, uint32_t return_pc, uint8_t level);
   void illegal();
+  bool address_error(uint32_t address, uint32_t size, bool pc_relative = false);
   uint8_t read8(uint32_t address);
-  uint16_t read16(uint32_t address);
-  uint32_t read32(uint32_t address);
+  uint16_t read16(uint32_t address, bool pc_relative = false);
+  uint32_t read32(uint32_t address, bool pc_relative = false);
   void write8(uint32_t address, uint8_t value);
   void write16(uint32_t address, uint16_t value);
   void write32(uint32_t address, uint32_t value);
@@ -229,6 +235,7 @@ private:
   uint8_t m_pending_vector = 0;
   uint8_t m_pending_level = 0;
   Fault m_fault = Fault::None;
+  bool m_address_error = false;
 };
 
 }  // namespace generator

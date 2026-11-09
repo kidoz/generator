@@ -240,24 +240,25 @@ TEST_CASE("SH-2 post-increment and pre-decrement accesses preserve width",
   auto bus = make_bus();
   Sh2 cpu(bus);
   cpu.reset();
-  cpu.set_r(1, 0x200);
-  cpu.set_r(4, 0x302);
-  cpu.set_r(5, 0x304);
-  bus.memory[0x200] = 0x80;
-  put16(bus, 0x201, 0x8001);
-  put32(bus, 0x203, 0x89ABCDEF);
+  cpu.set_r(1, 0x201);
+  cpu.set_r(4, 0x202);
+  cpu.set_r(5, 0x204);
+  bus.memory[0x201] = 0x80;
+  put16(bus, 0x202, 0x8001);
+  put32(bus, 0x204, 0x89ABCDEF);
   put16(bus, 0x100, 0x6214);
   put16(bus, 0x102, 0x6315);
   put16(bus, 0x104, 0x6416);
   put16(bus, 0x106, 0x2415);
   put16(bus, 0x108, 0x2516);
   run(cpu, 3);
-  CHECK(cpu.r(1) == 0x207);
+  CHECK(cpu.r(1) == 0x208);
   CHECK(cpu.r(2) == 0xFFFFFF80);
   CHECK(cpu.r(3) == 0xFFFF8001);
   CHECK(cpu.r(4) == 0x89ABCDEF);
   cpu.set_r(1, 0x12345678);
   cpu.set_r(4, 0x302);
+  cpu.set_r(5, 0x304);
   run(cpu, 1);
   CHECK(cpu.r(4) == 0x300);
   CHECK(bus.read16(0x300) == 0x5678);
@@ -783,6 +784,8 @@ TEST_CASE("SH-2 step reports base instruction execution states", "[sh2]")
     cpu.set_r(1, 0x200);
     cpu.set_r(2, 0x300);
     CHECK(cpu.step() == 3);
+    cpu.set_r(1, 0x200);
+    cpu.set_r(2, 0x300);
     CHECK(cpu.step() == 3);
   }
   SECTION("BRA and its delay slot are timed independently")
@@ -1427,26 +1430,26 @@ TEST_CASE("SH-2 cache control supports ways and purge operations", "[sh2]")
   peripheral_write8(cpu, bus, 0xFFFFFE92, 0xC1);
   peripheral_read8(cpu, bus, 0xFFFFFE92);
   CHECK((uint8_t)cpu.r(2) == 0xC1);
-  peripheral_write32(cpu, bus, 0x60000022, 0);
-  peripheral_read32(cpu, bus, 0x60000022);
-  CHECK(cpu.r(3) == 0x00000002);
+  peripheral_write32(cpu, bus, 0x60000024, 0);
+  peripheral_read32(cpu, bus, 0x60000024);
+  CHECK(cpu.r(3) == 0x00000004);
   peripheral_write8(cpu, bus, 0xFFFFFE92, 0x41);
-  peripheral_read32(cpu, bus, 0x60000022);
+  peripheral_read32(cpu, bus, 0x60000024);
   CHECK(cpu.r(3) == 0);
-  peripheral_write32(cpu, bus, 0x60000022, 0);
-  peripheral_read32(cpu, bus, 0x60000022);
-  CHECK(cpu.r(3) == 0x00000002);
+  peripheral_write32(cpu, bus, 0x60000024, 0);
+  peripheral_read32(cpu, bus, 0x60000024);
+  CHECK(cpu.r(3) == 0x00000004);
   peripheral_write8(cpu, bus, 0xFFFFFE92, 0x11);
   peripheral_read8(cpu, bus, 0xFFFFFE92);
   CHECK(cpu.r(2) == 1);
-  peripheral_read32(cpu, bus, 0x60000022);
+  peripheral_read32(cpu, bus, 0x60000024);
   CHECK(cpu.r(3) == 0);
   peripheral_write8(cpu, bus, 0xFFFFFE92, 0xC1);
-  peripheral_write32(cpu, bus, 0x60000022, 0);
-  peripheral_read32(cpu, bus, 0x60000022);
-  CHECK(cpu.r(3) == 0x00000002);
-  peripheral_read32(cpu, bus, 0x40000022);
-  peripheral_read32(cpu, bus, 0x60000022);
+  peripheral_write32(cpu, bus, 0x60000024, 0);
+  peripheral_read32(cpu, bus, 0x60000024);
+  CHECK(cpu.r(3) == 0x00000004);
+  peripheral_read32(cpu, bus, 0x40000024);
+  peripheral_read32(cpu, bus, 0x60000024);
   CHECK(cpu.r(3) == 0);
   CHECK(cpu.fault() == Sh2::Fault::None);
 }
@@ -1521,5 +1524,155 @@ TEST_CASE("SH-2 DMAC edge DREQ consumes one request per transition", "[sh2]")
   CHECK(cpu.r(3) == 0);
   peripheral_read32(cpu, bus, 0xFFFFFF8C);
   CHECK((cpu.r(3) & 2) != 0);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+
+TEST_CASE("SH-2 NMI ignores masks and preserves pending state", "[sh2]")
+{
+  auto bus = make_bus();
+  put16(bus, 0x100, 0x452E);
+  put16(bus, 0x102, 0x0009);
+  put16(bus, 0x500, 0x002B);
+  put16(bus, 0x502, 0x0009);
+  put32(bus, 0x102C, 0x500);
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(5, 0x1000);
+  CHECK(cpu.step() == 1);
+  CHECK_FALSE(cpu.request_interrupt(0x40, 16));
+  cpu.request_nmi();
+
+  const auto pending = cpu.save();
+  REQUIRE(Sh2::valid_saved_state(pending));
+  CHECK(pending.pending_vector == 11);
+  CHECK(pending.pending_level == 16);
+  Sh2 restored(bus);
+  restored.restore(pending);
+  CHECK(restored.step() == 9);
+  CHECK(restored.pc() == 0x500);
+  CHECK(restored.sr() == 0xF0);
+  CHECK(restored.r(15) == 0x7FF8);
+  CHECK(bus.read32(0x7FF8) == 0x102);
+  CHECK(bus.read32(0x7FFC) == 0xF0);
+  CHECK((restored.save().dmac.dmaor & 2) != 0);
+  peripheral_write32(restored, bus, 0xFFFFFFB0, 0);
+  CHECK((restored.save().dmac.dmaor & 2) == 0);
+  put16(bus, restored.pc(), 0x002B);
+  CHECK(restored.step() == 4);
+  put16(bus, restored.pc(), 0x0009);
+  CHECK(restored.step() == 1);
+  CHECK(restored.pc() == 0x102);
+  CHECK(restored.r(15) == 0x8000);
+  CHECK(restored.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 CPU address errors use vector 9 without changing SR", "[sh2]")
+{
+  auto bus = make_bus();
+  put16(bus, 0x100, 0x452E);
+  put32(bus, 0x1024, 0x600);
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(5, 0x1000);
+  cpu.set_sr(0x30);
+  CHECK(cpu.step() == 1);
+
+  SECTION("odd instruction fetch")
+  {
+    put16(bus, 0x102, 0x442B);
+    put16(bus, 0x104, 0x0009);
+    cpu.set_r(4, 0x101);
+    CHECK(cpu.step() == 2);
+    CHECK(cpu.step() == 1);
+    CHECK(cpu.pc() == 0x101);
+    CHECK(cpu.step() == 8);
+    CHECK(bus.read32(0x7FF8) == 0x101);
+  }
+  SECTION("misaligned word read")
+  {
+    put16(bus, 0x102, 0x6211);
+    cpu.set_r(1, 0x201);
+    bus.memory[0x201] = 0x80;
+    CHECK(cpu.step() == 9);
+    CHECK(cpu.r(2) == 0);
+    CHECK(bus.memory[0x201] == 0x80);
+    CHECK(bus.read32(0x7FF8) == 0x104);
+  }
+  SECTION("misaligned longword write")
+  {
+    put16(bus, 0x102, 0x2216);
+    put32(bus, 0x1FC, 0xAABBCCDD);
+    cpu.set_r(1, 0x11223344);
+    cpu.set_r(2, 0x203);
+    CHECK(cpu.step() == 9);
+    CHECK(cpu.r(2) == 0x1FF);
+    CHECK(bus.read32(0x1FC) == 0xAABBCCDD);
+    CHECK(bus.read32(0x7FF8) == 0x104);
+  }
+  SECTION("byte access to longword-only peripheral space")
+  {
+    put16(bus, 0x102, 0x6210);
+    cpu.set_r(1, 0xFFFFFF00);
+    CHECK(cpu.step() == 9);
+    CHECK(cpu.r(2) == 0);
+    CHECK(bus.read32(0x7FF8) == 0x104);
+  }
+  SECTION("byte write to longword-only peripheral space")
+  {
+    put16(bus, 0x102, 0x2100);
+    cpu.set_r(1, 0xFFFFFF00);
+    cpu.set_r(0, 0xAA);
+    CHECK(cpu.step() == 9);
+    CHECK(bus.read32(0x7FF8) == 0x104);
+  }
+  CHECK(cpu.pc() == 0x600);
+  CHECK(cpu.sr() == 0x30);
+  CHECK(cpu.r(15) == 0x7FF8);
+  CHECK(bus.read32(0x7FFC) == 0x30);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 DMA address errors preserve registers and use vector 10",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  put16(bus, 0x100, 0x452E);
+  put32(bus, 0x1028, 0x700);
+  put16(bus, 0x200, 0x1234);
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(5, 0x1000);
+  cpu.set_sr(0x30);
+  CHECK(cpu.step() == 1);
+  peripheral_write32(cpu, bus, 0xFFFFFF80, 0x201);
+  peripheral_write32(cpu, bus, 0xFFFFFF84, 0x400);
+  peripheral_write32(cpu, bus, 0xFFFFFF88, 1);
+  peripheral_write32(cpu, bus, 0xFFFFFFB0, 1);
+  peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5605);
+  put16(bus, cpu.pc(), 0x0009);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 8);
+  CHECK(cpu.pc() == 0x700);
+  CHECK(cpu.sr() == 0x30);
+  CHECK(bus.read32(0x7FF8) == 0x10E);
+  CHECK(bus.read32(0x7FFC) == 0x30);
+  CHECK(bus.read16(0x400) == 0);
+  peripheral_read32(cpu, bus, 0xFFFFFF80);
+  CHECK(cpu.r(3) == 0x201);
+  peripheral_read32(cpu, bus, 0xFFFFFF84);
+  CHECK(cpu.r(3) == 0x400);
+  peripheral_read32(cpu, bus, 0xFFFFFF88);
+  CHECK(cpu.r(3) == 1);
+  peripheral_read32(cpu, bus, 0xFFFFFFB0);
+  CHECK((cpu.r(3) & 4) != 0);
+  peripheral_write32(cpu, bus, 0xFFFFFFB0, 0);
+  CHECK((cpu.save().dmac.dmaor & 6) == 0);
+  put16(bus, cpu.pc(), 0x002B);
+  CHECK(cpu.step() == 4);
+  put16(bus, cpu.pc(), 0x0009);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.pc() == 0x10E);
+  CHECK(cpu.r(15) == 0x8000);
   CHECK(cpu.fault() == Sh2::Fault::None);
 }

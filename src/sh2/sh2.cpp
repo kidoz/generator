@@ -30,8 +30,25 @@ Sh2::Sh2(Sh2BusInterface &bus) : m_bus(bus), m_dmac(bus)
 {
 }
 
+bool Sh2::address_error(uint32_t address, uint32_t size, bool pc_relative)
+{
+  bool error = (address & (size - 1)) != 0;
+  if (size == 1 && address >= 0xFFFFFF00)
+    error = true;
+  if (size == 4 && address >= 0xFFFFFE00 && address <= 0xFFFFFEFF)
+    error = true;
+  if (pc_relative && ((address >= 0x40000000 && address < 0x60000000) ||
+                      (address >= 0x60000000 && address <= 0x600003FF) ||
+                      address >= 0xFFFFFE00))
+    error = true;
+  m_address_error |= error;
+  return error;
+}
+
 uint8_t Sh2::read8(uint32_t address)
 {
+  if (address_error(address, 1))
+    return 0;
   if (address >= 0xFFFFFE10 && address <= 0xFFFFFE19)
     return m_frt.read(address);
   if (address == 0xFFFFFE71 || address == 0xFFFFFE72)
@@ -45,8 +62,10 @@ uint8_t Sh2::read8(uint32_t address)
   return m_bus.read8(address);
 }
 
-uint16_t Sh2::read16(uint32_t address)
+uint16_t Sh2::read16(uint32_t address, bool pc_relative)
 {
+  if (address_error(address, 2, pc_relative))
+    return 0;
   if (address >= 0xFFFFFF00 && address <= 0xFFFFFF14) {
     stall_divu();
     return m_divu.read16(address);
@@ -68,8 +87,10 @@ uint16_t Sh2::read16(uint32_t address)
   return m_bus.read16(address);
 }
 
-uint32_t Sh2::read32(uint32_t address)
+uint32_t Sh2::read32(uint32_t address, bool pc_relative)
 {
+  if (address_error(address, 4, pc_relative))
+    return 0;
   if (address >= 0xFFFFFF00 && address <= 0xFFFFFF14) {
     stall_divu();
     return m_divu.read32(address);
@@ -86,6 +107,8 @@ uint32_t Sh2::read32(uint32_t address)
 
 void Sh2::write8(uint32_t address, uint8_t value)
 {
+  if (address_error(address, 1))
+    return;
   if (address >= 0xFFFFFE10 && address <= 0xFFFFFE19) {
     m_frt.write(address, value);
     return;
@@ -107,6 +130,8 @@ void Sh2::write8(uint32_t address, uint8_t value)
 
 void Sh2::write16(uint32_t address, uint16_t value)
 {
+  if (address_error(address, 2))
+    return;
   if (address >= 0xFFFFFF00 && address <= 0xFFFFFF14) {
     stall_divu();
     m_divu.write16(address, value);
@@ -132,6 +157,8 @@ void Sh2::write16(uint32_t address, uint16_t value)
 
 void Sh2::write32(uint32_t address, uint32_t value)
 {
+  if (address_error(address, 4))
+    return;
   if (address >= 0xFFFFFF00 && address <= 0xFFFFFF14) {
     stall_divu();
     m_divu.write32(address, value);
@@ -192,6 +219,10 @@ uint32_t Sh2::advance_cycles(uint32_t cycles)
     request_interrupt(m_dmac.vector(0), m_intc.dmac_priority());
   if (m_dmac.completion_pending(1))
     request_interrupt(m_dmac.vector(1), m_intc.dmac_priority());
+  if (m_dmac.take_address_error()) {
+    m_pending_vector = 10;
+    m_pending_level = 17;
+  }
   if (m_divu.overflow_interrupt_pending())
     request_interrupt(m_divu.vector(), m_intc.divu_priority());
   if (m_frt.compare_interrupt_pending())
@@ -223,6 +254,7 @@ void Sh2::reset()
   m_dmac.reset();
   m_cache.reset();
   m_fault = Fault::None;
+  m_address_error = false;
 }
 
 uint16_t Sh2::fetch16()
@@ -243,17 +275,25 @@ void Sh2::branch(uint32_t target, bool link)
 
 uint32_t Sh2::enter_exception(uint8_t vector, uint32_t return_pc, uint8_t level)
 {
+  m_address_error = false;
   m_r[15] -= 4;
   write32(m_r[15], m_sr);
   m_r[15] -= 4;
   write32(m_r[15], return_pc);
   if (level != 0) {
-    m_sr = (m_sr & 0xFF0F) | (level << 4);
+    const uint8_t mask_level = level > 15 ? 15 : level;
+    m_sr = (m_sr & 0xFF0F) | (mask_level << 4);
   }
   m_pc = read32(m_vbr + (uint32_t)vector * 4);
   m_branch_target = 0;
   m_delay_slots = 0;
-  return level == 0 ? 8 : 9;
+  const uint32_t cycles = level == 0 ? 8 : 9;
+  if (m_address_error && vector != 9) {
+    m_address_error = false;
+    return cycles + enter_exception(9, m_pc, 0);
+  }
+  m_address_error = false;
+  return cycles;
 }
 
 bool Sh2::request_interrupt(uint8_t vector, uint8_t level)
@@ -267,6 +307,15 @@ bool Sh2::request_interrupt(uint8_t vector, uint8_t level)
     m_pending_level = level;
   }
   return true;
+}
+
+void Sh2::request_nmi()
+{
+  m_dmac.set_nmi();
+  if (m_pending_level > 16)
+    return;
+  m_pending_vector = 11;
+  m_pending_level = 16;
 }
 
 void Sh2::illegal()
@@ -289,7 +338,8 @@ Sh2::RetryState Sh2::retry_state() const
           m_delay_slots,
           m_pending_vector,
           m_pending_level,
-          m_fault};
+          m_fault,
+          m_address_error};
 }
 
 void Sh2::restore_retry_state(const RetryState &state)
@@ -308,6 +358,7 @@ void Sh2::restore_retry_state(const RetryState &state)
   m_pending_vector = state.pending_vector;
   m_pending_level = state.pending_level;
   m_fault = state.fault;
+  m_address_error = state.address_error;
 }
 
 uint32_t Sh2::step()
@@ -326,11 +377,14 @@ uint32_t Sh2::execute_step()
   if (m_fault != Fault::None) {
     return 0;
   }
+  m_address_error = false;
+  if (m_delay_slots == 0 && ((m_pc & 1) || m_pc >= 0xFFFFFE00))
+    return enter_exception(9, m_pc, 0);
   if (m_pending_level != 0 && m_delay_slots == 0) {
     const uint8_t vector = m_pending_vector;
     const uint8_t level = m_pending_level;
     m_pending_level = 0;
-    return enter_exception(vector, m_pc, level);
+    return enter_exception(vector, m_pc, level == 17 ? 0 : level);
   }
   m_stall_cycles = 0;
   const bool was_delayed = m_delay_slots != 0;
@@ -879,7 +933,7 @@ uint32_t Sh2::execute_step()
     }
     break;
   case 9:
-    m_r[n] = (int16_t)read16(m_pc + 2 + imm * 2);
+    m_r[n] = (int16_t)read16(m_pc + 2 + imm * 2, true);
     break;
   case 0xA:
     branch(m_pc + 2 + sign_extend<12>(op & 0xFFF) * 2, false);
@@ -933,7 +987,7 @@ uint32_t Sh2::execute_step()
     }
     break;
   case 0xD:
-    m_r[n] = read32(((m_pc + 2) & ~3u) + imm * 4);
+    m_r[n] = read32(((m_pc + 2) & ~3u) + imm * 4, true);
     break;
   case 0xE:
     m_r[n] = (int8_t)imm;
@@ -949,6 +1003,8 @@ uint32_t Sh2::execute_step()
       m_pc = delayed_target;
     }
   }
+  if (m_address_error)
+    return cycles + m_stall_cycles + enter_exception(9, m_pc, 0);
   return cycles + m_stall_cycles;
 }
 

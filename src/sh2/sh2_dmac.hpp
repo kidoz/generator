@@ -37,9 +37,11 @@ public:
   void write8(uint32_t address, uint8_t value);
   void write32(uint32_t address, uint32_t value);
   void set_dreq(size_t channel, bool asserted);
+  void set_nmi();
   void advance(uint32_t cycles);
 
   bool completion_pending(size_t channel) const;
+  bool take_address_error();
   uint8_t vector(size_t channel) const;
   SavedState save() const
   {
@@ -106,6 +108,7 @@ private:
   uint8_t m_next_channel = 1;
   bool m_dreq_level[2]{};
   bool m_edge_pending[2]{};
+  bool m_address_error_pending = false;
 };
 
 }  // namespace generator

@@ -244,12 +244,11 @@ TEST_CASE("X32 DREQ bridge drains FIFO through the master DMAC", "[x32]")
   device.power_on();
   device.main_bus().write(0xA15100, 0x83, true, true);
   device.master().set_sr(0);
-  cpu_write32(device, master, 0xFFFFFF88, 4);
+  cpu_write32(device, master, 0xFFFFFF88, 8);
   cpu_write32(device, master, 0xFFFFFF80, 0xA15112);
   cpu_write32(device, master, 0xFFFFFF84, 0x06000000);
   cpu_write32(device, master, 0xFFFFFFA0, 0x40);
   cpu_write32(device, master, 0xFFFFFFB0, 1);
-  cpu_write32(device, master, 0xFFFFFF8C, 0x4825);
   device.main_bus().write(0xA15108, 0x3344, true, true);
   device.main_bus().write(0xA1510A, 0x1122, true, true);
   device.main_bus().write(0xA1510C, 0, true, true);
@@ -272,9 +271,11 @@ TEST_CASE("X32 DREQ bridge drains FIFO through the master DMAC", "[x32]")
   REQUIRE(device.main_bus().read(0xA1510E, true, true, &control) == 0);
   CHECK(control == 0x0600);
 
-  REQUIRE(advance_until(device, [&] {
+  cpu_write32(device, master, 0xFFFFFF8C, 0x4625);
+  const bool drained = advance_until(device, [&] {
     return device.master_bus().read32(0x06000000) == 0x11223344;
-  }));
+  });
+  REQUIRE(drained);
   CHECK(device.master_bus().read32(0x06000000) == 0x11223344);
   REQUIRE(device.main_bus().read(0xA15106, true, true, &control) == 0);
   CHECK(control == 0x04);
@@ -585,7 +586,7 @@ TEST_CASE("X32 VINT uses its vector mask and clear register", "[x32]")
   std::vector<uint8_t> cartridge;
   std::vector<uint8_t> master(0x400, 0);
   std::vector<uint8_t> slave(0x400, 0);
-  put32(master, 0, 0x8000);
+  put32(master, 0, 0x06008000);
   put32(master, 4, 0x100);
   put32(master, 0x118, 0x200);
   put16(master, 0x100, 0x0009);
@@ -1080,16 +1081,16 @@ TEST_CASE("X32 DMAC transfers account for source and destination waits",
   device.power_on();
   write_main(device, 0xA15100, 0x83);
   device.master().set_sr(0);
-  cpu_write32(device, master, 0xFFFFFF88, 1);
+  cpu_write32(device, master, 0xFFFFFF88, 2);
   cpu_write32(device, master, 0xFFFFFF80, 0xA15112);
   cpu_write32(device, master, 0xFFFFFF84, 0x06000000);
   cpu_write32(device, master, 0xFFFFFFA0, 0x40);
   cpu_write32(device, master, 0xFFFFFFB0, 1);
-  cpu_write32(device, master, 0xFFFFFF8C, 0x4825);
   write_main(device, 0xA15110, 4);
   write_main(device, 0xA15106, 4);
   write_main(device, 0xA15112, 0x1122);
   write_main(device, 0xA15112, 0x3344);
+  cpu_write32(device, master, 0xFFFFFF8C, 0x4625);
   put16(master, 0x10C, 0x0009);
   put16(master, 0x10E, 0x0009);
   device.master().set_dreq(0, true);
@@ -1106,7 +1107,7 @@ TEST_CASE("X32 RV wait retries cartridge fetch and survives state restore",
   put16(cartridge, 2, 0x0009);
   std::vector<uint8_t> master(0x400, 0);
   std::vector<uint8_t> slave(0x400, 0);
-  put32(master, 0, 0x8000);
+  put32(master, 0, 0x06008000);
   put32(master, 4, 0x02000000);
   put32(slave, 0, 0x8000);
   put32(slave, 4, 0x100);
@@ -1207,4 +1208,37 @@ TEST_CASE("X32 DMAC waits for RV without changing its destination", "[x32]")
   device.master().step();
   CHECK(device.master().save().dmac.channels[0].tcr == 0);
   CHECK(device.master_bus().read32(0x06000000) == 0x11223344);
+}
+
+
+TEST_CASE("X32 state preserves pending NMI and the DMA halt flag", "[x32]")
+{
+  std::vector<uint8_t> cartridge;
+  std::vector<uint8_t> master(0x400, 0);
+  std::vector<uint8_t> slave(0x400, 0);
+  put32(master, 0, 0x06008000);
+  put32(master, 4, 0x100);
+  put32(master, 0x2C, 0x300);
+  put16(master, 0x100, 0x0009);
+  X32 device(cartridge, master, slave);
+  device.power_on();
+  device.master().set_sr(0x30);
+  device.master().request_nmi();
+
+  const auto saved = serialize_x32_state(save_x32_state(device));
+  const auto parsed = parse_x32_state(saved);
+  REQUIRE(parsed);
+  CHECK(parsed->master.pending_vector == 11);
+  CHECK(parsed->master.pending_level == 16);
+  X32 restored(cartridge, master, slave);
+  restored.power_on();
+  REQUIRE(restore_x32_state(restored, *parsed));
+  CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
+  CHECK(restored.master().step() == 9);
+  CHECK(restored.master().pc() == 0x300);
+  CHECK(restored.master().sr() == 0xF0);
+  CHECK(restored.master().r(15) == 0x06007FF8);
+  CHECK(restored.master_bus().read32(0x06007FF8) == 0x100);
+  CHECK(restored.master_bus().read32(0x06007FFC) == 0x30);
+  CHECK((restored.master().save().dmac.dmaor & 2) != 0);
 }

@@ -56,7 +56,7 @@ uint32_t Sh2Cache::read32(uint32_t address)
   if (address >= 0x60000000 && address <= 0x600003FF) {
     const Entry &entry = m_entries[(m_ccr >> 6) & 3][(address >> 4) & 0x3F];
     return entry.tag | (uint32_t(entry.lru & 0x3F) << 3) |
-           (entry.valid ? 2 : 0);
+           (entry.valid ? 4 : 0);
   }
   return 0;
 }
@@ -71,7 +71,7 @@ void Sh2Cache::write32(uint32_t address, uint32_t value)
     Entry &entry = m_entries[(m_ccr >> 6) & 3][(address >> 4) & 0x3F];
     entry.tag = address & 0x1FFFFE00;
     entry.lru = (value >> 16) & 0x3F;
-    entry.valid = (address & 2) != 0;
+    entry.valid = (address & 4) != 0;
   }
 }
 

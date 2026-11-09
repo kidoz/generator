@@ -5,6 +5,19 @@
 
 namespace generator {
 
+namespace {
+
+bool address_error(uint32_t address, uint32_t width)
+{
+  if ((address & (width - 1)) != 0)
+    return true;
+  if (address >= 0xFFFFFF00)
+    return width == 1;
+  return address >= 0xFFFFFE00 && width == 4;
+}
+
+}  // namespace
+
 Sh2Dmac::Sh2Dmac(Sh2BusInterface &bus) : m_bus(bus)
 {
 }
@@ -22,6 +35,7 @@ void Sh2Dmac::reset()
   m_dreq_level[1] = false;
   m_edge_pending[0] = false;
   m_edge_pending[1] = false;
+  m_address_error_pending = false;
 }
 
 uint8_t Sh2Dmac::read8(uint32_t address)
@@ -106,7 +120,7 @@ void Sh2Dmac::write32(uint32_t address, uint32_t value)
     channel.vcr = value & 0x7F;
     break;
   case 0xFFFFFFB0:
-    m_dmaor = value & 0xF;
+    m_dmaor = (m_dmaor & value & 6) | (value & 9);
     if (!(value & 1)) {
       m_channels[0].active = false;
       m_channels[1].active = false;
@@ -151,6 +165,11 @@ void Sh2Dmac::set_dreq(size_t channel, bool asserted)
   m_edge_pending[channel] |= (chcr & 0x20) ? rising : falling;
 }
 
+void Sh2Dmac::set_nmi()
+{
+  m_dmaor |= 2;
+}
+
 uint32_t Sh2Dmac::adjusted(uint32_t address, uint32_t mode,
                            uint32_t width) const
 {
@@ -165,6 +184,12 @@ bool Sh2Dmac::transfer(Channel &channel)
 {
   const uint32_t size = (channel.chcr >> 10) & 3;
   const uint32_t width = size == 3 ? 4 : 1u << size;
+  if (address_error(channel.sar, width) || address_error(channel.dar, width)) {
+    m_dmaor |= 4;
+    m_address_error_pending = true;
+    channel.active = false;
+    return false;
+  }
   if (!m_bus.can_access(channel.sar, false) ||
       !m_bus.can_access(channel.dar, true))
     return false;
@@ -214,6 +239,8 @@ void Sh2Dmac::advance_channel(Channel &channel, uint32_t &credits)
     return;
   }
   const size_t index = &channel == &m_channels[1] ? 1 : 0;
+  if (m_dmaor & 6)
+    channel.active = false;
   if (channel.chcr & 0x40) {
     m_edge_pending[index] = false;
     channel.active = false;
@@ -254,6 +281,13 @@ void Sh2Dmac::advance(uint32_t cycles)
     if (round_robin)
       m_next_channel = 1 - selected_index;
   }
+}
+
+bool Sh2Dmac::take_address_error()
+{
+  const bool pending = m_address_error_pending;
+  m_address_error_pending = false;
+  return pending;
 }
 
 bool Sh2Dmac::completion_pending(size_t channel) const
