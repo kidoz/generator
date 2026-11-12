@@ -429,7 +429,12 @@ void Vdp::run_dma_transfer()
   const uint32_t length = dma_length(m_reg[19], m_reg[20]);
   const uint32_t src = (((uint32_t)m_reg[23] & 0xFF) << 17) |
                        ((uint32_t)m_reg[22] << 9) | ((uint32_t)m_reg[21] << 1);
-  for (uint32_t i = 0; i < length; i++) {
+  const auto initial_word =
+      m_dma_initial_word ? m_dma_initial_word(src) : std::nullopt;
+  if (initial_word)
+    data_write(*initial_word);
+  const uint32_t source_words = length - (initial_word ? 1 : 0);
+  for (uint32_t i = 0; i < source_words; i++) {
     uint16_t word = 0;
     if (m_dma_reader) {
       word = m_dma_reader((src + 2 * i) & 0xFFFFFF);
@@ -446,7 +451,7 @@ void Vdp::run_dma_transfer()
   m_reg[20] = 0;
   uint32_t offset = static_cast<uint32_t>(m_reg[21]) |
                     (static_cast<uint32_t>(m_reg[22]) << 8);
-  offset = (offset + length) & 0xFFFF;
+  offset = (offset + source_words) & 0xFFFF;
   m_reg[21] = static_cast<uint8_t>(offset);
   m_reg[22] = static_cast<uint8_t>(offset >> 8);
   m_dma_busy = false;

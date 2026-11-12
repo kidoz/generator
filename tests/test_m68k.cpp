@@ -1454,6 +1454,56 @@ TEST_CASE("vdp 68k-to-vram dma moves words through the bus", "[vdp_dma]")
   CHECK(vdp.port_read(0xC00000) == 0x1101); /* word at +2 */
 }
 
+TEST_CASE("vdp delayed DMA consumes a bus word before reading its source",
+          "[vdp_dma]")
+{
+  generator::Vdp vdp;
+  vdp.reset(false);
+  auto regw = [&](int reg, uint8_t value) {
+    vdp.port_write(4, (uint16_t)(0x8000 | reg << 8 | value));
+  };
+  unsigned words = 3;
+  SECTION("a multiword transfer omits the final source word")
+  {
+  }
+  SECTION("a one-word transfer reads no source memory")
+  {
+    words = 1;
+  }
+  regw(1, 0x10);
+  regw(15, 2);
+  regw(19, (uint8_t)words);
+  regw(20, 0);
+  regw(21, 0);
+  regw(22, 0);
+  regw(23, 0x10);
+  std::vector<uint32_t> reads;
+  vdp.set_dma_reader(
+      [&](uint32_t addr) {
+        reads.push_back(addr);
+        return (uint16_t)(0x1234 + (addr - 0x200000) / 2);
+      },
+      [](uint32_t addr) -> std::optional<uint16_t> {
+        REQUIRE(addr == 0x200000);
+        return 0xABCD;
+      });
+  vdp.port_write(4, 0x5000);
+  vdp.port_write(4, 0x80);
+  CHECK(vdp.vram_word(0x1000) == 0xABCD);
+  CHECK(reads.size() == words - 1);
+  if (words > 1) {
+    CHECK(reads == std::vector<uint32_t>{0x200000, 0x200002});
+    CHECK(vdp.vram_word(0x1002) == 0x1234);
+    CHECK(vdp.vram_word(0x1004) == 0x1235);
+  }
+  const auto state = vdp.save();
+  CHECK(state.address == 0x1000 + 2 * words);
+  CHECK(state.reg[21] == words - 1);
+  CHECK(state.reg[19] == 0);
+  CHECK(state.reg[20] == 0);
+  CHECK(vdp.take_dma_debt() == 16 * words);
+}
+
 TEST_CASE("vdp fill dma replicates the latch bytes", "[vdp_dma]")
 {
   generator::Vdp vdp;

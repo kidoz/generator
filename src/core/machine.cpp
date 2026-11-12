@@ -203,11 +203,19 @@ Machine::Machine(IAudioBackend *audio, IVideoBackend *video,
   m_z80bus.attach_68k(&m_bus);
   /* DMA source reads go through the real 68K bus (no direct pointers):
    * ROM, RAM mirrors and open bus all route naturally. */
-  m_vdp.set_dma_reader([this](uint32_t addr) {
-    uint16_t word = 0;
-    m_bus.read(addr, true, true, &word);
-    return word;
-  });
+  m_vdp.set_dma_reader(
+      [this](uint32_t addr) {
+        uint16_t word = 0;
+        m_bus.read(addr, true, true, &word);
+        return word;
+      },
+      [this](uint32_t addr) -> std::optional<uint16_t> {
+        // CD Word RAM responds one DMA word late. The first destination
+        // receives the held bus value; the final source word is not read.
+        if (m_sega_cd && addr >= 0x200000 && addr < 0x400000)
+          return m_bus.open_bus_value();
+        return std::nullopt;
+      });
   m_blank_line.assign(Vdp::kLineBufferWidth, 0);
 
   /* Output stage: the Mega Drive 2 puts a first-order RC low-pass ahead

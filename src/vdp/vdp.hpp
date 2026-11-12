@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 
 namespace generator {
 
@@ -36,9 +37,12 @@ public:
 
   /* DMA: 68K-bus reads for memory-to-VDP transfers route through the
    * machine's bus (no direct ROM/RAM pointers). */
-  void set_dma_reader(std::function<uint16_t(uint32_t)> reader)
+  void set_dma_reader(
+      std::function<uint16_t(uint32_t)> reader,
+      std::function<std::optional<uint16_t>(uint32_t)> initial_word = {})
   {
     m_dma_reader = std::move(reader);
+    m_dma_initial_word = std::move(initial_word);
   }
 
   /* Master clocks the 68K owes for completed DMA (the bus was stolen);
@@ -224,6 +228,8 @@ private:
 
   /* DMA unit (correct data movement, approximate timing) */
   std::function<uint16_t(uint32_t)> m_dma_reader;
+  // Some expansion memories supply a stale bus word before their first read.
+  std::function<std::optional<uint16_t>(uint32_t)> m_dma_initial_word;
   uint64_t m_dma_debt_mclk = 0;
   bool m_dma_busy = false;
   bool m_dma_fill_armed = false;
