@@ -79,6 +79,16 @@ bool advance_until(X32 &device, Predicate predicate, uint64_t limit = 5000)
   return false;
 }
 
+void release_bus_lease(X32 &device)
+{
+  REQUIRE(advance_until(
+      device, [&] {
+        const auto &base = device.base_state();
+        return base.bus_lease_cycles == 0 && base.bus_handoff_cycles == 0 &&
+               base.bus_lease_owner == 2;
+      }));
+}
+
 void write_file(const char *path, const std::vector<uint8_t> &bytes)
 {
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -211,7 +221,9 @@ TEST_CASE("X32 interleaves master and slave and dispatches INTS", "[x32]")
   device.master().set_sr(0);
   device.slave().set_sr(0);
   device.master_bus().write16(0x20004000, 2);
+  release_bus_lease(device);
   device.slave_bus().write16(0x20004000, 2);
+  release_bus_lease(device);
   REQUIRE(advance_until(device, [&] {
     return device.master().pc() == 0x106 && device.slave().pc() == 0x106;
   }));
@@ -597,9 +609,13 @@ TEST_CASE("X32 VINT uses its vector mask and clear register", "[x32]")
   device.master().set_sr(0);
   device.master_bus().write16(0x20004000, 0x8088);
   CHECK(device.master_bus().read16(0x20004000) == 0x8288);
+  release_bus_lease(device);
   device.slave_bus().write16(0x20004000, 0x8082);
+  release_bus_lease(device);
   CHECK(device.master_bus().read16(0x20004000) == 0x8288);
+  release_bus_lease(device);
   CHECK(device.slave_bus().read16(0x20004000) == 0x8282);
+  release_bus_lease(device);
   device.master_bus().write16(0x20004000, 8);
 
   device.set_blanking(false, false);

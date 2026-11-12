@@ -5,6 +5,24 @@
 
 namespace generator {
 
+namespace {
+
+constexpr uint32_t kBusHandoffCycles = 1;
+
+bool shared_bus_address(uint32_t addr)
+{
+  addr &= 0xDFFFFFFF;
+  return (addr >= 0x2000000 && addr < 0x2400000) ||
+         (addr >= 0x6000000 && addr < 0x6040000) ||
+         (addr >= 0x4000 && addr <= 0x403F) ||
+         (addr >= 0x4100 && addr <= 0x410B) ||
+         (addr >= 0x4200 && addr <= 0x43FF) ||
+         (addr >= 0x4000000 && addr < 0x4040000) ||
+         (addr >= 0xA15100 && addr <= 0xA1513F);
+}
+
+}  // namespace
+
 X32::X32(std::span<const uint8_t> cartridge,
          std::span<const uint8_t> master_boot,
          std::span<const uint8_t> slave_boot)
@@ -39,6 +57,10 @@ void X32::power_on()
   m_clock_accumulator = 0;
   m_master_cycles = 0;
   m_slave_cycles = 0;
+  m_bus_lease_cycles = 0;
+  m_bus_lease_owner = 2;
+  m_bus_requester = 2;
+  m_bus_handoff_cycles = 0;
   m_pwm.power_on();
   m_video.power_on();
   fifo_reset();
@@ -102,6 +124,10 @@ X32::BaseState X32::base_state() const
   state.fifo_read_byte = m_fifo_read_byte;
   state.dreq_cpu_write = m_dreq_cpu_write;
   state.dreq_rv = m_dreq_rv;
+  state.bus_lease_cycles = m_bus_lease_cycles;
+  state.bus_lease_owner = m_bus_lease_owner;
+  state.bus_requester = m_bus_requester;
+  state.bus_handoff_cycles = m_bus_handoff_cycles;
   return state;
 }
 
@@ -139,6 +165,10 @@ void X32::restore_base_state(const BaseState &state)
   m_fifo_read_byte = state.fifo_read_byte;
   m_dreq_cpu_write = state.dreq_cpu_write;
   m_dreq_rv = state.dreq_rv;
+  m_bus_lease_cycles = state.bus_lease_cycles;
+  m_bus_lease_owner = state.bus_lease_owner;
+  m_bus_requester = state.bus_requester;
+  m_bus_handoff_cycles = state.bus_handoff_cycles;
 }
 
 void X32::fifo_reset()
@@ -226,6 +256,10 @@ void X32::main_write(uint32_t addr, uint16_t value)
     m_adapter_control = value & 0x8083;
     if (!(old & 2) && (value & 2)) {
       m_clock_accumulator = 0;
+      m_bus_lease_cycles = 0;
+      m_bus_lease_owner = 2;
+      m_bus_requester = 2;
+      m_bus_handoff_cycles = 0;
       m_master.reset();
       m_slave.reset();
     }
@@ -491,9 +525,34 @@ bool X32::sh2_access_allowed(uint32_t addr) const
   return !vdp || (m_interrupt_common & 0x8000);
 }
 
+bool X32::shared_access_allowed(uint32_t addr, bool master) const
+{
+  if (!shared_bus_address(addr))
+    return true;
+  const uint8_t requester = master ? 0 : 1;
+  if (m_bus_handoff_cycles != 0)
+    return false;
+  if (m_bus_lease_owner == requester ||
+      (m_bus_lease_cycles == 0 && m_bus_lease_owner == 2))
+    return true;
+  m_bus_requester = requester;
+  return false;
+}
+
+void X32::acquire_shared_access(uint32_t addr, bool write, bool master)
+{
+  if (!shared_bus_address(addr))
+    return;
+  const uint8_t owner = master ? 0 : 1;
+  m_bus_lease_owner = owner;
+  m_bus_lease_cycles =
+      std::max(m_bus_lease_cycles, access_wait_states(addr, write) + 1);
+}
+
 bool X32::MasterBus::can_access(uint32_t addr, bool) const
 {
-  return m_owner.sh2_access_allowed(addr);
+  return m_owner.sh2_access_allowed(addr) &&
+         m_owner.shared_access_allowed(addr, m_master);
 }
 
 bool X32::MasterBus::take_access_wait()
@@ -508,24 +567,26 @@ uint32_t X32::MasterBus::access_wait_states(uint32_t addr, bool write) const
   return m_owner.access_wait_states(addr, write);
 }
 
-bool X32::MasterBus::prepare_access(uint32_t addr)
+bool X32::MasterBus::prepare_access(uint32_t addr, bool write)
 {
-  if (m_owner.sh2_access_allowed(addr))
-    return true;
-  m_access_wait = true;
-  return false;
+  if (!can_access(addr, write)) {
+    m_access_wait = true;
+    return false;
+  }
+  m_owner.acquire_shared_access(addr, write, m_master);
+  return true;
 }
 
 uint8_t X32::MasterBus::read8(uint32_t addr)
 {
-  if (!prepare_access(addr))
+  if (!prepare_access(addr, false))
     return 0;
   return m_owner.master_read8(addr, m_master);
 }
 
 uint16_t X32::MasterBus::read16(uint32_t addr)
 {
-  if (!prepare_access(addr))
+  if (!prepare_access(addr, false))
     return 0;
   return (uint16_t)m_owner.master_read8(addr, m_master) << 8 |
          m_owner.master_read8(addr + 1, m_master);
@@ -533,7 +594,7 @@ uint16_t X32::MasterBus::read16(uint32_t addr)
 
 uint32_t X32::MasterBus::read32(uint32_t addr)
 {
-  if (!prepare_access(addr))
+  if (!prepare_access(addr, false))
     return 0;
   return (uint32_t)m_owner.master_read8(addr, m_master) << 24 |
          (uint32_t)m_owner.master_read8(addr + 1, m_master) << 16 |
@@ -543,14 +604,14 @@ uint32_t X32::MasterBus::read32(uint32_t addr)
 
 void X32::MasterBus::write8(uint32_t addr, uint8_t value)
 {
-  if (!prepare_access(addr))
+  if (!prepare_access(addr, true))
     return;
   m_owner.master_write8(addr, value, m_master);
 }
 
 void X32::MasterBus::write16(uint32_t addr, uint16_t value)
 {
-  if (!prepare_access(addr))
+  if (!prepare_access(addr, true))
     return;
   m_owner.master_write8(addr, value >> 8, m_master);
   m_owner.master_write8(addr + 1, value, m_master);
@@ -558,7 +619,7 @@ void X32::MasterBus::write16(uint32_t addr, uint16_t value)
 
 void X32::MasterBus::write32(uint32_t addr, uint32_t value)
 {
-  if (!prepare_access(addr))
+  if (!prepare_access(addr, true))
     return;
   m_owner.master_write8(addr, value >> 24, m_master);
   m_owner.master_write8(addr + 1, value >> 16, m_master);
@@ -602,6 +663,22 @@ void X32::advance_mclk(uint64_t ticks)
   m_clock_accumulator += ticks * 3;
   while (m_clock_accumulator >= 7) {
     m_clock_accumulator -= 7;
+    if (m_bus_lease_cycles != 0) {
+      m_bus_lease_cycles--;
+      if (m_bus_lease_cycles == 0) {
+        if (m_bus_requester < 2 && m_bus_requester != m_bus_lease_owner)
+          m_bus_handoff_cycles = kBusHandoffCycles;
+        else
+          m_bus_requester = 2;
+        m_bus_lease_owner = 2;
+      }
+    } else if (m_bus_handoff_cycles != 0) {
+      m_bus_handoff_cycles--;
+      if (m_bus_handoff_cycles == 0) {
+        m_bus_lease_owner = m_bus_requester;
+        m_bus_requester = 2;
+      }
+    }
     Sh2 &cpu = m_next_slave ? m_slave : m_master;
     uint32_t &cycles = m_next_slave ? m_slave_cycles : m_master_cycles;
     if (cycles == 0)

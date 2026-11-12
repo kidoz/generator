@@ -49,6 +49,10 @@ public:
     uint8_t fifo_read_byte = 0;
     bool dreq_cpu_write = false;
     bool dreq_rv = false;
+    uint32_t bus_lease_cycles = 0;
+    uint8_t bus_lease_owner = 2;
+    uint8_t bus_requester = 2;
+    uint8_t bus_handoff_cycles = 0;
   };
 
   class MainBus final : public M68kBusInterface {
@@ -83,7 +87,7 @@ public:
     bool take_access_wait() override;
 
   private:
-    bool prepare_access(uint32_t addr);
+    bool prepare_access(uint32_t addr, bool write);
 
     X32 &m_owner;
     bool m_master;
@@ -175,6 +179,8 @@ private:
   uint8_t master_read8(uint32_t addr, bool master);
   void master_write8(uint32_t addr, uint8_t value, bool master);
   bool sh2_access_allowed(uint32_t addr) const;
+  bool shared_access_allowed(uint32_t addr, bool master) const;
+  void acquire_shared_access(uint32_t addr, bool write, bool master);
   uint32_t access_wait_states(uint32_t addr, bool write) const;
   uint8_t fifo_read_byte();
   void fifo_reset();
@@ -219,6 +225,10 @@ private:
   uint8_t m_fifo_read_byte = 0;
   bool m_dreq_cpu_write = false;
   bool m_dreq_rv = false;
+  uint32_t m_bus_lease_cycles = 0;
+  uint8_t m_bus_lease_owner = 2;
+  mutable uint8_t m_bus_requester = 2;
+  uint8_t m_bus_handoff_cycles = 0;
 };
 
 }  // namespace generator
