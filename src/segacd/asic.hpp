@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <expected>
 #include <optional>
@@ -37,6 +38,21 @@ public:
   void advance_mclk(uint64_t ticks);
   std::optional<SegaCdAsicPixel> take_pixel();
   void acknowledge_interrupt();
+  void start_stamp(std::span<uint8_t> word_ram,
+                   std::span<const uint8_t> registers, uint8_t priority);
+  bool stamp_busy() const
+  {
+    return m_stamp.busy;
+  }
+  uint16_t stamp_lines_remaining() const;
+
+  struct StampState {
+    std::array<uint8_t, 16> registers{};
+    uint8_t priority = 0;
+    uint32_t pixel = 0;
+    uint64_t clock_acc = 0;
+    bool busy = false;
+  };
 
   bool busy() const
   {
@@ -66,6 +82,7 @@ public:
     uint64_t pixel_index = 0;
     bool busy = false;
     bool irq_pending = false;
+    StampState stamp{};
   };
   SavedState save(std::span<const uint8_t> word_ram) const;
   bool restore(const SavedState &state, std::span<uint8_t> word_ram);
@@ -82,6 +99,9 @@ private:
   uint64_t m_pixel_index = 0;
   bool m_busy = false;
   bool m_irq_pending = false;
+  StampState m_stamp;
+  std::span<uint8_t> m_stamp_ram;
+  void render_stamp_pixel();
 };
 
 }  // namespace generator

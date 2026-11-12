@@ -52,6 +52,11 @@ int M68kBus::read(uint32_t addr, bool upper, bool lower, uint16_t *out)
    * address register never reaches the Genesis bus. Some games deliberately
    * keep flags there and call or dereference the tagged address. */
   addr &= 0xFFFFFF;
+  if (addr == 0x72 && m_expansion != nullptr &&
+      m_expansion->read_vector_override(addr, out)) {
+    m_data_bus = *out;
+    return 0;
+  }
   if (m_expansion != nullptr &&
       ((addr >= m_expansion_rom_start && addr < m_expansion_rom_end) ||
        (addr >= 0x200000 && addr < 0x480000) ||

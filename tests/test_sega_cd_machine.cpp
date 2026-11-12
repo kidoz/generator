@@ -85,7 +85,7 @@ void load_sub_program(SegaCdSubBus &bus)
   write16(ram, 0x100, 0x702A);
   write16(ram, 0x102, 0x33C0);
   write16(ram, 0x104, 0x00FF);
-  write16(ram, 0x106, 0x0030);
+  write16(ram, 0x106, 0x8020);
   write16(ram, 0x108, 0x60FE);
 }
 
@@ -113,8 +113,8 @@ TEST_CASE("Sega CD RAM windows and communications connect both CPU buses",
   CHECK(cd.word_ram()[0x102] == 0x56);
   CHECK(cd.word_ram()[0x103] == 0x78);
 
-  main.write(0xA12020, 0xCAFE, true, true);
-  sub.write(0xFF0030, 0xBEEF, true, true);
+  main.write(0xA12010, 0xCAFE, true, true);
+  sub.write(0xFF8020, 0xBEEF, true, true);
   CHECK(cd.main_communication()[0] == 0xCA);
   CHECK(cd.main_communication()[1] == 0xFE);
   CHECK(cd.sub_communication()[0] == 0xBE);
@@ -269,15 +269,10 @@ TEST_CASE("Sega CD 1M word-RAM mode swaps independent main/sub banks",
   SegaCdSector sector{};
   sector.fill(0x5A);
   REQUIRE(cd.cdc().push_sector(sector));
-  main.write(0xA12006, 0, true, true);
-  main.write(0xA1200C, 0x2002, true, true);
+  REQUIRE(cd.cdc().start_dma(SegaCdCdcDmaTarget::WordRamSub, 0, 2));
   cd.advance_mclk(108);
-  CHECK(cd.word_ram()[0x20000] == 0x5A);
-  CHECK(cd.word_ram()[0x20001] == 0x5A);
-  main.write(0xA12006, 0, true, true);
-  main.write(0xA12008, 2, true, true);
-  main.write(0xA1200C, 0x2002, true, true);
-  CHECK_FALSE(cd.cdc().dma_active());
+  CHECK(cd.word_ram()[0] == 0x5A);
+  CHECK(cd.word_ram()[1] == 0x5A);
 }
 
 TEST_CASE(
@@ -428,4 +423,225 @@ TEST_CASE("Machine CD 32X routes both expansions and saves their state",
   REQUIRE(restored);
   CHECK(*restored == *saved);
   std::remove(path);
+}
+
+TEST_CASE("Sega CD mailboxes and flag latches have shared CPU-specific writers",
+          "[sega_cd][machine]")
+{
+  SegaCd cd;
+  cd.power_on();
+  auto &main = cd.main_bus();
+  auto &sub = cd.sub_bus_port();
+  uint16_t value = 0;
+  main.write(0xA12010, 0x1234, true, true);
+  sub.read(0xFF8010, true, true, &value);
+  CHECK(value == 0x1234);
+  sub.write(0xFF8010, 0, true, true);
+  main.read(0xA12010, true, true, &value);
+  CHECK(value == 0x1234);
+  sub.write(0xFF802E, 0x5678, true, true);
+  main.read(0xA1202E, true, true, &value);
+  CHECK(value == 0x5678);
+  main.write(0xA1202E, 0, true, true);
+  sub.read(0xFF802E, true, true, &value);
+  CHECK(value == 0x5678);
+  main.write(0xA1200E, 0xAB00, true, false);
+  sub.write(0xFF800E, 0x00CD, false, true);
+  main.read(0xA1200E, true, true, &value);
+  CHECK(value == 0xABCD);
+  // Sub-CPU byte access aliases both lanes onto CFS.
+  sub.write(0xFF800E, 0x1200, true, false);
+  main.read(0xA1200E, true, true, &value);
+  CHECK(value == 0xAB12);
+}
+
+TEST_CASE("Sega CD stopwatch and level-3 timer use 384 sub-CPU clocks",
+          "[sega_cd][timer]")
+{
+  SegaCd cd({}, 12500000);
+  cd.power_on();
+  auto &sub = cd.sub_bus_port();
+  sub.write(0xFF8030, 1, false, true);
+  cd.advance_mclk(767);
+  CHECK((cd.base_state().gate.pending & 8) == 0);
+  uint16_t value = 0;
+  sub.read(0xFF800C, true, true, &value);
+  CHECK(value == 1);
+  cd.advance_mclk(1);
+  CHECK((cd.base_state().gate.pending & 8) != 0);
+  sub.read(0xFF800C, true, true, &value);
+  CHECK(value == 2);
+  sub.interrupt_ack(3);
+  CHECK((cd.base_state().gate.pending & 8) == 0);
+  sub.write(0xFF8030, 0, false, true);
+  cd.advance_mclk(768);
+  CHECK((cd.base_state().gate.pending & 8) == 0);
+  sub.write(0xFF800C, 0, true, true);
+  cd.main_bus().read(0xA1200C, true, true, &value);
+  CHECK(value == 0);
+  cd.advance_mclk(384 * 4096);
+  sub.read(0xFF800C, true, true, &value);
+  CHECK(value == 0);
+}
+
+TEST_CASE("Sega CD backup RAM uses odd bytes across its complete 8 KiB",
+          "[sega_cd][backup]")
+{
+  SegaCd cd;
+  cd.power_on();
+  auto &sub = cd.sub_bus_port();
+  uint16_t value = 0;
+  sub.write(0xFE0000, 0xABCD, true, true);
+  sub.write(0xFE3FFE, 0x0012, false, true);
+  sub.write(0xFE0000, 0, true, false);
+  sub.read(0xFE0000, true, true, &value);
+  CHECK(value == 0xFFCD);
+  sub.read(0xFE3FFE, true, true, &value);
+  CHECK(value == 0xFF12);
+  cd.power_on();
+  sub.read(0xFE0000, true, true, &value);
+  CHECK(value == 0xFFCD);
+}
+
+TEST_CASE("Sega CD stamp registers render tiles and finish on level 1",
+          "[sega_cd][asic]")
+{
+  SegaCd cd({}, 12500000);
+  cd.power_on();
+  auto &sub = cd.sub_bus_port();
+  auto ram = cd.word_ram();
+  std::fill_n(ram.begin() + 0x80, 128, 0xA5);  // stamp 1
+  write16(ram, 0x8000, 1);                     // first stamp-map entry
+  write16(ram, 0x10000, 0);
+  write16(ram, 0x10002, 0);
+  write16(ram, 0x10004, 0x800);
+  write16(ram, 0x10006, 0);
+  sub.write(0xFF8058, 0, true, true);  // 16x16 stamps, 256x256 map
+  sub.write(0xFF805A, 0x2000, true, true);
+  sub.write(0xFF805C, 0, true, true);
+  sub.write(0xFF805E, 0x6000, true, true);
+  sub.write(0xFF8060, 0, true, true);
+  sub.write(0xFF8062, 8, true, true);
+  sub.write(0xFF8064, 1, true, true);
+  sub.write(0xFF8066, 0x4000, true, true);
+  uint16_t value = 0;
+  sub.read(0xFF8058, true, true, &value);
+  CHECK(value == 0x8000);
+  cd.advance_mclk(39);
+  CHECK(cd.asic().stamp_busy());
+  cd.advance_mclk(1);
+  CHECK_FALSE(cd.asic().stamp_busy());
+  for (size_t i = 0; i < 4; i++)
+    CHECK(ram[0x18000 + i] == 0xA5);
+  CHECK(cd.asic().irq_pending());
+  sub.interrupt_ack(4);
+  CHECK(cd.asic().irq_pending());
+  sub.interrupt_ack(1);
+  CHECK_FALSE(cd.asic().irq_pending());
+  sub.read(0xFF8064, true, true, &value);
+  CHECK(value == 0);
+}
+
+TEST_CASE(
+    "Sega CD PCM registers drive signed-magnitude samples and marker loops",
+    "[sega_cd][pcm]")
+{
+  SegaCd cd({}, 50000000);
+  cd.power_on();
+  auto &sub = cd.sub_bus_port();
+  auto byte = [&](uint32_t address, uint8_t value) {
+    sub.write(address, value, false, true);
+  };
+  byte(0xFF000E, 0xC0);
+  byte(0xFF0000, 255);
+  byte(0xFF0002, 0x11);
+  byte(0xFF0004, 0);
+  byte(0xFF0006, 8);
+  byte(0xFF0008, 0);
+  byte(0xFF000A, 0);
+  byte(0xFF000C, 0);
+  byte(0xFF000E, 0x80);
+  byte(0xFF2000, 0x81);
+  byte(0xFF2002, 0x01);
+  byte(0xFF2004, 0xFF);
+  byte(0xFF0010, 0xFE);
+  cd.advance_mclk(1536);
+  CHECK(cd.pcm().sample_left() == 7);
+  CHECK(cd.pcm().sample_right() == 7);
+  cd.advance_mclk(1536);
+  CHECK(cd.pcm().sample_left() == -7);
+  cd.advance_mclk(1536);
+  CHECK(cd.pcm().sample_left() == 7);
+  byte(0xFF0010, 0xFF);
+  cd.advance_mclk(1536);
+  CHECK(cd.pcm().sample_left() == 0);
+}
+
+TEST_CASE("Sega CD main gate HINT register replaces the ROM vector word",
+          "[sega_cd][machine]")
+{
+  auto machine = make_machine();
+  machine.attach_sega_cd(std::make_unique<SegaCd>());
+  auto bios = make_main_bios();
+  write16(bios, 0x100, 0x3039);  // MOVE.W $72,D0 before the override
+  write32(bios, 0x102, 0x72);
+  write16(bios, 0x106, 0x33FC);  // MOVE.W #$BEEF,$A12006
+  write16(bios, 0x108, 0xBEEF);
+  write32(bios, 0x10A, 0xA12006);
+  write16(bios, 0x10E, 0x3239);  // MOVE.W $72,D1 after the override
+  write32(bios, 0x110, 0x72);
+  write16(bios, 0x114, 0x60FE);
+  REQUIRE(machine.load_rom_mem(bios, "hint_bios.bin"));
+  machine.run_frame();
+  CHECK(machine.cpu_debug().d(0) == 0);
+  CHECK(machine.cpu_debug().d(1) == 0xBEEF);
+}
+
+TEST_CASE("Machine delays CD Word RAM DMA but reads program RAM immediately",
+          "[sega_cd][machine][vdp_dma]")
+{
+  bool word_ram = true;
+  SECTION("Word RAM supplies an initial bus word")
+  {
+  }
+  SECTION("program RAM has no initial bus word")
+  {
+    word_ram = false;
+  }
+  auto machine = make_machine();
+  machine.attach_sega_cd(std::make_unique<SegaCd>());
+  auto bios = make_main_bios();
+  size_t pc = 0x100;
+  auto store = [&](uint16_t value, uint32_t address) {
+    write16(bios, pc, 0x33FC);  // MOVE.W #value,absolute.L
+    write16(bios, pc + 2, value);
+    write32(bios, pc + 4, address);
+    pc += 8;
+  };
+  const uint32_t source = word_ram ? 0x200000 : 0x020000;
+  store(0x1234, source);
+  store(0x5678, source + 2);
+  store(0x9ABC, source + 4);
+  auto port_write = [&](uint16_t value) { store(value, 0xC00004); };
+  port_write(0x8110);
+  port_write(0x8F02);
+  port_write(0x9303);
+  port_write(0x9400);
+  port_write(0x9500);
+  port_write(0x9600);
+  port_write(word_ram ? 0x9710 : 0x9701);
+  port_write(0x5000);
+  port_write(0x0080);
+  write16(bios, pc, 0x60FE);
+  REQUIRE(machine.load_rom_mem(bios, "dma_bios.bin"));
+  machine.run_frame();
+  if (word_ram) {
+    CHECK(machine.vdp().vram_word(0x1002) == 0x1234);
+    CHECK(machine.vdp().vram_word(0x1004) == 0x5678);
+  } else {
+    CHECK(machine.vdp().vram_word(0x1000) == 0x1234);
+    CHECK(machine.vdp().vram_word(0x1002) == 0x5678);
+    CHECK(machine.vdp().vram_word(0x1004) == 0x9ABC);
+  }
+  CHECK(machine.vdp().save().reg[21] == (word_ram ? 2 : 3));
 }

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -97,6 +98,34 @@ void load_bios(Machine &machine, std::unique_ptr<SegaCd> cd)
   REQUIRE(machine.load_rom_mem(make_bios(), "bios.bin"));
   machine.run_frame();
 }
+
+class BatteryDirectory {
+public:
+  BatteryDirectory()
+  {
+    if (const char *old = std::getenv("XDG_DATA_HOME")) {
+      m_had_old = true;
+      m_old = old;
+    }
+    m_path = std::filesystem::absolute("test_segacd_battery_files");
+    std::filesystem::create_directories(m_path);
+    setenv("XDG_DATA_HOME", m_path.c_str(), 1);
+  }
+  ~BatteryDirectory()
+  {
+    if (m_had_old)
+      setenv("XDG_DATA_HOME", m_old.c_str(), 1);
+    else
+      unsetenv("XDG_DATA_HOME");
+    std::error_code ec;
+    std::filesystem::remove_all(m_path, ec);
+  }
+
+private:
+  std::filesystem::path m_path;
+  std::string m_old;
+  bool m_had_old = false;
+};
 
 }  // namespace
 
@@ -241,4 +270,27 @@ TEST_CASE("Sega CD state rejects a different disc without applying state",
   CHECK(second.sega_cd_debug()->word_ram()[0x60] == 0x33);
   std::filesystem::remove(path);
   std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Sega CD battery RAM survives a machine replacement and cold boot",
+          "[sega_cd][backup][state]")
+{
+  BatteryDirectory directory;
+  {
+    auto machine = make_machine();
+    load_bios(machine, std::make_unique<SegaCd>());
+    auto &sub = machine.sega_cd_debug()->sub_bus_port();
+    sub.write(0xFE0000, 0xAB, false, true);
+    sub.write(0xFE3FFE, 0xCD, false, true);
+    REQUIRE(machine.save_sram());
+    CHECK_FALSE(machine.sega_cd_debug()->backup_ram_dirty());
+  }
+  auto restored = make_machine();
+  load_bios(restored, std::make_unique<SegaCd>());
+  uint16_t value = 0;
+  auto &sub = restored.sega_cd_debug()->sub_bus_port();
+  sub.read(0xFE0000, true, true, &value);
+  CHECK(value == 0xFFAB);
+  sub.read(0xFE3FFE, true, true, &value);
+  CHECK(value == 0xFFCD);
 }

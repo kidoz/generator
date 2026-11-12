@@ -121,58 +121,183 @@ TEST_CASE("Sega CD CDD delivers sectors at 75 Hz with pause and backpressure",
   CHECK_FALSE(cdd.irq_pending());
 }
 
-TEST_CASE("Sega CD gate registers drive CDD and acknowledge sub-CPU IRQ4",
-          "[sega_cd][cdd]")
+namespace {
+
+void command(SegaCd &cd, std::array<uint8_t, 10> packet, bool valid = true)
 {
-  CddFixture fixture;
-  SegaCd cd(fixture.disc, 7500);
-  cd.power_on();
-  auto &main = cd.main_bus();
-  auto &sub = cd.sub_bus_port();
-  uint16_t status = 0;
-
-  main.write(0xA12006, 1, true, true);
-  main.write(0xA12004, (uint8_t)SegaCdCddCommand::Seek, true, true);
-  main.write(0xA12004, (uint8_t)SegaCdCddCommand::ReadSector, true, true);
-  REQUIRE(main.read(0xA12004, true, true, &status) == 0);
-  CHECK((status & 0x30) == 0x30);
-  REQUIRE(sub.read(0xFF0004, true, true, &status) == 0);
-  CHECK((status & 0x30) == 0x30);
-  REQUIRE(cd.cdd().take_sector());
-
-  main.write(0xA12004, (uint8_t)SegaCdCddCommand::Play, true, true);
-  cd.advance_mclk(100);
-  CHECK(cd.cdd().irq_pending());
-  cd.sub_cpu().bus().interrupt_ack(4);
-  CHECK_FALSE(cd.cdd().irq_pending());
-  CHECK(cd.sub_cpu().bus().acknowledged_level() == 4);
+  unsigned sum = 0;
+  for (size_t i = 0; i < 9; i++)
+    sum += packet[i];
+  packet[9] = (uint8_t)((~sum & 15) ^ (valid ? 0 : 1));
+  for (size_t i = 0; i < 10; i += 2)
+    cd.sub_bus_port().write(
+        0xFF8042 + (uint32_t)i,
+        (uint16_t)((uint16_t)packet[i] << 8 | packet[i + 1]), true, true);
 }
 
-TEST_CASE("Sega CD CDD sectors feed CDC DMA into program RAM", "[sega_cd][cdc]")
+std::array<uint8_t, 10> response(SegaCd &cd)
+{
+  std::array<uint8_t, 10> result{};
+  for (size_t i = 0; i < 10; i += 2) {
+    uint16_t word = 0;
+    cd.sub_bus_port().read(0xFF8038 + (uint32_t)i, true, true, &word);
+    result[i] = word >> 8;
+    result[i + 1] = word & 255;
+  }
+  unsigned sum = 0;
+  for (auto nibble : result) {
+    CHECK(nibble < 16);
+    sum += nibble;
+  }
+  CHECK((sum & 15) == 15);
+  return result;
+}
+
+void cdc_write(SegaCd &cd, uint8_t index, uint8_t value)
+{
+  cd.sub_bus_port().write(0xFF8004, index, false, true);
+  cd.sub_bus_port().write(0xFF8006, value, false, true);
+}
+
+}  // namespace
+
+TEST_CASE("CDD packets return BCD TOC and use HOCK at 75 Hz", "[sega_cd][cdd]")
 {
   CddFixture fixture;
   SegaCd cd(fixture.disc, 7500);
   cd.power_on();
-  auto &main = cd.main_bus();
-  main.write(0xA12004, (uint8_t)SegaCdCddCommand::Play, true, true);
-  cd.advance_mclk(100);
-  CHECK(cd.cdc().available() == kSegaCdSectorBytes);
-  CHECK_FALSE(cd.cdd().sector_pending());
+  auto &sub = cd.sub_bus_port();
+  sub.write(0xFF8032, 0x10, false, true);
+  sub.write(0xFF8036, 4, false, true);
+  REQUIRE(cd.cdd().irq_pending());
+  const auto initial = response(cd);
+  for (size_t i = 0; i < 9; i++)
+    CHECK(initial[i] == 0);
+  CHECK(initial[9] == 15);
+  sub.interrupt_ack(4);
+  CHECK_FALSE(cd.cdd().irq_pending());
+  cd.advance_mclk(99);
+  CHECK_FALSE(cd.cdd().irq_pending());
+  cd.advance_mclk(1);
+  CHECK(cd.cdd().irq_pending());
 
-  main.write(0xA12006, 0x200, true, true);
-  main.write(0xA1200C, 0x1004, true, true);
-  cd.advance_mclk(4);
+  command(cd, {2, 0, 0, 4});
+  const auto toc = response(cd);
+  CHECK(toc[1] == 4);
+  CHECK(toc[2] == 0);
+  CHECK(toc[3] == 1);
+  CHECK(toc[4] == 0);
+  CHECK(toc[5] == 2);
+  command(cd, {2, 0, 0, 5, 0, 1});
+  const auto track = response(cd);
+  CHECK(track[1] == 5);
+  CHECK(track[4] == 0);
+  CHECK(track[5] == 2);
+  CHECK((track[6] & 8) != 0);
+  CHECK(track[8] == 1);
+
+  command(cd, {4, 0, 0, 0, 0, 1, 7, 0});  // lead-in position 00:01:70
+  CHECK(cd.cdd().save().protocol.lead_in == 8);
+  CHECK(response(cd)[0] == 2);
+  cd.advance_mclk(100);
+  CHECK(response(cd)[0] == 4);
+  command(cd, {3, 0, 0, 0, 0, 2, 0, 1}, false);
+  CHECK(cd.cdd().lba() == 0);
+  CHECK_FALSE(cd.cdd().playing());
+  command(cd, {3, 0, 0, 0, 0, 2, 0, 1});
+  CHECK(cd.cdd().lba() == 0);
+  CHECK(cd.cdd().save().protocol.lead_in == 2);
+  CHECK(cd.cdd().playing());
+}
+
+TEST_CASE("CDD data passes through CDC registers into RAM and the host ports",
+          "[sega_cd][cdc]")
+{
+  CddFixture fixture;
+  SegaCd cd(fixture.disc, 7500);
+  cd.power_on();
+  auto &sub = cd.sub_bus_port();
+  sub.write(0xFF8032, 0x20, false, true);
+  sub.write(0xFF8004, 0x0500, true, true);  // PRG-RAM DMA
+  cdc_write(cd, 1, 0x42);                   // DOUTEN, DTEIEN
+  cdc_write(cd, 10, 0x84);                  // decoder and buffer writes
+  command(cd, {3, 0, 0, 0, 0, 2, 0, 0});    // absolute 00:02:00 = LBA 0
+  for (int i = 0; i < 15; i++) {
+    cd.advance_mclk(100);
+    if (i == 11) {
+      CHECK(cd.cdd().sector_msf() == 147);
+      CHECK(cd.cdc().save().registers.header[1] == 1);
+      CHECK(cd.cdc().save().registers.header[2] == 0x72);
+    }
+  }
+  uint16_t value = 0;
+  sub.write(0xFF8004, 4, false, true);
+  sub.read(0xFF8006, false, true, &value);
+  CHECK(value == 0);
+  sub.read(0xFF8006, false, true, &value);
+  CHECK(value == 2);
+  sub.read(0xFF8006, false, true, &value);
+  CHECK(value == 0);
+  sub.read(0xFF8006, false, true, &value);
+  CHECK(value == 1);
+
+  const uint16_t source = 4 * 2352 + 4;
+  cdc_write(cd, 2, 3);
+  cdc_write(cd, 3, 0);
+  cdc_write(cd, 4, source & 255);
+  cdc_write(cd, 5, source >> 8);
+  sub.write(0xFF800A, 0x200 / 8, true, true);
+  cdc_write(cd, 6, 0);
+  cd.advance_mclk(1);
   const auto ram = cd.sub_cpu().bus().program_ram();
-  CHECK(ram[0x200] == 1);
+  CHECK(ram[0x200] == 0xA0);
   CHECK(ram[0x201] == 1);
   CHECK(ram[0x202] == 1);
   CHECK(ram[0x203] == 1);
-  CHECK(cd.cdc().available() == kSegaCdSectorBytes - 4);
   CHECK(cd.cdc().irq_pending());
-  cd.sub_cpu().bus().interrupt_ack(4);
+  sub.interrupt_ack(5);
+  CHECK_FALSE(cd.cdc().irq_pending());  // Gate-array request is acknowledged.
+  CHECK((cd.cdc().save().registers.ifstat & 0x40) ==
+        0);  // DTE stays set until DTACK.
+  cdc_write(cd, 7, 0);
   CHECK_FALSE(cd.cdc().irq_pending());
+  sub.read(0xFF8004, true, true, &value);
+  CHECK((value & 0xC000) == 0x8000);
 
-  uint16_t value = 0;
-  main.read(0xA1200A, true, true, &value);
-  CHECK(value == 1);
+  for (bool main : {false, true}) {
+    sub.write(0xFF8004, main ? 0x0200 : 0x0300, true, true);
+    cdc_write(cd, 2, 3);
+    cdc_write(cd, 3, 0);
+    cdc_write(cd, 4, source & 255);
+    cdc_write(cd, 5, source >> 8);
+    cdc_write(cd, 6, 0);
+    auto &host = main ? cd.main_bus() : sub;
+    host.read(main ? 0xA12008 : 0xFF8008, true, true, &value);
+    CHECK(value == 0xA001);
+    host.read(main ? 0xA12008 : 0xFF8008, true, true, &value);
+    CHECK(value == 0x0101);
+  }
+}
+
+TEST_CASE("CDD audio commands select CD-DA and program the fader",
+          "[sega_cd][audio]")
+{
+  CddFixture fixture;
+  SegaCd cd(fixture.disc, 7500);
+  cd.power_on();
+  command(cd, {3, 0, 0, 0, 0, 2, 0, 4});
+  CHECK(cd.cd_audio().playing());
+  CHECK(cd.cd_audio().current_lba() == 4);
+  command(cd, {6}, false);
+  CHECK(cd.cd_audio().playing());
+  command(cd, {6});
+  CHECK_FALSE(cd.cd_audio().playing());
+  command(cd, {7});
+  CHECK(cd.cd_audio().playing());
+  cd.sub_bus_port().write(0xFF8034, 0, true, true);
+  cd.advance_mclk(1);
+  CHECK(cd.cd_audio().save().fader.current < 1024);
+  CHECK(cd.cd_audio().save().fader.target == 0);
+  command(cd, {1});
+  CHECK_FALSE(cd.cd_audio().playing());
 }

@@ -6,6 +6,7 @@ segacd_sources = files(
   'disc.cpp',
   'disc_chd.cpp',
   'firmware.cpp',
+  'gate_array.cpp',
   'pcm.cpp',
   'sega_cd.cpp',
   'state.cpp',

@@ -106,7 +106,7 @@ TEST_CASE("Sega CD graphics ASIC scales, rotates, and clips deterministically",
   }
 }
 
-TEST_CASE("Sega CD ASIC writes word RAM and shares IRQ4 acknowledgement",
+TEST_CASE("Sega CD ASIC writes word RAM and uses IRQ1 acknowledgement",
           "[sega_cd][asic]")
 {
   SegaCd cd({}, 12500000);
@@ -126,6 +126,6 @@ TEST_CASE("Sega CD ASIC writes word RAM and shares IRQ4 acknowledgement",
   CHECK(ram[0x102] == 3);
   CHECK(ram[0x103] == 4);
   CHECK(cd.asic().irq_pending());
-  cd.sub_cpu().bus().interrupt_ack(4);
+  cd.sub_cpu().bus().interrupt_ack(1);
   CHECK_FALSE(cd.asic().irq_pending());
 }

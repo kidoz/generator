@@ -18,6 +18,18 @@ class SegaCd {
 public:
   static constexpr size_t kWordRamSize = 0x40000;
   static constexpr size_t kCommunicationBytes = 16;
+  static constexpr size_t kBackupRamSize = 8192;
+
+  struct GateState {
+    std::array<uint8_t, 0x80> registers{};
+    std::array<uint8_t, kBackupRamSize> backup_ram{};
+    uint64_t clock_acc = 0;
+    uint16_t stopwatch = 0;
+    uint16_t divider = 0;
+    uint16_t timer_count = 0;
+    uint8_t pending = 0;
+    bool hint_override = false;
+  };
 
   class MainBus final : public M68kBusInterface {
   public:
@@ -26,6 +38,7 @@ public:
     }
     int read(uint32_t addr, bool upper, bool lower, uint16_t *out) override;
     int write(uint32_t addr, uint16_t data, bool upper, bool lower) override;
+    bool read_vector_override(uint32_t addr, uint16_t *out) override;
     void interrupt_ack(int) override
     {
     }
@@ -134,6 +147,18 @@ public:
   {
     return m_word_ram;
   }
+  std::span<uint8_t, kBackupRamSize> backup_ram()
+  {
+    return m_gate.backup_ram;
+  }
+  bool backup_ram_dirty() const
+  {
+    return m_backup_ram_dirty;
+  }
+  void clear_backup_ram_dirty()
+  {
+    m_backup_ram_dirty = false;
+  }
   std::span<const uint8_t, kCommunicationBytes> main_communication() const
   {
     return m_main_communication;
@@ -158,9 +183,12 @@ public:
     uint8_t write_protect = 0;
     bool word_ram_dmna = false;
     bool sub_reset_pending = true;
+    GateState gate{};
   };
   BaseState base_state() const;
   void restore_base_state(const BaseState &state);
+  void update_interrupts();
+  bool valid_base_state(const BaseState &state) const;
 
 private:
   int main_read(uint32_t addr, bool upper, bool lower, uint16_t *out);
@@ -174,8 +202,10 @@ private:
   void acknowledge_sub_interrupt(int level);
   uint32_t main_word_ram_offset(uint32_t offset) const;
   uint32_t sub_word_ram_offset(uint32_t offset) const;
-  void start_dma(SegaCdCdcDmaTarget target, uint32_t destination,
-                 uint32_t byte_count);
+  uint16_t read_register(bool main, uint32_t offset, bool upper, bool lower);
+  void write_register(bool main, uint32_t offset, uint16_t data, bool upper,
+                      bool lower);
+  void advance_gate(uint64_t ticks);
 
   SegaCdDisc m_disc;
   SegaCdSubCpu m_sub_cpu;
@@ -200,6 +230,9 @@ private:
   uint8_t m_write_protect = 0;
   bool m_word_ram_dmna = false;
   bool m_sub_reset_pending = true;
+  uint64_t m_master_frequency;
+  GateState m_gate;
+  bool m_backup_ram_dirty = false;
 };
 
 }  // namespace generator

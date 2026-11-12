@@ -304,7 +304,7 @@ Machine::load_rom_mem(std::span<const uint8_t> rom_data,
    * A machine with nowhere to put that file (no home directory) drops
    * the dirty flag inside flush_battery and still switches. */
   flush_battery();
-  if (m_bus.sram_dirty()) {
+  if (m_bus.sram_dirty() || (m_sega_cd && m_sega_cd->backup_ram_dirty())) {
     return std::unexpected(std::string(state_error_message(StateError::Io)));
   }
 
@@ -1985,10 +1985,14 @@ std::expected<void, StateError> Machine::save_sram()
   if (m_rom.empty()) {
     return std::unexpected(StateError::NotLoaded);
   }
-  if (m_sram.empty()) {
+  if (!m_sega_cd && m_sram.empty()) {
     return {};
   }
-  const std::filesystem::path path = battery_path();
+  std::filesystem::path path = battery_path();
+  if (m_sega_cd && !path.empty())
+    path.replace_filename("backup.bram");
+  const auto ram = m_sega_cd ? std::span<uint8_t>(m_sega_cd->backup_ram())
+                             : std::span<uint8_t>(m_sram);
   if (path.empty()) {
     return std::unexpected(StateError::Io);
   }
@@ -2005,11 +2009,13 @@ std::expected<void, StateError> Machine::save_sram()
   ec.clear();
 #endif
 
-  auto written = write_file_atomic(path, m_sram);
+  auto written = write_file_atomic(path, ram);
   if (!written) {
     return written;
   }
   m_bus.clear_sram_dirty();
+  if (m_sega_cd)
+    m_sega_cd->clear_backup_ram_dirty();
   return {};
 }
 
@@ -2018,10 +2024,14 @@ std::expected<void, StateError> Machine::load_sram()
   if (m_rom.empty()) {
     return std::unexpected(StateError::NotLoaded);
   }
-  if (m_sram.empty()) {
+  if (!m_sega_cd && m_sram.empty()) {
     return {};
   }
-  const std::filesystem::path path = battery_path();
+  std::filesystem::path path = battery_path();
+  if (m_sega_cd && !path.empty())
+    path.replace_filename("backup.bram");
+  const auto ram = m_sega_cd ? std::span<uint8_t>(m_sega_cd->backup_ram())
+                             : std::span<uint8_t>(m_sram);
   if (path.empty()) {
     return std::unexpected(StateError::Io);
   }
@@ -2031,7 +2041,7 @@ std::expected<void, StateError> Machine::load_sram()
     return std::unexpected(StateError::NoSlot);
   }
   const auto file_size = std::filesystem::file_size(path, ec);
-  if (ec || file_size != m_sram.size()) {
+  if (ec || file_size != ram.size()) {
     return std::unexpected(StateError::Corrupt);
   }
 
@@ -2039,26 +2049,32 @@ std::expected<void, StateError> Machine::load_sram()
   if (!in) {
     return std::unexpected(StateError::Io);
   }
-  std::vector<uint8_t> bytes(m_sram.size());
+  std::vector<uint8_t> bytes(ram.size());
   in.read(reinterpret_cast<char *>(bytes.data()),
           (std::streamsize)bytes.size());
   if (!in) {
     return std::unexpected(StateError::Io);
   }
-  std::memcpy(m_sram.data(), bytes.data(), bytes.size());
+  std::memcpy(ram.data(), bytes.data(), bytes.size());
   m_bus.clear_sram_dirty();
+  if (m_sega_cd)
+    m_sega_cd->clear_backup_ram_dirty();
   return {};
 }
 
 void Machine::flush_battery()
 {
-  if (!m_bus.sram_dirty() || m_sram.empty()) {
+  const bool dirty = m_sega_cd ? m_sega_cd->backup_ram_dirty()
+                               : m_bus.sram_dirty() && !m_sram.empty();
+  if (!dirty) {
     return;
   }
   /* No home directory: nothing can be persisted, and retrying every
    * frame would not create one. */
   if (battery_path().empty()) {
     m_bus.clear_sram_dirty();
+    if (m_sega_cd)
+      m_sega_cd->clear_backup_ram_dirty();
     return;
   }
   if (save_sram()) {
@@ -2068,7 +2084,7 @@ void Machine::flush_battery()
 
 void Machine::restore_battery()
 {
-  if (m_sram.empty()) {
+  if (!m_sega_cd && m_sram.empty()) {
     return;
   }
   const auto loaded = load_sram();
