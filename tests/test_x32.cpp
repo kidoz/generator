@@ -1058,7 +1058,7 @@ TEST_CASE("X32 bitmap registers latch once at HBlank clock 668", "[x32]")
   CHECK(state->video.bitmap_mode == 0x8002);
   CHECK(state->video.shift == 1);
 
-  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 8211);
+  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 8239);
   const auto legacy_parsed = parse_x32_state(legacy);
   REQUIRE(legacy_parsed);
   CHECK_FALSE(legacy_parsed->base.video.bitmap_latched);
@@ -1376,6 +1376,11 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   configured.load_destination = 1;
   configured.load_register = 3;
   configured.multiplier = 2;
+  configured.multiplier_gap = 1;
+  configured.fetch_valid = 1;
+  configured.fetch_address = 0x100;
+  configured.fetch_data = 0x00090009;
+  configured.write_buffer = 4;
   device.master().restore(configured);
 
   const auto saved = serialize_x32_state(save_x32_state(device));
@@ -1392,7 +1397,7 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
 
   auto legacy = saved;
-  legacy.resize(legacy.size() - 8211);
+  legacy.resize(legacy.size() - 8239);
   const auto legacy_parsed = parse_x32_state(legacy);
   REQUIRE(legacy_parsed);
   CHECK(legacy_parsed->master.intc.icr == 0x8000);
@@ -1403,6 +1408,9 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(legacy_parsed->master.cache.entries[0][0].data[0] == 0);
   CHECK(legacy_parsed->master.load_destination == 0);
   CHECK(legacy_parsed->master.multiplier == 0);
+  CHECK(legacy_parsed->master.multiplier_gap == 0);
+  CHECK(legacy_parsed->master.fetch_valid == 0);
+  CHECK(legacy_parsed->master.write_buffer == 0);
   X32 legacy_device(cartridge, master, slave);
   legacy_device.power_on();
   REQUIRE(restore_x32_state(legacy_device, *legacy_parsed));
@@ -1410,11 +1418,14 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK_FALSE(legacy_device.master().save().dmac.module_pending[0]);
 
   auto without_cache_data = saved;
-  without_cache_data.resize(without_cache_data.size() - 8198);
+  without_cache_data.resize(without_cache_data.size() - 8226);
   const auto cache_legacy = parse_x32_state(without_cache_data);
   REQUIRE(cache_legacy);
   CHECK(cache_legacy->master.intc.irl_vector == 0x55);
   CHECK(cache_legacy->master.cache.entries[0][0].data[0] == 0);
   CHECK(cache_legacy->master.load_destination == 0);
   CHECK(cache_legacy->master.multiplier == 0);
+  CHECK(cache_legacy->master.multiplier_gap == 0);
+  CHECK(cache_legacy->master.fetch_valid == 0);
+  CHECK(cache_legacy->master.write_buffer == 0);
 }

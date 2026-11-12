@@ -2178,6 +2178,43 @@ TEST_CASE("SH-2 control register loads interlock their immediate consumers",
 }
 
 
+TEST_CASE("SH-2 write buffer drains across cached fetches and restore", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  peripheral_write8(cpu, bus, 0xFFFFFE92, 1);
+  for (uint32_t address = 0x102; address <= 0x10E; address += 2)
+    put16(bus, address, 0x0009);
+  put16(bus, 0x10C, 0x2122);
+  put16(bus, 0x110, 0x0009);
+  cpu.set_r(1, 0x300);
+  cpu.set_r(2, 0x400);
+  bus.write_wait = 4;
+  CHECK(cpu.step() == 5);
+  for (size_t i = 0; i < 4; i++)
+    CHECK(cpu.step() == 1);
+  CHECK(cpu.pc() == 0x10C);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.pc() == 0x10E);
+  CHECK(bus.read32(0x300) == 0x400);
+  const auto saved = cpu.save();
+  CHECK(saved.write_buffer == 4);
+  CHECK(saved.fetch_valid == 1);
+  Sh2 restored(bus);
+  restored.restore(saved);
+  CHECK(cpu.step() == 1);
+  CHECK(restored.step() == 1);
+  CHECK(cpu.save().write_buffer == 3);
+  CHECK(restored.save().write_buffer == 3);
+  CHECK(cpu.step() == 8);
+  CHECK(restored.step() == 8);
+  CHECK(cpu.save().write_buffer == 0);
+  CHECK(restored.save().write_buffer == 0);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+  CHECK(restored.fault() == Sh2::Fault::None);
+}
+
 TEST_CASE("SH-2 long multiplier contention decays across unrelated slots", "[sh2]")
 {
   auto bus = make_bus();

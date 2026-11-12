@@ -221,6 +221,24 @@ void read_pipeline(ChunkReader &r, Sh2::SavedState &state)
   state.multiplier = r.u8();
 }
 
+void write_bus_pipeline(ChunkWriter &w, const Sh2::SavedState &state)
+{
+  w.u8(state.multiplier_gap);
+  w.u8(state.fetch_valid);
+  w.u32(state.fetch_address);
+  w.u32(state.fetch_data);
+  w.u32(state.write_buffer);
+}
+
+void read_bus_pipeline(ChunkReader &r, Sh2::SavedState &state)
+{
+  state.multiplier_gap = r.u8();
+  state.fetch_valid = r.u8();
+  state.fetch_address = r.u32();
+  state.fetch_data = r.u32();
+  state.write_buffer = r.u32();
+}
+
 void write_sh2(ChunkWriter &w, const Sh2::SavedState &state)
 {
   write_cache(w, state.cache);
@@ -514,6 +532,8 @@ std::vector<uint8_t> serialize_x32_state(const X32State &state)
   write_cache_data(w, state.slave.cache);
   write_pipeline(w, state.master);
   write_pipeline(w, state.slave);
+  write_bus_pipeline(w, state.master);
+  write_bus_pipeline(w, state.slave);
   return w.take_payload();
 }
 
@@ -545,6 +565,13 @@ parse_x32_state(std::span<const uint8_t> payload)
     read_cache_data(r, state.slave.cache);
     read_pipeline(r, state.master);
     read_pipeline(r, state.slave);
+  } else if (r.remaining() == 2 * 4 * 64 * 16 + 6 + 28) {
+    read_cache_data(r, state.master.cache);
+    read_cache_data(r, state.slave.cache);
+    read_pipeline(r, state.master);
+    read_pipeline(r, state.slave);
+    read_bus_pipeline(r, state.master);
+    read_bus_pipeline(r, state.slave);
   } else if (r.remaining() != 0) {
     return std::unexpected("invalid X32 cache data tail");
   }
