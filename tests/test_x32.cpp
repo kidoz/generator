@@ -89,6 +89,26 @@ void release_bus_lease(X32 &device)
       }));
 }
 
+[[gnu::noinline]] uint32_t bus_lease_cycles(const X32 &device)
+{
+  return device.base_state().bus_lease_cycles;
+}
+
+[[gnu::noinline]] uint8_t bus_owner(const X32 &device)
+{
+  return device.base_state().bus_lease_owner;
+}
+
+[[gnu::noinline]] uint8_t bus_requester(const X32 &device)
+{
+  return device.base_state().bus_requester;
+}
+
+[[gnu::noinline]] uint8_t bus_handoff(const X32 &device)
+{
+  return device.base_state().bus_handoff_cycles;
+}
+
 void write_file(const char *path, const std::vector<uint8_t> &bytes)
 {
   std::ofstream out(path, std::ios::binary | std::ios::trunc);
@@ -1074,7 +1094,7 @@ TEST_CASE("X32 bitmap registers latch once at HBlank clock 668", "[x32]")
   CHECK(state->video.bitmap_mode == 0x8002);
   CHECK(state->video.shift == 1);
 
-  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 8239);
+  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 8246);
   const auto legacy_parsed = parse_x32_state(legacy);
   REQUIRE(legacy_parsed);
   CHECK_FALSE(legacy_parsed->base.video.bitmap_latched);
@@ -1340,6 +1360,237 @@ TEST_CASE("X32 DMAC waits for RV without changing its destination", "[x32]")
 }
 
 
+TEST_CASE("X32 shared memory leases delay the peer and restore continuation",
+          "[x32]")
+{
+  for (const bool sdram : {false, true}) {
+    INFO((sdram ? "SDRAM" : "cartridge"));
+    const uint32_t master_pc = sdram ? 0x06000000 : 0x02000000;
+    const uint32_t slave_pc = master_pc + 0x100;
+    std::vector<uint8_t> cartridge(0x400, 0);
+    put16(cartridge, 0, 0xE101);
+    put16(cartridge, 2, 0x0009);
+    put16(cartridge, 0x100, 0xE505);
+    put16(cartridge, 0x102, 0x0009);
+    std::vector<uint8_t> master(0x400, 0);
+    std::vector<uint8_t> slave(0x400, 0);
+    put32(master, 0, 0x06008000);
+    put32(master, 4, master_pc);
+    put32(slave, 0, 0x06008000);
+    put32(slave, 4, slave_pc);
+    X32 device(cartridge, master, slave);
+    device.power_on();
+    if (sdram) {
+      auto base = device.base_state();
+      base.sdram[0] = 0xE1;
+      base.sdram[1] = 0x01;
+      base.sdram[2] = 0;
+      base.sdram[3] = 0x09;
+      base.sdram[0x100] = 0xE5;
+      base.sdram[0x101] = 0x05;
+      base.sdram[0x102] = 0;
+      base.sdram[0x103] = 0x09;
+      device.restore_base_state(base);
+    }
+    write_main(device, 0xA15100, 0x83);
+    device.master().set_sr(0);
+    device.slave().set_sr(0);
+    device.advance_mclk(3);
+    CHECK(device.master().r(1) == 1);
+    CHECK(device.slave().r(5) == 0);
+    device.advance_mclk(3);
+    CHECK(device.slave().pc() == slave_pc);
+    CHECK(device.slave().r(5) == 0);
+
+    const auto saved = serialize_x32_state(save_x32_state(device));
+    const auto parsed = parse_x32_state(saved);
+    REQUIRE(parsed);
+    CHECK(parsed->base.bus_lease_owner == 0);
+    CHECK(parsed->base.bus_lease_cycles != 0);
+    X32 restored(cartridge, master, slave);
+    restored.power_on();
+    REQUIRE(restore_x32_state(restored, *parsed));
+    CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
+    REQUIRE(advance_until(device, [&] { return device.slave().r(5) == 5; }));
+    REQUIRE(advance_until(restored, [&] { return restored.slave().r(5) == 5; }));
+    device.advance_mclk(3);
+    restored.advance_mclk(3);
+    CHECK(device.master().pc() == master_pc + 2);
+    CHECK(restored.master().pc() == master_pc + 2);
+    CHECK(serialize_x32_state(save_x32_state(device)) ==
+          serialize_x32_state(save_x32_state(restored)));
+  }
+}
+
+TEST_CASE("X32 shared peripheral leases delay peers and restore continuation",
+          "[x32]")
+{
+  constexpr std::array<uint32_t, 6> addresses{
+      0x20004020, 0x20004030, 0x20004100,
+      0x20004200, 0x24000000, 0x20A15114,
+  };
+  for (const uint32_t address : addresses) {
+    INFO(address);
+    std::vector<uint8_t> cartridge;
+    std::vector<uint8_t> master(0x400, 0);
+    std::vector<uint8_t> slave(0x400, 0);
+    put32(master, 0, 0x06008000);
+    put32(master, 4, 0x100);
+    put32(slave, 0, 0x06008000);
+    put32(slave, 4, 0x100);
+    for (uint32_t pc = 0x100; pc <= 0x108; pc += 2) {
+      const uint16_t op = pc == 0x100 ? 0x2122 : 0x0009;
+      put16(master, pc, op);
+      put16(slave, pc, op);
+    }
+    X32 device(cartridge, master, slave);
+    device.power_on();
+    write_main(device, 0xA15100, 0x83);
+    device.master().set_sr(0);
+    device.slave().set_sr(0);
+    device.master_bus().write16(0x20004000, 0x8000);
+    device.master().set_r(1, address);
+    device.master().set_r(2, address == 0x20004030 ? 0 : 0x12345678);
+    device.slave().set_r(1, address + 4);
+    device.slave().set_r(2, 0x23456789);
+    device.master().step();
+    device.slave().step();
+    CHECK(device.master().pc() == 0x102);
+    CHECK(device.slave().pc() == 0x100);
+
+    const auto saved = serialize_x32_state(save_x32_state(device));
+    const auto parsed = parse_x32_state(saved);
+    REQUIRE(parsed);
+    CHECK(parsed->base.bus_lease_owner == 0);
+    CHECK(parsed->base.bus_lease_cycles != 0);
+    X32 restored(cartridge, master, slave);
+    restored.power_on();
+    REQUIRE(restore_x32_state(restored, *parsed));
+    CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
+    REQUIRE(advance_until(device, [&] { return device.slave().pc() >= 0x102; }));
+    REQUIRE(advance_until(restored,
+                          [&] { return restored.slave().pc() >= 0x102; }));
+    CHECK(serialize_x32_state(save_x32_state(device)) ==
+          serialize_x32_state(save_x32_state(restored)));
+  }
+}
+
+TEST_CASE("X32 bus handoff takes one clock and restores the pending grant",
+          "[x32]")
+{
+  std::vector<uint8_t> cartridge;
+  std::vector<uint8_t> master(0x400, 0);
+  std::vector<uint8_t> slave(0x400, 0);
+  put32(master, 0, 0x06008000);
+  put32(master, 4, 0x100);
+  put32(slave, 0, 0x06008000);
+  put32(slave, 4, 0x100);
+  for (uint32_t pc = 0x100; pc <= 0x108; pc += 2) {
+    put16(master, pc, 0x0009);
+    put16(slave, pc, 0x0009);
+  }
+  auto device = std::make_unique<X32>(cartridge, master, slave);
+  device->power_on();
+  write_main(*device, 0xA15100, 0x83);
+  device->master().set_sr(0);
+  device->slave().set_sr(0);
+  CHECK(device->master_bus().read32(0x06000000) == 0);
+  CHECK_FALSE(device->slave_bus().can_access(0x06000000, false));
+  REQUIRE(advance_until(
+      *device, [&] { return bus_handoff(*device) != 0; }));
+  CHECK(bus_lease_cycles(*device) == 0);
+  CHECK(bus_owner(*device) == 2);
+  CHECK(bus_requester(*device) == 1);
+  CHECK(bus_handoff(*device) == 1);
+  CHECK_FALSE(device->master_bus().can_access(0x06000000, false));
+  CHECK_FALSE(device->slave_bus().can_access(0x06000000, false));
+
+  const auto saved = serialize_x32_state(save_x32_state(*device));
+  const auto parsed = parse_x32_state(saved);
+  REQUIRE(parsed);
+  CHECK(parsed->base.bus_requester == 1);
+  CHECK(parsed->base.bus_handoff_cycles == 1);
+  auto restored = std::make_unique<X32>(cartridge, master, slave);
+  restored->power_on();
+  REQUIRE(restore_x32_state(*restored, *parsed));
+  CHECK(serialize_x32_state(save_x32_state(*restored)) == saved);
+  device->advance_mclk(3);
+  restored->advance_mclk(3);
+  CHECK(bus_handoff(*device) == 0);
+  CHECK(bus_owner(*device) == 1);
+  CHECK(bus_requester(*device) == 2);
+  CHECK(device->slave_bus().can_access(0x06000000, false));
+  CHECK(restored->slave_bus().can_access(0x06000000, false));
+  CHECK_FALSE(device->master_bus().can_access(0x06000000, false));
+  CHECK_FALSE(restored->master_bus().can_access(0x06000000, false));
+  CHECK(serialize_x32_state(save_x32_state(*device)) ==
+        serialize_x32_state(save_x32_state(*restored)));
+  CHECK(device->slave_bus().read32(0x06000000) == 0);
+  CHECK(restored->slave_bus().read32(0x06000000) == 0);
+  REQUIRE(advance_until(
+      *device, [&] { return bus_handoff(*device) != 0; }));
+  REQUIRE(advance_until(
+      *restored, [&] { return bus_handoff(*restored) != 0; }));
+  CHECK(bus_requester(*device) == 0);
+  CHECK(bus_requester(*restored) == 0);
+  device->advance_mclk(3);
+  restored->advance_mclk(3);
+  CHECK(bus_handoff(*device) == 0);
+  CHECK(bus_owner(*device) == 0);
+  CHECK(bus_handoff(*restored) == 0);
+  CHECK(bus_owner(*restored) == 0);
+  CHECK(device->master_bus().can_access(0x06000000, false));
+  CHECK(restored->master_bus().can_access(0x06000000, false));
+  CHECK(serialize_x32_state(save_x32_state(*device)) ==
+        serialize_x32_state(save_x32_state(*restored)));
+}
+
+
+TEST_CASE("X32 peer bus lease blocks DMAC without changing its transfer",
+          "[x32]")
+{
+  std::vector<uint8_t> cartridge(0x400, 0);
+  put32(cartridge, 0, 0x11223344);
+  std::vector<uint8_t> master(0x400, 0);
+  std::vector<uint8_t> slave(0x400, 0);
+  put32(master, 0, 0x06008000);
+  put32(master, 4, 0x100);
+  put32(slave, 0, 0x06008000);
+  put32(slave, 4, 0x100);
+  for (uint32_t address = 0x100; address <= 0x110; address += 2) {
+    put16(master, address, 0x0009);
+    put16(slave, address, address <= 0x10A ? 0x2122 : 0x0009);
+  }
+  X32 device(cartridge, master, slave);
+  device.power_on();
+  write_main(device, 0xA15100, 0x83);
+  device.master().set_sr(0);
+  device.slave().set_sr(0);
+  const auto write_slave_register = [&](uint32_t address, uint32_t value) {
+    device.slave().set_r(1, address);
+    device.slave().set_r(2, value);
+    device.slave().step();
+  };
+  write_slave_register(0xFFFFFF88, 1);
+  write_slave_register(0xFFFFFF80, 0x02000000);
+  write_slave_register(0xFFFFFF84, 0x06000000);
+  write_slave_register(0xFFFFFFA0, 0x40);
+  write_slave_register(0xFFFFFFB0, 1);
+  device.master_bus().write32(0x06000000, 0x89ABCDEF);
+  write_slave_register(0xFFFFFF8C, 0x5E01);
+
+  CHECK(device.master_bus().read32(0x06000000) == 0x89ABCDEF);
+  CHECK(device.slave().step() == 2);
+  CHECK(device.slave().step() == 2);
+  CHECK(device.slave().save().dmac.channels[0].tcr == 1);
+  CHECK(device.master_bus().read32(0x06000000) == 0x89ABCDEF);
+  REQUIRE(advance_until(device, [&] {
+    return device.slave().save().dmac.channels[0].tcr == 0;
+  }));
+  CHECK(device.slave_bus().read32(0x06000000) == 0x11223344);
+}
+
+
 TEST_CASE("X32 state preserves pending NMI and the DMA halt flag", "[x32]")
 {
   std::vector<uint8_t> cartridge;
@@ -1398,6 +1649,7 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   configured.fetch_data = 0x00090009;
   configured.write_buffer = 4;
   device.master().restore(configured);
+  CHECK(device.master_bus().read32(0x06000000) == 0);
 
   const auto saved = serialize_x32_state(save_x32_state(device));
   const auto parsed = parse_x32_state(saved);
@@ -1413,7 +1665,7 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
 
   auto legacy = saved;
-  legacy.resize(legacy.size() - 8239);
+  legacy.resize(legacy.size() - 8246);
   const auto legacy_parsed = parse_x32_state(legacy);
   REQUIRE(legacy_parsed);
   CHECK(legacy_parsed->master.intc.icr == 0x8000);
@@ -1427,6 +1679,10 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(legacy_parsed->master.multiplier_gap == 0);
   CHECK(legacy_parsed->master.fetch_valid == 0);
   CHECK(legacy_parsed->master.write_buffer == 0);
+  CHECK(legacy_parsed->base.bus_lease_cycles == 0);
+  CHECK(legacy_parsed->base.bus_lease_owner == 2);
+  CHECK(legacy_parsed->base.bus_requester == 2);
+  CHECK(legacy_parsed->base.bus_handoff_cycles == 0);
   X32 legacy_device(cartridge, master, slave);
   legacy_device.power_on();
   REQUIRE(restore_x32_state(legacy_device, *legacy_parsed));
@@ -1434,7 +1690,7 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK_FALSE(legacy_device.master().save().dmac.module_pending[0]);
 
   auto without_cache_data = saved;
-  without_cache_data.resize(without_cache_data.size() - 8226);
+  without_cache_data.resize(without_cache_data.size() - 8233);
   const auto cache_legacy = parse_x32_state(without_cache_data);
   REQUIRE(cache_legacy);
   CHECK(cache_legacy->master.intc.irl_vector == 0x55);
@@ -1444,4 +1700,13 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(cache_legacy->master.multiplier_gap == 0);
   CHECK(cache_legacy->master.fetch_valid == 0);
   CHECK(cache_legacy->master.write_buffer == 0);
+
+  auto without_handshake = saved;
+  without_handshake.resize(without_handshake.size() - 2);
+  const auto handshake_legacy = parse_x32_state(without_handshake);
+  REQUIRE(handshake_legacy);
+  CHECK(handshake_legacy->base.bus_lease_cycles == 13);
+  CHECK(handshake_legacy->base.bus_lease_owner == 0);
+  CHECK(handshake_legacy->base.bus_requester == 2);
+  CHECK(handshake_legacy->base.bus_handoff_cycles == 0);
 }

@@ -498,6 +498,12 @@ bool valid_x32_state(const X32 &device, const X32State &state)
          state.base.clock_accumulator <= 6 && state.base.fifo_head <= 3 &&
          state.base.fifo_count <= 4 && state.base.fifo_read_byte <= 1 &&
          state.base.dreq_length <= 0x10000 &&
+         state.base.bus_lease_cycles <= 13 && state.base.bus_lease_owner <= 2 &&
+         (state.base.bus_lease_cycles == 0 || state.base.bus_lease_owner < 2) &&
+         state.base.bus_requester <= 2 && state.base.bus_handoff_cycles <= 1 &&
+         (state.base.bus_handoff_cycles == 0 ||
+          (state.base.bus_lease_cycles == 0 &&
+           state.base.bus_lease_owner == 2 && state.base.bus_requester < 2)) &&
          state.base.interrupt_masks[0] <= 0xF &&
          state.base.interrupt_masks[1] <= 0xF &&
          X32Video::valid_saved_state(state.base.video) &&
@@ -534,6 +540,10 @@ std::vector<uint8_t> serialize_x32_state(const X32State &state)
   write_pipeline(w, state.slave);
   write_bus_pipeline(w, state.master);
   write_bus_pipeline(w, state.slave);
+  w.u32(state.base.bus_lease_cycles);
+  w.u8(state.base.bus_lease_owner);
+  w.u8(state.base.bus_requester);
+  w.u8(state.base.bus_handoff_cycles);
   return w.take_payload();
 }
 
@@ -572,6 +582,26 @@ parse_x32_state(std::span<const uint8_t> payload)
     read_pipeline(r, state.slave);
     read_bus_pipeline(r, state.master);
     read_bus_pipeline(r, state.slave);
+  } else if (r.remaining() == 2 * 4 * 64 * 16 + 6 + 28 + 5) {
+    read_cache_data(r, state.master.cache);
+    read_cache_data(r, state.slave.cache);
+    read_pipeline(r, state.master);
+    read_pipeline(r, state.slave);
+    read_bus_pipeline(r, state.master);
+    read_bus_pipeline(r, state.slave);
+    state.base.bus_lease_cycles = r.u32();
+    state.base.bus_lease_owner = r.u8();
+  } else if (r.remaining() == 2 * 4 * 64 * 16 + 6 + 28 + 7) {
+    read_cache_data(r, state.master.cache);
+    read_cache_data(r, state.slave.cache);
+    read_pipeline(r, state.master);
+    read_pipeline(r, state.slave);
+    read_bus_pipeline(r, state.master);
+    read_bus_pipeline(r, state.slave);
+    state.base.bus_lease_cycles = r.u32();
+    state.base.bus_lease_owner = r.u8();
+    state.base.bus_requester = r.u8();
+    state.base.bus_handoff_cycles = r.u8();
   } else if (r.remaining() != 0) {
     return std::unexpected("invalid X32 cache data tail");
   }
