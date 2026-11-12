@@ -122,3 +122,28 @@ TEST_CASE("Sega CD sub-CPU scheduling is independent of master tick chunking",
   CHECK(chunked.clock_credit() == whole.clock_credit());
   CHECK(chunked.master_ticks() == whole.master_ticks());
 }
+
+TEST_CASE("Sega CD sub-CPU wakes from STOP on an unmasked interrupt",
+          "[sega_cd][sub_cpu]")
+{
+  SegaCdSubCpu sub(50000000);
+  auto ram = sub.bus().program_ram();
+  write32(ram, 0, 0x70000);
+  write32(ram, 4, 0x100);
+  write32(ram, (24 + 2) * 4, 0x200);
+  write16(ram, 0x100, 0x4E72);  // STOP #$2000
+  write16(ram, 0x102, 0x2000);
+  write16(ram, 0x104, 0x60FE);
+  write16(ram, 0x200, 0x702A);
+  write16(ram, 0x202, 0x4E73);
+  sub.power_on_reset();
+  sub.advance_mclk(1000);
+  REQUIRE(sub.cpu().stopped());
+  sub.set_ipl(2);
+  sub.advance_mclk(1000);
+  CHECK_FALSE(sub.cpu().stopped());
+  CHECK(sub.cpu().d(0) == 42);
+  CHECK(sub.bus().acknowledged_level() == 2);
+  sub.advance_mclk(1000);
+  CHECK(sub.cpu().pc() == 0x104);
+}

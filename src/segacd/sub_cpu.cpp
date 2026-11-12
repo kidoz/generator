@@ -51,7 +51,7 @@ void SegaCdSubCpu::advance_mclk(uint64_t ticks)
     return;
   }
   while (m_clock_credit > 0) {
-    if (m_cpu.halted() || m_cpu.stopped()) {
+    if (m_cpu.halted()) {
       m_clock_credit = 0;
       break;
     }
