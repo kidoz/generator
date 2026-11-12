@@ -268,6 +268,7 @@ private:
   void restore_retry_state(const RetryState &state);
   uint32_t execute_step();
   uint16_t fetch16();
+  void discard_fetch(uint32_t address);
   void branch(uint32_t target, bool link);
   uint32_t enter_exception(uint8_t vector, uint32_t return_pc, uint8_t level);
   void illegal();

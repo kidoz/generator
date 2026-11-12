@@ -614,6 +614,13 @@ uint16_t Sh2::fetch16()
   return opcode;
 }
 
+void Sh2::discard_fetch(uint32_t address)
+{
+  if ((address & 1) != 0 || address >= 0xFFFFFE00)
+    return;
+  (void)read32(address & ~3u, false, true);
+}
+
 void Sh2::branch(uint32_t target, bool link)
 {
   m_fetch_valid = 0;
@@ -748,13 +755,19 @@ uint32_t Sh2::execute_step()
     return 0;
   }
   m_address_error = false;
-  if (m_delay_slots == 0 && ((m_pc & 1) || m_pc >= 0xFFFFFE00))
-    return enter_exception(9, m_pc, 0);
+  if (m_delay_slots == 0 && ((m_pc & 1) || m_pc >= 0xFFFFFE00)) {
+    discard_fetch(m_pc);
+    const uint32_t exception_cycles = enter_exception(9, m_pc, 0);
+    return m_stall_cycles + exception_cycles;
+  }
   if (m_pending_level != 0 && m_delay_slots == 0) {
     const uint8_t vector = m_pending_vector;
     const uint8_t level = m_pending_level;
     m_pending_level = 0;
-    return enter_exception(vector, m_pc, level == 17 ? 0 : level);
+    discard_fetch(m_pc);
+    const uint32_t exception_cycles =
+        enter_exception(vector, m_pc, level == 17 ? 0 : level);
+    return m_stall_cycles + exception_cycles;
   }
   m_stall_cycles = 0;
   const bool was_delayed = m_delay_slots != 0;
@@ -1276,6 +1289,7 @@ uint32_t Sh2::execute_step()
       break;
     case 9:
       if (m_sr & 1) {
+        discard_fetch(m_pc + 2);
         m_pc += 2 + sign_extend<8>(imm) * 2;
         m_fetch_valid = 0;
         cycles = 3;
@@ -1283,6 +1297,7 @@ uint32_t Sh2::execute_step()
       break;
     case 0xB:
       if (!(m_sr & 1)) {
+        discard_fetch(m_pc + 2);
         m_pc += 2 + sign_extend<8>(imm) * 2;
         m_fetch_valid = 0;
         cycles = 3;
@@ -1326,8 +1341,11 @@ uint32_t Sh2::execute_step()
     case 3:
       if (was_delayed)
         illegal();
-      else
+      else {
+        discard_fetch(m_pc);
+        discard_fetch(m_pc + 2);
         cycles = enter_exception(imm, m_pc, 0);
+      }
       break;
     case 4:
     case 5:
@@ -1403,8 +1421,11 @@ uint32_t Sh2::execute_step()
   } else if (m_multiplier != MultiplyNone && m_multiplier_gap < 15) {
     m_multiplier_gap++;
   }
-  if (m_address_error)
-    return cycles + m_stall_cycles + enter_exception(9, m_pc, 0);
+  if (m_address_error) {
+    discard_fetch(m_pc);
+    const uint32_t exception_cycles = enter_exception(9, m_pc, 0);
+    return cycles + m_stall_cycles + exception_cycles;
+  }
   return cycles + m_stall_cycles;
 }
 

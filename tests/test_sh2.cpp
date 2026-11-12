@@ -898,6 +898,79 @@ TEST_CASE("SH-2 step reports base instruction execution states", "[sh2]")
          cpu.fault() == Sh2::Fault::IllegalOpcode));
 }
 
+TEST_CASE("SH-2 branch and exception overruns fetch and wait in program order",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  bus.read_wait = 1;
+
+  SECTION("taken BT discards the third sequential instruction")
+  {
+    put16(bus, 0x100, 0x8900);
+    put16(bus, 0x102, 0x0009);
+    put16(bus, 0x104, 0x0009);
+    cpu.set_sr(1);
+    bus.read32_addresses.clear();
+    CHECK(cpu.step() == 5);
+    REQUIRE(bus.read32_addresses.size() == 2);
+    CHECK(bus.read32_addresses[0] == 0x100);
+    CHECK(bus.read32_addresses[1] == 0x104);
+  }
+
+  SECTION("TRAPA discards two instructions before its vector fetch")
+  {
+    put16(bus, 0x100, 0x452E);
+    put16(bus, 0x102, 0xC320);
+    put32(bus, 0x1080, 0x200);
+    cpu.set_r(5, 0x1000);
+    cpu.set_r(15, 0x1000);
+    REQUIRE(cpu.step() == 2);
+    bus.read32_addresses.clear();
+    CHECK(cpu.step() == 12);
+    REQUIRE(bus.read32_addresses.size() == 4);
+    CHECK(bus.read32_addresses[0] == 0x100);
+    CHECK(bus.read32_addresses[1] == 0x104);
+    CHECK(bus.read32_addresses[2] == 0x104);
+    CHECK(bus.read32_addresses[3] == 0x1080);
+  }
+
+  SECTION("interrupt entry fetches one overrun before its vector")
+  {
+    put16(bus, 0x100, 0x452E);
+    put16(bus, 0x102, 0x0009);
+    put32(bus, 0x1100, 0x300);
+    cpu.set_r(5, 0x1000);
+    REQUIRE(cpu.step() == 2);
+    cpu.set_sr(0);
+    REQUIRE(cpu.request_interrupt(0x40, 1));
+    bus.read32_addresses.clear();
+    CHECK(cpu.step() == 11);
+    REQUIRE(bus.read32_addresses.size() == 2);
+    CHECK(bus.read32_addresses[0] == 0x100);
+    CHECK(bus.read32_addresses[1] == 0x1100);
+  }
+
+  SECTION("address error entry fetches one overrun before its vector")
+  {
+    put16(bus, 0x100, 0x452E);
+    put16(bus, 0x102, 0x2122);
+    put32(bus, 0x1024, 0x300);
+    cpu.set_r(5, 0x1000);
+    cpu.set_r(1, 1);
+    cpu.set_r(15, 0x1000);
+    REQUIRE(cpu.step() == 2);
+    bus.read32_addresses.clear();
+    CHECK(cpu.step() == 12);
+    REQUIRE(bus.read32_addresses.size() == 3);
+    CHECK(bus.read32_addresses[0] == 0x100);
+    CHECK(bus.read32_addresses[1] == 0x104);
+    CHECK(bus.read32_addresses[2] == 0x1024);
+  }
+}
+
+
 TEST_CASE("SH-2 TRAPA and RTE preserve stack and processor state", "[sh2]")
 {
   auto bus = make_bus();

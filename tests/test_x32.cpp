@@ -1020,12 +1020,18 @@ TEST_CASE("Machine soft reset delivers VRES to both SH-2s", "[x32]")
   device->master_bus().write16(0x20004014, 0);
   device->master().set_sr(0);
   device->slave().set_sr(0);
-  machine.debug_advance_mclk(45);
+  const auto advance_machine = [&](auto predicate) {
+    for (int ticks = 0; ticks < 1000 && !predicate(); ticks++)
+      machine.debug_advance_mclk(1);
+    REQUIRE(predicate());
+  };
+  advance_machine(
+      [&] { return device->master().pc() == 0x402 && device->slave().pc() == 0x500; });
   CHECK(device->master().pc() == 0x402);
   CHECK(device->slave().pc() == 0x500);
   device->slave_bus().write16(0x20004014, 0);
   device->slave().set_sr(0);
-  machine.debug_advance_mclk(45);
+  advance_machine([&] { return device->slave().pc() == 0x502; });
   CHECK(device->slave().pc() == 0x502);
 }
 
@@ -1614,7 +1620,7 @@ TEST_CASE("X32 state preserves pending NMI and the DMA halt flag", "[x32]")
   restored.power_on();
   REQUIRE(restore_x32_state(restored, *parsed));
   CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
-  CHECK(restored.master().step() == 9);
+  CHECK(restored.master().step() == 15);
   CHECK(restored.master().pc() == 0x300);
   CHECK(restored.master().sr() == 0xF0);
   CHECK(restored.master().r(15) == 0x06007FF8);
