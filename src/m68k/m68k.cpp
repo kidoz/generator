@@ -499,9 +499,14 @@ uint32_t M68k::ea_addr(const Ea &ea, int size)
       const uint16_t lo = fetch_stream_word();
       return ((uint32_t)hi << 16) | lo;
     }
-    case 2:
-      return m_pc + (uint32_t)(int32_t)(int16_t)fetch_stream_word();
+    case 2: {
+      // PC-relative addressing uses the EA extension word's address. MOVEM
+      // and static bit operations have already consumed an earlier extension.
+      const uint32_t base = m_prefetch_addr - 2 * (uint32_t)m_queue_len;
+      return base + (uint32_t)(int32_t)(int16_t)fetch_stream_word();
+    }
     case 3: {
+      const uint32_t base = m_prefetch_addr - 2 * (uint32_t)m_queue_len;
       const uint16_t brief = fetch_stream_word();
       const int8_t disp = (int8_t)(brief & 0xFF);
       uint32_t index = (brief & 0x8000) != 0 ? m_a[(brief >> 12) & 7]
@@ -509,7 +514,7 @@ uint32_t M68k::ea_addr(const Ea &ea, int size)
       if ((brief & 0x800) == 0) {
         index = (uint32_t)(int32_t)(int16_t)index;
       }
-      return m_pc + (uint32_t)(int32_t)disp + index;
+      return base + (uint32_t)(int32_t)disp + index;
     }
     default:
       break;
@@ -2226,6 +2231,9 @@ void M68k::exec_bitop(uint16_t op)
   /* Z <- NOT(bit): set when the tested bit is clear */
   m_sr = (uint16_t)((m_sr & ~SR_Z) | (bit_set ? 0 : SR_Z));
   if (kind == 0) {
+    if (ea.mode == 3) {
+      m_a[ea.reg] += an_step(ea.reg, 1);
+    }
     prefetch_fill(2);
     return;
   }
@@ -2242,6 +2250,9 @@ void M68k::exec_bitop(uint16_t op)
     break;
   }
   bus_write_byte(addr, res);
+  if (!aborted() && ea.mode == 3) {
+    m_a[ea.reg] += an_step(ea.reg, 1);
+  }
   prefetch_fill(1);
 }
 

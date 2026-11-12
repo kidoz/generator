@@ -2258,3 +2258,57 @@ TEST_CASE("bus wait states advance CPU and sibling clocks", "[m68k][cycles]")
   CHECK(waited.clk - plain.clk ==
         (uint64_t)(waited.reads * 2 + waited.writes * 3));
 }
+
+TEST_CASE(
+    "memory bit operations postincrement once and preserve stack alignment",
+    "[m68k]")
+{
+  for (bool dynamic : {false, true}) {
+    for (int kind = 0; kind < 4; kind++) {
+      for (int reg : {0, 7}) {
+        CAPTURE(dynamic, kind, reg);
+        Rig rig;
+        rig.w(0x100,
+              (uint16_t)((dynamic ? 0x0118 : 0x0818) | (kind << 6) | reg));
+        if (!dynamic)
+          rig.w(0x102, 0);  // bit 0
+        rig.boot();
+        rig.cpu.set_a(reg, 0xE02000);
+        rig.cpu.set_d(0, 0);
+        rig.ram[0x2000] = 0xA1;
+        rig.cpu.step();
+        CHECK(rig.cpu.a(reg) == 0xE02000 + (reg == 7 ? 2 : 1));
+        CHECK((rig.cpu.sr() & 4) == 0);
+        CHECK(rig.ram[0x2000] == ((kind == 1 || kind == 2) ? 0xA0 : 0xA1));
+      }
+    }
+  }
+}
+
+TEST_CASE("PC-relative operands use their own extension after a register mask "
+          "or bit number",
+          "[m68k]")
+{
+  for (bool indexed : {false, true}) {
+    CAPTURE(indexed);
+    Rig rig;
+    rig.w(0x100, indexed ? 0x4CFB : 0x4CFA);  // MOVEM.L (PC),D0/A0
+    rig.w(0x102, 0x0101);
+    rig.w(0x104, indexed ? 0x100C : 0x000C);  // D1.W=0, displacement $0C
+    rig.lw(0x110, 0x12345678);
+    rig.lw(0x114, 0x00FF2000);
+    rig.boot();
+    rig.cpu.set_d(1, 0);
+    rig.cpu.step();
+    CHECK(rig.cpu.d(0) == 0x12345678);
+    CHECK(rig.cpu.a(0) == 0x00FF2000);
+  }
+  Rig rig;
+  rig.w(0x100, 0x083A);  // BTST #0,$0C(PC)
+  rig.w(0x102, 0);
+  rig.w(0x104, 0x000C);
+  rig.w(0x110, 0x0100);
+  rig.boot();
+  rig.cpu.step();
+  CHECK((rig.cpu.sr() & 4) == 0);
+}
