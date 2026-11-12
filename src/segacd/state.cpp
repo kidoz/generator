@@ -18,7 +18,7 @@ SegaCdState save_segacd_state(const SegaCd &cd)
 bool valid_segacd_state(const SegaCd &cd, const SegaCdState &state)
 {
   return state.disc_identity == cd.disc().identity() &&
-         state.base.program_ram_bank < 4 &&
+         cd.valid_base_state(state.base) &&
          cd.sub_cpu().valid_saved_state(state.sub_cpu) &&
          cd.cdd().valid_saved_state(state.cdd) &&
          cd.cdc().valid_saved_state(state.cdc) &&
@@ -41,10 +41,7 @@ bool restore_segacd_state(SegaCd &cd, const SegaCdState &state)
   (void)cd.asic().restore(state.asic, cd.word_ram());
   (void)cd.pcm().restore(state.pcm);
   (void)cd.cd_audio().restore(state.cd_audio);
-  cd.sub_cpu().set_ipl(state.cdd.irq_pending || state.cdc.irq_pending ||
-                               state.asic.irq_pending
-                           ? 4
-                           : 7);
+  cd.update_interrupts();
   return true;
 }
 
@@ -199,6 +196,58 @@ std::vector<uint8_t> serialize_segacd_state(const SegaCdState &state)
   w.u8(state.base.write_protect);
   w.u8(state.base.word_ram_dmna ? 1 : 0);
   w.u8(state.base.sub_reset_pending ? 1 : 0);
+  // Hardware register extension; absent in older SCD0 payloads.
+  w.u32(0x31444353);
+  w.bytes(state.base.gate.registers);
+  w.bytes(state.base.gate.backup_ram);
+  w.u64(state.base.gate.clock_acc);
+  w.u16(state.base.gate.stopwatch);
+  w.u16(state.base.gate.divider);
+  w.u16(state.base.gate.timer_count);
+  w.u8(state.base.gate.pending);
+  w.u8(state.base.gate.hint_override ? 1 : 0);
+  w.bytes(state.cdd.protocol.command);
+  w.bytes(state.cdd.protocol.status);
+  w.u64(state.cdd.protocol.clock_acc);
+  w.u8(state.cdd.protocol.hock ? 1 : 0);
+  w.u8(state.cdd.protocol.drive_status);
+  w.u16(state.cdd.protocol.lead_in);
+  w.u8(state.cdd.protocol.seek_ticks);
+  w.u8(state.cdd.protocol.seek_status);
+  w.u32(state.cdd.protocol.sector_msf);
+  w.u8(state.cdc.registers.enabled ? 1 : 0);
+  w.u8(state.cdc.registers.index);
+  w.u8(state.cdc.registers.mode);
+  w.u8(state.cdc.registers.ifstat);
+  w.u8(state.cdc.registers.ifctrl);
+  w.bytes(state.cdc.registers.control);
+  w.bytes(state.cdc.registers.header);
+  w.bytes(state.cdc.registers.status);
+  w.u16(state.cdc.registers.count);
+  w.u16(state.cdc.registers.source);
+  w.u16(state.cdc.registers.pointer);
+  w.u16(state.cdc.registers.write_address);
+  w.u32(state.cdc.registers.destination);
+  w.u8(state.cdc.registers.transferring ? 1 : 0);
+  w.u64(state.cdc.registers.decoder_clock_acc);
+  w.u8(state.pcm.registers.active ? 1 : 0);
+  w.u8(state.pcm.registers.control);
+  w.u8(state.pcm.registers.bank);
+  w.u8(state.pcm.registers.channel);
+  w.u8(state.pcm.registers.disabled);
+  for (const auto &channel : state.pcm.registers.channels)
+    w.bytes(channel);
+  for (const auto position : state.pcm.registers.positions)
+    w.u32(position);
+  w.bytes(state.asic.stamp.registers);
+  w.u8(state.asic.stamp.priority);
+  w.u32(state.asic.stamp.pixel);
+  w.u64(state.asic.stamp.clock_acc);
+  w.u8(state.asic.stamp.busy ? 1 : 0);
+  w.u16(state.cd_audio.fader.current);
+  w.u16(state.cd_audio.fader.target);
+  w.u64(state.cd_audio.fader.clock_acc);
+  w.u8(state.cd_audio.fader.enabled ? 1 : 0);
   return w.take_payload();
 }
 
@@ -301,6 +350,65 @@ parse_segacd_state(std::span<const uint8_t> payload)
     state.base.write_protect = r.u8();
     state.base.word_ram_dmna = r.u8() != 0;
     state.base.sub_reset_pending = r.u8() != 0;
+  }
+  if (r.remaining() != 0) {
+    if (!r.has(kSegaCdRegisterStateBytes) || r.u32() != 0x31444353)
+      return std::unexpected("invalid Sega CD register extension");
+    auto read_array = [&](auto &destination) {
+      const auto bytes = r.bytes(destination.size());
+      if (bytes.size() == destination.size())
+        std::copy(bytes.begin(), bytes.end(), destination.begin());
+    };
+    read_array(state.base.gate.registers);
+    read_array(state.base.gate.backup_ram);
+    state.base.gate.clock_acc = r.u64();
+    state.base.gate.stopwatch = r.u16();
+    state.base.gate.divider = r.u16();
+    state.base.gate.timer_count = r.u16();
+    state.base.gate.pending = r.u8();
+    state.base.gate.hint_override = r.u8() != 0;
+    read_array(state.cdd.protocol.command);
+    read_array(state.cdd.protocol.status);
+    state.cdd.protocol.clock_acc = r.u64();
+    state.cdd.protocol.hock = r.u8() != 0;
+    state.cdd.protocol.drive_status = r.u8();
+    state.cdd.protocol.lead_in = r.u16();
+    state.cdd.protocol.seek_ticks = r.u8();
+    state.cdd.protocol.seek_status = r.u8();
+    state.cdd.protocol.sector_msf = r.u32();
+    state.cdc.registers.enabled = r.u8() != 0;
+    state.cdc.registers.index = r.u8();
+    state.cdc.registers.mode = r.u8();
+    state.cdc.registers.ifstat = r.u8();
+    state.cdc.registers.ifctrl = r.u8();
+    read_array(state.cdc.registers.control);
+    read_array(state.cdc.registers.header);
+    read_array(state.cdc.registers.status);
+    state.cdc.registers.count = r.u16();
+    state.cdc.registers.source = r.u16();
+    state.cdc.registers.pointer = r.u16();
+    state.cdc.registers.write_address = r.u16();
+    state.cdc.registers.destination = r.u32();
+    state.cdc.registers.transferring = r.u8() != 0;
+    state.cdc.registers.decoder_clock_acc = r.u64();
+    state.pcm.registers.active = r.u8() != 0;
+    state.pcm.registers.control = r.u8();
+    state.pcm.registers.bank = r.u8();
+    state.pcm.registers.channel = r.u8();
+    state.pcm.registers.disabled = r.u8();
+    for (auto &channel : state.pcm.registers.channels)
+      read_array(channel);
+    for (auto &position : state.pcm.registers.positions)
+      position = r.u32();
+    read_array(state.asic.stamp.registers);
+    state.asic.stamp.priority = r.u8();
+    state.asic.stamp.pixel = r.u32();
+    state.asic.stamp.clock_acc = r.u64();
+    state.asic.stamp.busy = r.u8() != 0;
+    state.cd_audio.fader.current = r.u16();
+    state.cd_audio.fader.target = r.u16();
+    state.cd_audio.fader.clock_acc = r.u64();
+    state.cd_audio.fader.enabled = r.u8() != 0;
   }
   if (!r.ok() || r.remaining() != 0) {
     return std::unexpected("invalid Sega CD state payload");

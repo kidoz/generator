@@ -216,15 +216,15 @@ TEST_CASE("Sega CD boot-control state restores banking and deferred reset",
   CHECK(restored.sub_cpu().bus().program_ram()[0x100] == 0x60);
 
   // The old SCD0 payload ends before the four-byte boot-control extension.
-  auto legacy =
-      parse_segacd_state(std::span(payload).first(payload.size() - 4));
+  auto legacy = parse_segacd_state(
+      std::span(payload).first(payload.size() - kSegaCdRegisterStateBytes - 4));
   REQUIRE(legacy);
   CHECK(legacy->base.program_ram_bank == 0);
   CHECK(legacy->base.write_protect == 0);
   CHECK_FALSE(legacy->base.sub_reset_pending);
   for (size_t tail = 1; tail < 4; tail++)
-    CHECK_FALSE(parse_segacd_state(
-        std::span(payload).first(payload.size() - 4 + tail)));
+    CHECK_FALSE(parse_segacd_state(std::span(payload).first(
+        payload.size() - kSegaCdRegisterStateBytes - 4 + tail)));
   parsed->base.program_ram_bank = 4;
   CHECK_FALSE(restore_segacd_state(restored, *parsed));
 }
@@ -270,6 +270,75 @@ TEST_CASE("Sega CD state rejects a different disc without applying state",
   CHECK(second.sega_cd_debug()->word_ram()[0x60] == 0x33);
   std::filesystem::remove(path);
   std::filesystem::remove_all(root);
+}
+
+TEST_CASE("Sega CD hardware registers and partial transfers resume identically",
+          "[sega_cd][state]")
+{
+  auto source = std::make_unique<SegaCd>(SegaCdDisc{}, 12500000);
+  source->power_on();
+  auto &sub = source->sub_bus_port();
+  source->main_bus().write(0xA12010, 0x1234, true, true);
+  source->main_bus().write(0xA12006, 0x4321, true, true);
+  source->main_bus().write(0xA1200E, 0xAB00, true, false);
+  sub.write(0xFF800E, 0xCD, false, true);
+  sub.write(0xFE3FFE, 0x42, false, true);
+  sub.write(0xFF8030, 3, false, true);
+  sub.write(0xFF8032, 0x3E, false, true);
+  sub.write(0xFF8036, 4, false, true);
+  sub.write(0xFF8034, 0, true, true);
+  sub.write(0xFF000E, 0xC0, false, true);
+  sub.write(0xFF0000, 0xFF, false, true);
+  sub.write(0xFF0002, 0x11, false, true);
+  sub.write(0xFF0006, 8, false, true);
+  sub.write(0xFF2000, 0x81, false, true);
+  sub.write(0xFF0010, 0xFE, false, true);
+
+  auto &cdc = source->cdc();
+  cdc.write_mode(0x0500, true, true);
+  auto reg = [&](uint8_t index, uint8_t value) {
+    cdc.write_mode(index, false, true);
+    cdc.write_register(value);
+  };
+  reg(1, 0x62);
+  reg(10, 0x84);
+  SegaCdSector sector{};
+  sector[16] = 0xA5;
+  cdc.decode_sector(sector, 0);
+  reg(2, 31);
+  reg(3, 0);
+  reg(4, (2352 + 4) & 255);
+  reg(5, (2352 + 4) >> 8);
+  cdc.set_dma_address(0x100);
+  reg(6, 0);
+
+  sub.write(0xFF8062, 8, true, true);
+  sub.write(0xFF8064, 2, true, true);
+  sub.write(0xFF8066, 0x4000, true, true);
+  source->advance_mclk(16);
+  REQUIRE(source->asic().stamp_busy());
+  REQUIRE(source->cdc().save().registers.transferring);
+  const auto payload = serialize_segacd_state(save_segacd_state(*source));
+  const auto parsed = parse_segacd_state(payload);
+  REQUIRE(parsed);
+  auto restored = std::make_unique<SegaCd>(SegaCdDisc{}, 12500000);
+  restored->power_on();
+  REQUIRE(restore_segacd_state(*restored, *parsed));
+  CHECK(serialize_segacd_state(save_segacd_state(*restored)) == payload);
+  source->advance_mclk(2000);
+  restored->advance_mclk(2000);
+  CHECK(serialize_segacd_state(save_segacd_state(*restored)) ==
+        serialize_segacd_state(save_segacd_state(*source)));
+  CHECK(restored->sub_cpu().bus().program_ram()[0x800] == 0xA5);
+  uint16_t value = 0;
+  restored->sub_bus_port().read(0xFE3FFE, true, true, &value);
+  CHECK(value == 0xFF42);
+  REQUIRE(restored->main_bus().read_vector_override(0x72, &value));
+  CHECK(value == 0x4321);
+
+  for (size_t missing : {size_t{1}, size_t{8}, kSegaCdRegisterStateBytes - 1})
+    CHECK_FALSE(
+        parse_segacd_state(std::span(payload).first(payload.size() - missing)));
 }
 
 TEST_CASE("Sega CD battery RAM survives a machine replacement and cold boot",

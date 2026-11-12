@@ -10,6 +10,8 @@
 
 namespace generator {
 
+inline constexpr size_t kSegaCdRegisterStateBytes = 8550;
+
 struct SegaCdState {
   uint64_t disc_identity = 0;
   SegaCd::BaseState base{};
