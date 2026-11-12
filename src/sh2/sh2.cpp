@@ -288,20 +288,28 @@ bool accesses_multiplier(uint16_t op)
   }
 }
 
-uint32_t multiplier_penalty(uint8_t previous, uint16_t op)
+uint32_t multiplier_penalty(uint8_t previous, uint16_t op, uint8_t gap)
 {
   if (previous == MultiplyNone)
     return 0;
   const uint8_t current = multiplier(op);
   if (previous == MultiplyWord || previous == MultiplyMacW) {
+    if (gap != 0)
+      return 0;
     if (current == MultiplyWord || accesses_multiplier(op))
       return 2;
     return 0;
   }
+  if ((current == MultiplyMacW || current == MultiplyMacL ||
+       current == MultiplyDmul) &&
+      gap != 0)
+    return 0;
+  if (current == MultiplyWord && gap != 0)
+    return gap == 1 ? 1 : 0;
   if (current == MultiplyMacW || current == MultiplyMacL ||
       current == MultiplyDmul || current == MultiplyWord)
     return 2;
-  return accesses_multiplier(op) ? 4 : 0;
+  return accesses_multiplier(op) && gap < 4 ? 4 - gap : 0;
 }
 
 }  // namespace
@@ -581,6 +589,7 @@ void Sh2::reset()
   m_load_destination = LoadNone;
   m_load_register = 0;
   m_multiplier = MultiplyNone;
+  m_multiplier_gap = 0;
   m_fetch_valid = 0;
   m_fetch_address = 0;
   m_fetch_data = 0;
@@ -686,6 +695,7 @@ Sh2::RetryState Sh2::retry_state() const
           m_load_destination,
           m_load_register,
           m_multiplier,
+          m_multiplier_gap,
           m_fetch_valid,
           m_fetch_address,
           m_fetch_data,
@@ -713,6 +723,7 @@ void Sh2::restore_retry_state(const RetryState &state)
   m_load_destination = state.load_destination;
   m_load_register = state.load_register;
   m_multiplier = state.multiplier;
+  m_multiplier_gap = state.multiplier_gap;
   m_fetch_valid = state.fetch_valid;
   m_fetch_address = state.fetch_address;
   m_fetch_data = state.fetch_data;
@@ -1376,11 +1387,22 @@ uint32_t Sh2::execute_step()
   else if (load_use)
     contention--;
   if (!m_address_error)
-    contention += multiplier_penalty(m_multiplier, op);
+    contention += multiplier_penalty(m_multiplier, op, m_multiplier_gap);
   cycles += contention;
   m_load_destination =
       m_address_error ? LoadNone : loaded_destination(op, m_load_register);
-  m_multiplier = m_address_error ? MultiplyNone : multiplier(op);
+  if (m_address_error) {
+    m_multiplier = MultiplyNone;
+    m_multiplier_gap = 0;
+  } else if (const uint8_t current = multiplier(op)) {
+    m_multiplier = current;
+    m_multiplier_gap = 0;
+  } else if (accesses_multiplier(op)) {
+    m_multiplier = MultiplyNone;
+    m_multiplier_gap = 0;
+  } else if (m_multiplier != MultiplyNone && m_multiplier_gap < 15) {
+    m_multiplier_gap++;
+  }
   if (m_address_error)
     return cycles + m_stall_cycles + enter_exception(9, m_pc, 0);
   return cycles + m_stall_cycles;

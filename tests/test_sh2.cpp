@@ -2176,3 +2176,37 @@ TEST_CASE("SH-2 control register loads interlock their immediate consumers",
   CHECK(cpu.pc() == 0x120);
   CHECK(cpu.fault() == Sh2::Fault::None);
 }
+
+
+TEST_CASE("SH-2 long multiplier contention decays across unrelated slots", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  cpu.set_r(1, 0x300);
+  cpu.set_r(2, 0x310);
+  put16(bus, 0x100, 0x012F);
+  put16(bus, 0x102, 0x0009);
+  put16(bus, 0x104, 0x212E);
+  put16(bus, 0x106, 0x0009);
+  put16(bus, 0x108, 0x212E);
+  put16(bus, 0x10A, 0x012F);
+  put16(bus, 0x10C, 0x0009);
+  put16(bus, 0x10E, 0x0009);
+  put16(bus, 0x110, 0x212E);
+  CHECK(cpu.step() == 4);
+  CHECK(cpu.step() == 1);
+  const auto saved = cpu.save();
+  CHECK(saved.multiplier_gap == 1);
+  Sh2 restored(bus);
+  restored.restore(saved);
+  CHECK(cpu.step() == 2);
+  CHECK(restored.step() == 2);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 5);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
