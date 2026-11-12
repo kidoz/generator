@@ -75,6 +75,9 @@ public:
     uint8_t load_destination = 0;
     uint8_t load_register = 0;
     uint8_t multiplier = 0;
+    uint8_t fetch_valid = 0;
+    uint32_t fetch_address = 0;
+    uint32_t fetch_data = 0;
     uint32_t write_buffer = 0;
   };
 
@@ -96,6 +99,10 @@ public:
     m_dmac.set_module_request(channel, asserted);
   }
   void set_nmi_level(bool asserted);
+  void invalidate_fetch()
+  {
+    m_fetch_valid = 0;
+  }
   void set_irl_level(uint8_t level, uint8_t vector = 0)
   {
     m_intc.set_irl_level(level, vector);
@@ -173,6 +180,9 @@ public:
             m_load_destination,
             m_load_register,
             m_multiplier,
+            m_fetch_valid,
+            m_fetch_address,
+            m_fetch_data,
             m_write_buffer};
   }
   void restore(const SavedState &state)
@@ -199,6 +209,9 @@ public:
     m_load_destination = state.load_destination;
     m_load_register = state.load_register;
     m_multiplier = state.multiplier;
+    m_fetch_valid = state.fetch_valid;
+    m_fetch_address = state.fetch_address;
+    m_fetch_data = state.fetch_data;
     m_write_buffer = state.write_buffer;
   }
   static bool valid_saved_state(const SavedState &state)
@@ -206,6 +219,7 @@ public:
     return state.fault <= (uint8_t)Fault::IllegalOpcode &&
            state.load_destination <= 7 && state.load_register <= 15 &&
            state.multiplier <= 4 && state.delay_slots <= 1 &&
+           state.fetch_valid <= 1 && (state.fetch_address & 3) == 0 &&
            state.write_buffer <= 0xFFFF &&
            state.pending_level <= 17 &&
            (state.pending_level < 16 ||
@@ -239,6 +253,9 @@ private:
     uint8_t load_destination = 0;
     uint8_t load_register = 0;
     uint8_t multiplier = 0;
+    uint8_t fetch_valid = 0;
+    uint32_t fetch_address = 0;
+    uint32_t fetch_data = 0;
     uint32_t write_buffer = 0;
     bool write_fresh = false;
   };
@@ -254,7 +271,8 @@ private:
   uint8_t read8(uint32_t address);
   uint16_t read16(uint32_t address, bool pc_relative = false,
                   bool instruction = false);
-  uint32_t read32(uint32_t address, bool pc_relative = false);
+  uint32_t read32(uint32_t address, bool pc_relative = false,
+                  bool instruction = false);
   void write8(uint32_t address, uint8_t value);
   void write16(uint32_t address, uint16_t value);
   void write32(uint32_t address, uint32_t value);
@@ -289,6 +307,9 @@ private:
   uint8_t m_load_destination = 0;
   uint8_t m_load_register = 0;
   uint8_t m_multiplier = 0;
+  uint8_t m_fetch_valid = 0;
+  uint32_t m_fetch_address = 0;
+  uint32_t m_fetch_data = 0;
   uint32_t m_write_buffer = 0;
   bool m_write_fresh = false;
 };

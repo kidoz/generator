@@ -404,7 +404,7 @@ uint16_t Sh2::read16(uint32_t address, bool pc_relative, bool instruction)
   return value;
 }
 
-uint32_t Sh2::read32(uint32_t address, bool pc_relative)
+uint32_t Sh2::read32(uint32_t address, bool pc_relative, bool instruction)
 {
   if (address_error(address, 4, pc_relative))
     return 0;
@@ -416,7 +416,7 @@ uint32_t Sh2::read32(uint32_t address, bool pc_relative)
     return 0;
   if (address >= 0xFFFFFF80 && address <= 0xFFFFFFB0)
     return m_dmac.read32(address);
-  const uint32_t value = m_cache.read32(address);
+  const uint32_t value = m_cache.read32(address, instruction);
   m_stall_cycles += m_cache.take_wait_states();
   return value;
 }
@@ -581,19 +581,33 @@ void Sh2::reset()
   m_load_destination = LoadNone;
   m_load_register = 0;
   m_multiplier = MultiplyNone;
+  m_fetch_valid = 0;
+  m_fetch_address = 0;
+  m_fetch_data = 0;
   m_write_buffer = 0;
   m_write_fresh = false;
 }
 
 uint16_t Sh2::fetch16()
 {
-  const uint16_t opcode = read16(m_pc, false, true);
+  const uint32_t address = m_pc & ~3u;
+  if (m_cache.enabled() && (!m_fetch_valid || m_fetch_address != address)) {
+    m_fetch_data = read32(address, false, true);
+    m_fetch_address = address;
+    m_fetch_valid = !m_address_error;
+  } else if (!m_cache.enabled()) {
+    m_fetch_data = read32(address, false, true);
+    m_fetch_valid = 0;
+  }
+  const uint16_t opcode =
+      (m_pc & 2) != 0 ? (uint16_t)m_fetch_data : m_fetch_data >> 16;
   m_pc += 2;
   return opcode;
 }
 
 void Sh2::branch(uint32_t target, bool link)
 {
+  m_fetch_valid = 0;
   if (link) {
     m_pr = m_pc + 2;
   }
@@ -603,6 +617,7 @@ void Sh2::branch(uint32_t target, bool link)
 
 uint32_t Sh2::enter_exception(uint8_t vector, uint32_t return_pc, uint8_t level)
 {
+  m_fetch_valid = 0;
   m_address_error = false;
   m_r[15] -= 4;
   write32(m_r[15], m_sr);
@@ -671,6 +686,9 @@ Sh2::RetryState Sh2::retry_state() const
           m_load_destination,
           m_load_register,
           m_multiplier,
+          m_fetch_valid,
+          m_fetch_address,
+          m_fetch_data,
           m_write_buffer,
           m_write_fresh};
 }
@@ -695,6 +713,9 @@ void Sh2::restore_retry_state(const RetryState &state)
   m_load_destination = state.load_destination;
   m_load_register = state.load_register;
   m_multiplier = state.multiplier;
+  m_fetch_valid = state.fetch_valid;
+  m_fetch_address = state.fetch_address;
+  m_fetch_data = state.fetch_data;
   m_write_buffer = state.write_buffer;
   m_write_fresh = state.write_fresh;
 }
@@ -1245,12 +1266,14 @@ uint32_t Sh2::execute_step()
     case 9:
       if (m_sr & 1) {
         m_pc += 2 + sign_extend<8>(imm) * 2;
+        m_fetch_valid = 0;
         cycles = 3;
       }
       break;
     case 0xB:
       if (!(m_sr & 1)) {
         m_pc += 2 + sign_extend<8>(imm) * 2;
+        m_fetch_valid = 0;
         cycles = 3;
       }
       break;

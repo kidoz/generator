@@ -104,6 +104,7 @@ FlatBus make_bus()
 uint32_t peripheral_write8(Sh2 &cpu, FlatBus &bus, uint32_t address,
                            uint8_t value)
 {
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x2100);
   cpu.set_r(1, address);
   cpu.set_r(0, value);
@@ -112,6 +113,7 @@ uint32_t peripheral_write8(Sh2 &cpu, FlatBus &bus, uint32_t address,
 
 uint32_t peripheral_read8(Sh2 &cpu, FlatBus &bus, uint32_t address)
 {
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x6210);
   cpu.set_r(1, address);
   return cpu.step();
@@ -120,6 +122,7 @@ uint32_t peripheral_read8(Sh2 &cpu, FlatBus &bus, uint32_t address)
 uint32_t peripheral_write32(Sh2 &cpu, FlatBus &bus, uint32_t address,
                             uint32_t value)
 {
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x2122);
   cpu.set_r(1, address);
   cpu.set_r(2, value);
@@ -128,6 +131,7 @@ uint32_t peripheral_write32(Sh2 &cpu, FlatBus &bus, uint32_t address,
 
 uint32_t peripheral_read32(Sh2 &cpu, FlatBus &bus, uint32_t address)
 {
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x6312);
   cpu.set_r(1, address);
   return cpu.step();
@@ -136,6 +140,7 @@ uint32_t peripheral_read32(Sh2 &cpu, FlatBus &bus, uint32_t address)
 uint32_t peripheral_write16(Sh2 &cpu, FlatBus &bus, uint32_t address,
                             uint16_t value)
 {
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x2121);
   cpu.set_r(1, address);
   cpu.set_r(2, value);
@@ -144,6 +149,7 @@ uint32_t peripheral_write16(Sh2 &cpu, FlatBus &bus, uint32_t address,
 
 uint32_t peripheral_read16(Sh2 &cpu, FlatBus &bus, uint32_t address)
 {
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x6311);
   cpu.set_r(1, address);
   return cpu.step();

@@ -24,6 +24,10 @@ public:
 
   explicit Sh2Cache(Sh2 &cpu);
   void reset();
+  bool enabled() const
+  {
+    return (m_ccr & 1) != 0;
+  }
   uint8_t read_ccr() const;
   void write_ccr(uint8_t value);
   uint8_t read8(uint32_t address, bool instruction = false);
