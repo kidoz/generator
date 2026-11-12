@@ -56,3 +56,26 @@ TEST_CASE(
   CHECK(cdc.available() == 6 * kSegaCdSectorBytes);
   CHECK(cdc.read_byte() == 0x5A);
 }
+
+TEST_CASE("CDC keeps decoder status clocked while the drive is paused",
+          "[sega_cd][cdc]")
+{
+  SegaCdCdc cdc(7500);
+  cdc.reset();
+  auto reg = [&](uint8_t index, uint8_t value) {
+    cdc.write_mode(index, false, true);
+    cdc.write_register(value);
+  };
+  reg(1, 0x20);
+  reg(10, 0x80);
+  cdc.advance_decoder(99, false);
+  CHECK_FALSE(cdc.irq_pending());
+  cdc.advance_decoder(1, false);
+  CHECK(cdc.irq_pending());
+  cdc.write_mode(4, false, true);
+  for (int i = 0; i < 4; i++)
+    CHECK(cdc.read_register() == 0);
+  cdc.write_mode(15, false, true);
+  CHECK(cdc.read_register() == 0);
+  CHECK_FALSE(cdc.irq_pending());
+}

@@ -48,6 +48,25 @@ public:
   void advance_mclk(uint64_t ticks);
   std::optional<SegaCdSector> take_sector();
   void acknowledge_interrupt();
+  void write_command(size_t index, uint8_t nibble);
+  uint8_t status_nibble(size_t index) const;
+  void set_hock(bool enabled);
+  uint32_t sector_msf() const
+  {
+    return m_protocol.sector_msf;
+  }
+
+  struct ProtocolState {
+    std::array<uint8_t, 10> command{};
+    std::array<uint8_t, 10> status{};
+    uint64_t clock_acc = 0;
+    bool hock = false;
+    uint8_t drive_status = 0;
+    uint16_t lead_in = 0;
+    uint8_t seek_ticks = 0;
+    uint8_t seek_status = 4;
+    uint32_t sector_msf = 150;
+  };
 
   SegaCdCddStatus status() const
   {
@@ -86,6 +105,7 @@ public:
     SegaCdSector sector{};
     bool irq_pending = false;
     uint32_t parameter = 0;
+    ProtocolState protocol{};
   };
   SavedState save() const;
   bool restore(const SavedState &state);
@@ -93,6 +113,9 @@ public:
 
 private:
   std::expected<void, std::string> deliver_sector();
+  void process_command();
+  void update_status();
+  void status_checksum();
 
   const SegaCdDisc &m_disc;
   uint64_t m_master_frequency;
@@ -102,6 +125,7 @@ private:
   std::optional<SegaCdSector> m_sector;
   bool m_irq_pending = false;
   uint32_t m_parameter = 0;
+  ProtocolState m_protocol;
 };
 
 }  // namespace generator

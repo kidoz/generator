@@ -45,6 +45,18 @@ public:
     return m_wave_ram;
   }
   bool channel_enabled(size_t channel) const;
+  uint8_t read_bus(uint32_t offset) const;
+  void write_bus(uint32_t offset, uint8_t data);
+
+  struct RegisterState {
+    bool active = false;
+    uint8_t control = 0;
+    uint8_t bank = 0;
+    uint8_t channel = 0;
+    uint8_t disabled = 0xff;
+    std::array<std::array<uint8_t, 7>, kChannels> channels{};
+    std::array<uint32_t, kChannels> positions{};
+  };
 
   struct SavedState {
     std::array<uint8_t, kWaveRamSize> wave_ram{};
@@ -55,6 +67,7 @@ public:
     uint64_t clock_acc = 0;
     int32_t mix_left = 0;
     int32_t mix_right = 0;
+    RegisterState registers{};
   };
   SavedState save() const;
   bool restore(const SavedState &state);
@@ -74,6 +87,7 @@ private:
   uint64_t m_clock_acc = 0;
   int32_t m_left = 0;
   int32_t m_right = 0;
+  RegisterState m_registers;
 };
 
 }  // namespace generator

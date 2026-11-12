@@ -18,6 +18,15 @@ public:
 
   void reset();
   std::expected<void, std::string> play(unsigned int track);
+  std::expected<void, std::string> play_lba(uint64_t lba);
+  void set_fader(uint16_t data);
+
+  struct FaderState {
+    uint16_t current = 1024;
+    uint16_t target = 1024;
+    uint64_t clock_acc = 0;
+    bool enabled = false;
+  };
   void pause();
   void resume();
   void stop();
@@ -53,6 +62,7 @@ public:
     uint8_t volume = 255;
     int32_t left = 0;
     int32_t right = 0;
+    FaderState fader{};
   };
   SavedState save() const;
   bool restore(const SavedState &state);
@@ -72,6 +82,7 @@ private:
   uint8_t m_volume = 255;
   int32_t m_left = 0;
   int32_t m_right = 0;
+  FaderState m_fader;
 };
 
 }  // namespace generator
