@@ -18,7 +18,7 @@ bool address_error(uint32_t address, uint32_t width)
 
 }  // namespace
 
-Sh2Dmac::Sh2Dmac(Sh2BusInterface &bus) : m_bus(bus)
+Sh2Dmac::Sh2Dmac(Sh2 &cpu) : m_cpu(cpu)
 {
 }
 
@@ -207,53 +207,53 @@ bool Sh2Dmac::transfer(Channel &channel)
     channel.active = false;
     return false;
   }
-  if ((!device_source && !m_bus.can_access(channel.sar, false)) ||
-      (device_source && !m_bus.can_access(channel.dar, true)) ||
-      (!single && !m_bus.can_access(channel.dar, true)))
+  if ((!device_source && !m_cpu.m_bus.can_access(channel.sar, false)) ||
+      (device_source && !m_cpu.m_bus.can_access(channel.dar, true)) ||
+      (!single && !m_cpu.m_bus.can_access(channel.dar, true)))
     return false;
   uint32_t value;
   const bool acknowledge_high = (channel.chcr & 0x80) != 0;
   if (single) {
-    m_bus.set_dack(index, true, acknowledge_high);
+    m_cpu.m_bus.set_dack(index, true, acknowledge_high);
     if (device_source) {
-      value = m_bus.dma_read_device(index, width);
+      value = m_cpu.m_bus.dma_read_device(index, width);
       if (width == 1)
-        m_bus.write8(channel.dar, value);
+        m_cpu.bus_write(channel.dar, 1, value);
       else if (width == 2)
-        m_bus.write16(channel.dar, value);
+        m_cpu.bus_write(channel.dar, 2, value);
       else
-        m_bus.write32(channel.dar, value);
+        m_cpu.bus_write(channel.dar, 4, value);
     } else {
       if (width == 1)
-        value = m_bus.read8(channel.sar);
+        value = m_cpu.bus_read(channel.sar, 1);
       else if (width == 2)
-        value = m_bus.read16(channel.sar);
+        value = m_cpu.bus_read(channel.sar, 2);
       else
-        value = m_bus.read32(channel.sar);
-      m_bus.dma_write_device(index, width, value);
+        value = m_cpu.bus_read(channel.sar, 4);
+      m_cpu.m_bus.dma_write_device(index, width, value);
     }
-    m_bus.set_dack(index, false, acknowledge_high);
+    m_cpu.m_bus.set_dack(index, false, acknowledge_high);
   } else {
     if (!(channel.chcr & 0x100))
-      m_bus.set_dack(index, true, acknowledge_high);
+      m_cpu.m_bus.set_dack(index, true, acknowledge_high);
     if (width == 1)
-      value = m_bus.read8(channel.sar);
+      value = m_cpu.bus_read(channel.sar, 1);
     else if (width == 2)
-      value = m_bus.read16(channel.sar);
+      value = m_cpu.bus_read(channel.sar, 2);
     else
-      value = m_bus.read32(channel.sar);
+      value = m_cpu.bus_read(channel.sar, 4);
     if (!(channel.chcr & 0x100))
-      m_bus.set_dack(index, false, acknowledge_high);
+      m_cpu.m_bus.set_dack(index, false, acknowledge_high);
     if (channel.chcr & 0x100)
-      m_bus.set_dack(index, true, acknowledge_high);
+      m_cpu.m_bus.set_dack(index, true, acknowledge_high);
     if (width == 1)
-      m_bus.write8(channel.dar, value);
+      m_cpu.bus_write(channel.dar, 1, value);
     else if (width == 2)
-      m_bus.write16(channel.dar, value);
+      m_cpu.bus_write(channel.dar, 2, value);
     else
-      m_bus.write32(channel.dar, value);
+      m_cpu.bus_write(channel.dar, 4, value);
     if (channel.chcr & 0x100)
-      m_bus.set_dack(index, false, acknowledge_high);
+      m_cpu.m_bus.set_dack(index, false, acknowledge_high);
   }
   const uint32_t source_mode = size == 3 ? 1 : (channel.chcr >> 12) & 3;
   if (!device_source)

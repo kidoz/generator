@@ -6,7 +6,7 @@
 
 namespace generator {
 
-class Sh2BusInterface;
+class Sh2;
 
 class Sh2Dmac {
 public:
@@ -31,7 +31,7 @@ public:
     bool module_pending[2]{};
   };
 
-  explicit Sh2Dmac(Sh2BusInterface &bus);
+  explicit Sh2Dmac(Sh2 &cpu);
   void reset();
   uint8_t read8(uint32_t address);
   uint32_t read32(uint32_t address);
@@ -106,7 +106,7 @@ private:
   void advance_channel(Channel &channel, uint32_t &credits);
   uint32_t adjusted(uint32_t address, uint32_t mode, uint32_t width) const;
 
-  Sh2BusInterface &m_bus;
+  Sh2 &m_cpu;
   Channel m_channels[2]{};
   uint32_t m_dmaor = 0;
   uint32_t m_cycle_credit = 0;

@@ -7,7 +7,7 @@
 
 namespace generator {
 
-class Sh2BusInterface;
+class Sh2;
 
 class Sh2Cache {
 public:
@@ -22,7 +22,7 @@ public:
     std::array<std::array<Entry, 64>, 4> entries{};
   };
 
-  explicit Sh2Cache(Sh2BusInterface &bus);
+  explicit Sh2Cache(Sh2 &cpu);
   void reset();
   uint8_t read_ccr() const;
   void write_ccr(uint8_t value);
@@ -80,7 +80,7 @@ private:
   static size_t way_index(uint32_t address);
   static size_t line_index(uint32_t address);
 
-  Sh2BusInterface &m_bus;
+  Sh2 &m_cpu;
   uint8_t m_ccr = 0;
   std::array<std::array<Entry, 64>, 4> m_entries{};
   uint32_t m_wait_states = 0;

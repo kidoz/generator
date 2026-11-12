@@ -457,7 +457,7 @@ int X32::MainBus::write(uint32_t addr, uint16_t data, bool, bool)
   return 0;
 }
 
-void X32::add_wait_states(uint32_t addr, bool write, bool master)
+uint32_t X32::access_wait_states(uint32_t addr, bool write) const
 {
   addr &= 0xDFFFFFFF;
   uint32_t cycles = 0;
@@ -477,10 +477,7 @@ void X32::add_wait_states(uint32_t addr, bool write, bool master)
     cycles = 5;
   else if (addr >= 0x4000000 && addr < 0x4040000)
     cycles = write ? 1 : 5;
-  if (master)
-    m_master.add_wait_states(cycles);
-  else
-    m_slave.add_wait_states(cycles);
+  return cycles;
 }
 
 bool X32::sh2_access_allowed(uint32_t addr) const
@@ -506,6 +503,11 @@ bool X32::MasterBus::take_access_wait()
   return waiting;
 }
 
+uint32_t X32::MasterBus::access_wait_states(uint32_t addr, bool write) const
+{
+  return m_owner.access_wait_states(addr, write);
+}
+
 bool X32::MasterBus::prepare_access(uint32_t addr)
 {
   if (m_owner.sh2_access_allowed(addr))
@@ -518,7 +520,6 @@ uint8_t X32::MasterBus::read8(uint32_t addr)
 {
   if (!prepare_access(addr))
     return 0;
-  m_owner.add_wait_states(addr, false, m_master);
   return m_owner.master_read8(addr, m_master);
 }
 
@@ -526,7 +527,6 @@ uint16_t X32::MasterBus::read16(uint32_t addr)
 {
   if (!prepare_access(addr))
     return 0;
-  m_owner.add_wait_states(addr, false, m_master);
   return (uint16_t)m_owner.master_read8(addr, m_master) << 8 |
          m_owner.master_read8(addr + 1, m_master);
 }
@@ -535,7 +535,6 @@ uint32_t X32::MasterBus::read32(uint32_t addr)
 {
   if (!prepare_access(addr))
     return 0;
-  m_owner.add_wait_states(addr, false, m_master);
   return (uint32_t)m_owner.master_read8(addr, m_master) << 24 |
          (uint32_t)m_owner.master_read8(addr + 1, m_master) << 16 |
          (uint32_t)m_owner.master_read8(addr + 2, m_master) << 8 |
@@ -546,7 +545,6 @@ void X32::MasterBus::write8(uint32_t addr, uint8_t value)
 {
   if (!prepare_access(addr))
     return;
-  m_owner.add_wait_states(addr, true, m_master);
   m_owner.master_write8(addr, value, m_master);
 }
 
@@ -554,7 +552,6 @@ void X32::MasterBus::write16(uint32_t addr, uint16_t value)
 {
   if (!prepare_access(addr))
     return;
-  m_owner.add_wait_states(addr, true, m_master);
   m_owner.master_write8(addr, value >> 8, m_master);
   m_owner.master_write8(addr + 1, value, m_master);
 }
@@ -563,7 +560,6 @@ void X32::MasterBus::write32(uint32_t addr, uint32_t value)
 {
   if (!prepare_access(addr))
     return;
-  m_owner.add_wait_states(addr, true, m_master);
   m_owner.master_write8(addr, value >> 24, m_master);
   m_owner.master_write8(addr + 1, value >> 16, m_master);
   m_owner.master_write8(addr + 2, value >> 8, m_master);

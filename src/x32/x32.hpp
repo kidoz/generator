@@ -78,6 +78,7 @@ public:
     void write8(uint32_t addr, uint8_t value) override;
     void write16(uint32_t addr, uint16_t value) override;
     void write32(uint32_t addr, uint32_t value) override;
+    uint32_t access_wait_states(uint32_t addr, bool write) const override;
     bool can_access(uint32_t addr, bool write) const override;
     bool take_access_wait() override;
 
@@ -174,7 +175,7 @@ private:
   uint8_t master_read8(uint32_t addr, bool master);
   void master_write8(uint32_t addr, uint8_t value, bool master);
   bool sh2_access_allowed(uint32_t addr) const;
-  void add_wait_states(uint32_t addr, bool write, bool master);
+  uint32_t access_wait_states(uint32_t addr, bool write) const;
   uint8_t fifo_read_byte();
   void fifo_reset();
 

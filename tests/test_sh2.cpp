@@ -24,6 +24,8 @@ public:
   size_t device_writes = 0;
   std::vector<DackEvent> dack_events;
   std::vector<uint32_t> read32_addresses;
+  uint32_t read_wait = 0;
+  uint32_t write_wait = 0;
 
   uint8_t read8(uint32_t addr) override
   {
@@ -51,6 +53,10 @@ public:
   {
     write16(addr, value >> 16);
     write16(addr + 2, (uint16_t)value);
+  }
+  uint32_t access_wait_states(uint32_t, bool write) const override
+  {
+    return write ? write_wait : read_wait;
   }
   uint32_t dma_read_device(size_t, uint32_t width) override
   {
@@ -1927,7 +1933,8 @@ TEST_CASE("SH-2 cache fills target last and reads and writes through", "[sh2]")
   put32(bus, 0x204, 0x55667788);
   put32(bus, 0x208, 0x89ABCDEF);
   put32(bus, 0x20C, 0x10203040);
-  Sh2Cache cache(bus);
+  Sh2 cpu(bus);
+  Sh2Cache cache(cpu);
   cache.reset();
   cache.write_ccr(1);
   CHECK(cache.read32(0x204) == 0x55667788);
@@ -1953,7 +1960,8 @@ TEST_CASE("SH-2 cache replacement follows pseudo-LRU and two-way rules",
           "[sh2]")
 {
   auto bus = make_bus();
-  Sh2Cache cache(bus);
+  Sh2 cpu(bus);
+  Sh2Cache cache(cpu);
   cache.reset();
 
   SECTION("four-way order and replacement")
@@ -2005,7 +2013,8 @@ TEST_CASE("SH-2 cache replacement follows pseudo-LRU and two-way rules",
 TEST_CASE("SH-2 cache data and address arrays support direct access", "[sh2]")
 {
   auto bus = make_bus();
-  Sh2Cache cache(bus);
+  Sh2 cpu(bus);
+  Sh2Cache cache(cpu);
   cache.reset();
   cache.write8(0xC0000001, 0xAA);
   cache.write16(0xC0000402, 0xBBCC);

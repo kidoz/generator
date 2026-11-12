@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "sh2.hpp"
 
+#include <algorithm>
+
 namespace generator {
 
 namespace {
@@ -304,8 +306,40 @@ uint32_t multiplier_penalty(uint8_t previous, uint16_t op)
 
 }  // namespace
 
-Sh2::Sh2(Sh2BusInterface &bus) : m_bus(bus), m_cache(bus), m_dmac(bus)
+Sh2::Sh2(Sh2BusInterface &bus) : m_bus(bus), m_cache(*this), m_dmac(*this)
 {
+}
+
+uint32_t Sh2::bus_read(uint32_t address, uint32_t size)
+{
+  if (address < 0xFFFFFE00 && m_write_buffer != 0) {
+    m_stall_cycles += m_write_buffer;
+    m_write_buffer = 0;
+  }
+  m_stall_cycles += m_bus.access_wait_states(address, false);
+  if (size == 1)
+    return m_bus.read8(address);
+  if (size == 2)
+    return m_bus.read16(address);
+  return m_bus.read32(address);
+}
+
+void Sh2::bus_write(uint32_t address, uint32_t size, uint32_t value)
+{
+  const uint32_t wait = m_bus.access_wait_states(address, true);
+  if (address < 0xFFFFFE00) {
+    m_stall_cycles += m_write_buffer;
+    m_write_buffer = wait;
+    m_write_fresh = true;
+  } else {
+    m_stall_cycles += wait;
+  }
+  if (size == 1)
+    m_bus.write8(address, value);
+  else if (size == 2)
+    m_bus.write16(address, value);
+  else
+    m_bus.write32(address, value);
 }
 
 bool Sh2::address_error(uint32_t address, uint32_t size, bool pc_relative)
@@ -509,6 +543,9 @@ uint32_t Sh2::advance_cycles(uint32_t cycles)
     request_interrupt(m_intc.frt_overflow_vector(), m_intc.frt_priority());
   if (m_intc.irl_level() != 0)
     request_interrupt(m_intc.irl_vector(), m_intc.irl_level());
+  const uint32_t drain = m_write_fresh && cycles != 0 ? cycles - 1 : cycles;
+  m_write_buffer -= std::min(m_write_buffer, drain);
+  m_write_fresh = false;
   return cycles + m_stall_cycles;
 }
 
@@ -544,6 +581,8 @@ void Sh2::reset()
   m_load_destination = LoadNone;
   m_load_register = 0;
   m_multiplier = MultiplyNone;
+  m_write_buffer = 0;
+  m_write_fresh = false;
 }
 
 uint16_t Sh2::fetch16()
@@ -631,7 +670,9 @@ Sh2::RetryState Sh2::retry_state() const
           m_address_error,
           m_load_destination,
           m_load_register,
-          m_multiplier};
+          m_multiplier,
+          m_write_buffer,
+          m_write_fresh};
 }
 
 void Sh2::restore_retry_state(const RetryState &state)
@@ -654,6 +695,8 @@ void Sh2::restore_retry_state(const RetryState &state)
   m_load_destination = state.load_destination;
   m_load_register = state.load_register;
   m_multiplier = state.multiplier;
+  m_write_buffer = state.write_buffer;
+  m_write_fresh = state.write_fresh;
 }
 
 uint32_t Sh2::step()

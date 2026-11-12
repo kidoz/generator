@@ -22,6 +22,10 @@ public:
   virtual void write8(uint32_t addr, uint8_t value) = 0;
   virtual void write16(uint32_t addr, uint16_t value) = 0;
   virtual void write32(uint32_t addr, uint32_t value) = 0;
+  virtual uint32_t access_wait_states(uint32_t, bool) const
+  {
+    return 0;
+  }
   virtual bool can_access(uint32_t, bool) const
   {
     return true;
@@ -71,6 +75,7 @@ public:
     uint8_t load_destination = 0;
     uint8_t load_register = 0;
     uint8_t multiplier = 0;
+    uint32_t write_buffer = 0;
   };
 
   explicit Sh2(Sh2BusInterface &bus);
@@ -167,7 +172,8 @@ public:
             (uint8_t)m_fault,
             m_load_destination,
             m_load_register,
-            m_multiplier};
+            m_multiplier,
+            m_write_buffer};
   }
   void restore(const SavedState &state)
   {
@@ -193,12 +199,14 @@ public:
     m_load_destination = state.load_destination;
     m_load_register = state.load_register;
     m_multiplier = state.multiplier;
+    m_write_buffer = state.write_buffer;
   }
   static bool valid_saved_state(const SavedState &state)
   {
     return state.fault <= (uint8_t)Fault::IllegalOpcode &&
            state.load_destination <= 7 && state.load_register <= 15 &&
            state.multiplier <= 4 && state.delay_slots <= 1 &&
+           state.write_buffer <= 0xFFFF &&
            state.pending_level <= 17 &&
            (state.pending_level < 16 ||
             (state.pending_level == 16 && state.pending_vector == 11) ||
@@ -209,6 +217,9 @@ public:
   }
 
 private:
+  friend class Sh2Cache;
+  friend class Sh2Dmac;
+
   struct RetryState {
     std::array<uint32_t, 16> r{};
     uint32_t mach = 0;
@@ -228,6 +239,8 @@ private:
     uint8_t load_destination = 0;
     uint8_t load_register = 0;
     uint8_t multiplier = 0;
+    uint32_t write_buffer = 0;
+    bool write_fresh = false;
   };
 
   RetryState retry_state() const;
@@ -247,6 +260,8 @@ private:
   void write32(uint32_t address, uint32_t value);
   uint32_t read_operand(uint32_t address, uint32_t size);
   void write_operand(uint32_t address, uint32_t size, uint32_t value);
+  uint32_t bus_read(uint32_t address, uint32_t size);
+  void bus_write(uint32_t address, uint32_t size, uint32_t value);
   void stall_divu();
   uint32_t advance_cycles(uint32_t cycles);
 
@@ -274,6 +289,8 @@ private:
   uint8_t m_load_destination = 0;
   uint8_t m_load_register = 0;
   uint8_t m_multiplier = 0;
+  uint32_t m_write_buffer = 0;
+  bool m_write_fresh = false;
 };
 
 }  // namespace generator

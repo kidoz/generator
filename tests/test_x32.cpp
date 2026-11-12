@@ -1173,11 +1173,11 @@ TEST_CASE("X32 SH-2 bus accesses include per-region wait states", "[x32]")
   device.master().set_sr(0);
   device.master().set_r(1, 0x20004100);
   device.master().set_r(2, 2);
-  CHECK(device.master().step() == 7);
+  CHECK(device.master().step() == 2);
   device.master().set_r(1, 0x06000000);
-  CHECK(device.master().step() == 5);
+  CHECK(device.master().step() == 7);
   device.master().set_r(1, 0x24000000);
-  CHECK(device.master().step() == 3);
+  CHECK(device.master().step() == 2);
 }
 
 TEST_CASE("X32 DMAC transfers account for source and destination waits",
@@ -1207,8 +1207,8 @@ TEST_CASE("X32 DMAC transfers account for source and destination waits",
   put16(master, 0x10C, 0x0009);
   put16(master, 0x10E, 0x0009);
   device.master().set_dreq(0, true);
-  CHECK(device.master().step() == 5);
-  CHECK(device.master().step() == 2);
+  CHECK(device.master().step() == 3);
+  CHECK(device.master().step() == 3);
   CHECK(device.master_bus().read32(0x06000000) == 0x11223344);
 }
 

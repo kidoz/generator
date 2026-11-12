@@ -5,7 +5,7 @@
 
 namespace generator {
 
-Sh2Cache::Sh2Cache(Sh2BusInterface &bus) : m_bus(bus)
+Sh2Cache::Sh2Cache(Sh2 &cpu) : m_cpu(cpu)
 {
 }
 
@@ -97,8 +97,8 @@ void Sh2Cache::fill(Entry &entry, size_t way, uint32_t address)
   const uint32_t line = address & ~0xFu;
   const uint32_t target = address & 0xC;
   for (uint32_t offset = 0; offset < 16; offset += 4) {
-    if (!m_bus.can_access(line + ((target + offset + 4) & 0xC), false)) {
-      (void)m_bus.read32(address & ~3u);
+    if (!m_cpu.m_bus.can_access(line + ((target + offset + 4) & 0xC), false)) {
+      (void)m_cpu.m_bus.read32(address & ~3u);
       return;
     }
   }
@@ -106,7 +106,7 @@ void Sh2Cache::fill(Entry &entry, size_t way, uint32_t address)
   entry.valid = true;
   for (uint32_t offset = 0; offset < 16; offset += 4) {
     const uint32_t current = (target + offset + 4) & 0xC;
-    const uint32_t value = m_bus.read32(line + current);
+    const uint32_t value = m_cpu.bus_read(line + current, 4);
     for (uint32_t byte = 0; byte < 4; byte++)
       entry.data[current + byte] = value >> (24 - byte * 8);
   }
@@ -117,20 +117,20 @@ void Sh2Cache::fill(Entry &entry, size_t way, uint32_t address)
 uint32_t Sh2Cache::read_bus(uint32_t address, uint32_t size)
 {
   if (size == 1)
-    return m_bus.read8(address);
+    return m_cpu.bus_read(address, 1);
   if (size == 2)
-    return m_bus.read16(address);
-  return m_bus.read32(address);
+    return m_cpu.bus_read(address, 2);
+  return m_cpu.bus_read(address, 4);
 }
 
 void Sh2Cache::write_bus(uint32_t address, uint32_t size, uint32_t value)
 {
   if (size == 1)
-    m_bus.write8(address, value >> 24);
+    m_cpu.bus_write(address, 1, value >> 24);
   else if (size == 2)
-    m_bus.write16(address, value >> 16);
+    m_cpu.bus_write(address, 2, value >> 16);
   else
-    m_bus.write32(address, value);
+    m_cpu.bus_write(address, 4, value);
 }
 
 uint32_t Sh2Cache::read(uint32_t address, uint32_t size, bool instruction)
