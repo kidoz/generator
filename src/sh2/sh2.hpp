@@ -117,6 +117,27 @@ public:
   {
     m_intc.set_irl_level(level, vector);
   }
+  uint32_t precharge_cycles(uint32_t address, bool write) const
+  {
+    address &= 0xDFFFFFFF;
+    if (address >= 0x04000000 && address < 0x06000000)
+      return m_bsc.precharge_cycles(false, write);
+    if (address >= 0x06000000 && address < 0x08000000)
+      return m_bsc.precharge_cycles(true, write);
+    return 0;
+  }
+  uint32_t refresh_recovery_cycles() const
+  {
+    return m_bsc.refresh_recovery_cycles();
+  }
+  bool refresh_pending() const
+  {
+    return m_bsc.refresh_pending();
+  }
+  bool take_refresh_request()
+  {
+    return m_bsc.take_refresh_request();
+  }
 
   uint32_t r(size_t index) const
   {

@@ -5,6 +5,7 @@
 #include "core/state_v3.hpp"
 
 #include <algorithm>
+#include <memory>
 
 namespace generator {
 
@@ -542,7 +543,7 @@ bool valid_x32_state(const X32 &device, const X32State &state)
          state.base.clock_accumulator <= 6 && state.base.fifo_head <= 3 &&
          state.base.fifo_count <= 4 && state.base.fifo_read_byte <= 1 &&
          state.base.dreq_length <= 0x10000 &&
-         state.base.bus_lease_cycles <= 13 && state.base.bus_lease_owner <= 2 &&
+         state.base.bus_lease_cycles <= 17 && state.base.bus_lease_owner <= 2 &&
          (state.base.bus_lease_cycles == 0 || state.base.bus_lease_owner < 2) &&
          state.base.bus_requester <= 2 && state.base.bus_handoff_cycles <= 2 &&
          (state.base.bus_handoff_cycles == 0 ||
@@ -551,7 +552,14 @@ bool valid_x32_state(const X32 &device, const X32State &state)
              state.base.bus_lease_owner == 2 && state.base.bus_requester < 2) ||
             (state.base.bus_handoff_cycles == 2 &&
              state.base.bus_lease_owner < 2)))) &&
-         state.base.sh2_half <= 1 && state.base.interrupt_masks[0] <= 0xF &&
+         state.base.sh2_half <= 1 && state.base.bus_refresh_cycles <= 7 &&
+         state.base.bus_refresh_owner <= 2 &&
+         (state.base.bus_refresh_cycles == 0
+              ? state.base.bus_refresh_owner == 2
+              : state.base.bus_refresh_owner < 2 &&
+                    state.base.bus_lease_cycles == 0 &&
+                    state.base.bus_handoff_cycles == 0) &&
+         state.base.interrupt_masks[0] <= 0xF &&
          state.base.interrupt_masks[1] <= 0xF &&
          X32Video::valid_saved_state(state.base.video) &&
          X32Pwm::valid_saved_state(state.base.pwm) && valid_sh2(state.master) &&
@@ -596,6 +604,8 @@ std::vector<uint8_t> serialize_x32_state(const X32State &state)
   w.u8(state.base.sh2_half);
   write_bsc(w, state.master.bsc);
   write_bsc(w, state.slave.bsc);
+  w.u32(state.base.bus_refresh_cycles);
+  w.u8(state.base.bus_refresh_owner);
   return w.take_payload();
 }
 
@@ -603,7 +613,8 @@ std::expected<X32State, std::string>
 parse_x32_state(std::span<const uint8_t> payload)
 {
   ChunkReader r{payload};
-  X32State state;
+  auto storage = std::make_unique<X32State>();
+  X32State &state = *storage;
   bool legacy_clock = true;
   state.master_boot_hash = r.u64();
   state.slave_boot_hash = r.u64();
@@ -700,6 +711,25 @@ parse_x32_state(std::span<const uint8_t> payload)
     read_bsc(r, state.master.bsc);
     read_bsc(r, state.slave.bsc);
     legacy_clock = false;
+  } else if (r.remaining() == 2 * 4 * 64 * 16 + 6 + 28 + 7 + 36 + 1 + 30 + 5) {
+    read_cache_data(r, state.master.cache);
+    read_cache_data(r, state.slave.cache);
+    read_pipeline(r, state.master);
+    read_pipeline(r, state.slave);
+    read_bus_pipeline(r, state.master);
+    read_bus_pipeline(r, state.slave);
+    state.base.bus_lease_cycles = r.u32();
+    state.base.bus_lease_owner = r.u8();
+    state.base.bus_requester = r.u8();
+    state.base.bus_handoff_cycles = r.u8();
+    read_fetch_ahead(r, state.master);
+    read_fetch_ahead(r, state.slave);
+    state.base.sh2_half = r.u8();
+    read_bsc(r, state.master.bsc);
+    read_bsc(r, state.slave.bsc);
+    state.base.bus_refresh_cycles = r.u32();
+    state.base.bus_refresh_owner = r.u8();
+    legacy_clock = false;
   } else if (r.remaining() != 0) {
     return std::unexpected("invalid X32 cache data tail");
   }
@@ -710,7 +740,7 @@ parse_x32_state(std::span<const uint8_t> payload)
     state.base.sh2_half = doubled >= 7 ? 1 : 0;
     state.base.clock_accumulator = doubled >= 7 ? doubled - 7 : doubled;
   }
-  return state;
+  return std::move(state);
 }
 
 }  // namespace generator

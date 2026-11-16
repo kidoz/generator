@@ -54,6 +54,8 @@ public:
     uint8_t bus_requester = 2;
     uint8_t bus_handoff_cycles = 0;
     uint8_t sh2_half = 0;
+    uint32_t bus_refresh_cycles = 0;
+    uint8_t bus_refresh_owner = 2;
   };
 
   class MainBus final : public M68kBusInterface {
@@ -182,6 +184,7 @@ private:
   bool sh2_access_allowed(uint32_t addr) const;
   bool shared_access_allowed(uint32_t addr, bool master) const;
   void acquire_shared_access(uint32_t addr, bool write, bool master);
+  bool start_refresh();
   uint32_t access_wait_states(uint32_t addr, bool write) const;
   uint8_t fifo_read_byte();
   void fifo_reset();
@@ -232,6 +235,8 @@ private:
   mutable uint8_t m_bus_handoff_cycles = 0;
   uint8_t m_sh2_half = 0;
   bool m_scheduler_active = false;
+  uint32_t m_bus_refresh_cycles = 0;
+  uint8_t m_bus_refresh_owner = 2;
 };
 
 }  // namespace generator

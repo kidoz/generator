@@ -34,6 +34,27 @@ public:
   {
     return m_refresh_pending;
   }
+  uint32_t precharge_cycles(bool area3, bool write) const
+  {
+    const uint8_t config = m_bcr1 & 7;
+    uint8_t memory = 0;
+    if (area3 && config <= 3)
+      memory = config;
+    else if (config == 5)
+      memory = 1;
+    else if (!area3 && config == 4)
+      memory = 1;
+    if (memory == 0 || (area3 && (m_mcr & 0x0200)))
+      return 0;
+    uint32_t cycles = 1 + ((m_mcr >> 15) & 1);
+    if (write && memory == 1)
+      cycles += 1 + ((m_mcr >> 13) & 1);
+    return cycles;
+  }
+  uint32_t refresh_recovery_cycles() const
+  {
+    return 4 + ((m_mcr >> 11) & 3);
+  }
   bool take_refresh_request();
   SavedState save() const
   {

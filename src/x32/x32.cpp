@@ -60,6 +60,8 @@ void X32::power_on()
   m_bus_requester = 2;
   m_bus_handoff_cycles = 0;
   m_sh2_half = 0;
+  m_bus_refresh_cycles = 0;
+  m_bus_refresh_owner = 2;
   m_pwm.power_on();
   m_video.power_on();
   fifo_reset();
@@ -128,6 +130,8 @@ X32::BaseState X32::base_state() const
   state.bus_requester = m_bus_requester;
   state.bus_handoff_cycles = m_bus_handoff_cycles;
   state.sh2_half = m_sh2_half;
+  state.bus_refresh_cycles = m_bus_refresh_cycles;
+  state.bus_refresh_owner = m_bus_refresh_owner;
   return state;
 }
 
@@ -170,6 +174,8 @@ void X32::restore_base_state(const BaseState &state)
   m_bus_requester = state.bus_requester;
   m_bus_handoff_cycles = state.bus_handoff_cycles;
   m_sh2_half = state.sh2_half;
+  m_bus_refresh_cycles = state.bus_refresh_cycles;
+  m_bus_refresh_owner = state.bus_refresh_owner;
 }
 
 void X32::fifo_reset()
@@ -262,6 +268,8 @@ void X32::main_write(uint32_t addr, uint16_t value)
       m_bus_requester = 2;
       m_bus_handoff_cycles = 0;
       m_sh2_half = 0;
+      m_bus_refresh_cycles = 0;
+      m_bus_refresh_owner = 2;
       m_master.reset();
       m_slave.reset();
     }
@@ -531,6 +539,8 @@ bool X32::shared_access_allowed(uint32_t addr, bool master) const
 {
   if (!shared_bus_address(addr))
     return true;
+  if (m_bus_refresh_cycles != 0)
+    return false;
   const uint8_t requester = master ? 0 : 1;
   if (m_bus_handoff_cycles == 1)
     return false;
@@ -553,7 +563,27 @@ void X32::acquire_shared_access(uint32_t addr, bool write, bool master)
   const uint8_t owner = master ? 0 : 1;
   m_bus_lease_owner = owner;
   m_bus_lease_cycles =
-      std::max(m_bus_lease_cycles, access_wait_states(addr, write) + 1);
+      std::max(m_bus_lease_cycles,
+               access_wait_states(addr, write) + 1 +
+                   (master ? m_master : m_slave).precharge_cycles(addr, write));
+}
+
+bool X32::start_refresh()
+{
+  if (m_bus_refresh_cycles != 0 || m_bus_lease_cycles != 0 ||
+      m_bus_handoff_cycles != 0)
+    return false;
+  for (uint8_t owner = 0; owner < 2; owner++) {
+    Sh2 &cpu = owner == 0 ? m_master : m_slave;
+    if (!cpu.refresh_pending())
+      continue;
+    (void)cpu.take_refresh_request();
+    m_bus_refresh_owner = owner;
+    m_bus_refresh_cycles = cpu.refresh_recovery_cycles();
+    m_bus_lease_owner = 2;
+    return true;
+  }
+  return false;
 }
 
 bool X32::MasterBus::can_access(uint32_t addr, bool) const
@@ -681,15 +711,30 @@ void X32::advance_mclk(uint64_t ticks)
     }
     if (m_bus_handoff_cycles == 2)
       m_bus_handoff_cycles = 0;
-    if (m_bus_lease_cycles != 0) {
+    uint8_t released_owner = 2;
+    bool released = false;
+    if (m_bus_refresh_cycles != 0) {
+      m_bus_refresh_cycles--;
+      if (m_bus_refresh_cycles == 0) {
+        m_bus_refresh_owner = 2;
+        released = true;
+      }
+    } else if (m_bus_lease_cycles != 0) {
       m_bus_lease_cycles--;
       if (m_bus_lease_cycles == 0) {
-        if (m_bus_requester < 2 && m_bus_requester != m_bus_lease_owner)
-          m_bus_handoff_cycles = 1;
-        else
-          m_bus_requester = 2;
+        released_owner = m_bus_lease_owner;
         m_bus_lease_owner = 2;
+        released = true;
       }
+    }
+    if (m_bus_refresh_cycles == 0 && m_bus_lease_cycles == 0 &&
+        m_bus_handoff_cycles == 0)
+      (void)start_refresh();
+    if (released && m_bus_refresh_cycles == 0) {
+      if (m_bus_requester < 2 && m_bus_requester != released_owner)
+        m_bus_handoff_cycles = 1;
+      else
+        m_bus_requester = 2;
     }
     Sh2 &cpu = m_next_slave ? m_slave : m_master;
     uint32_t &cycles = m_next_slave ? m_slave_cycles : m_master_cycles;
