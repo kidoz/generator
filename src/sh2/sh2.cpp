@@ -604,14 +604,30 @@ uint16_t Sh2::fetch16()
     m_fetch_data = read32(address, false, true);
     m_fetch_address = address;
     m_fetch_valid = !m_address_error;
-  } else if (!m_cache.enabled()) {
+  } else if (!m_cache.enabled() &&
+             (!m_fetch_valid || m_fetch_address != address)) {
     m_fetch_data = read32(address, false, true);
+    m_fetch_address = address;
     m_fetch_valid = 0;
   }
   const uint16_t opcode =
       (m_pc & 2) != 0 ? (uint16_t)m_fetch_data : m_fetch_data >> 16;
+  if (!m_cache.enabled())
+    m_fetch_valid = 0;
   m_pc += 2;
   return opcode;
+}
+
+void Sh2::prefetch(uint32_t address)
+{
+  if ((address & 1) != 0 || address >= 0xFFFFFE00) {
+    m_fetch_valid = 0;
+    return;
+  }
+  const uint32_t aligned = address & ~3u;
+  m_fetch_data = read32(aligned, false, true);
+  m_fetch_address = aligned;
+  m_fetch_valid = !m_address_error;
 }
 
 void Sh2::discard_fetch(uint32_t address)
@@ -773,6 +789,8 @@ uint32_t Sh2::execute_step()
   const bool was_delayed = m_delay_slots != 0;
   const uint32_t delayed_target = m_branch_target;
   const uint16_t op = fetch16();
+  if (was_delayed)
+    prefetch(delayed_target);
   const uint32_t instruction_pc = m_pc - 2;
   const uint32_t n = (op >> 8) & 0xF;
   const uint32_t m = (op >> 4) & 0xF;
@@ -1292,6 +1310,7 @@ uint32_t Sh2::execute_step()
         discard_fetch(m_pc + 2);
         m_pc += 2 + sign_extend<8>(imm) * 2;
         m_fetch_valid = 0;
+        prefetch(m_pc);
         cycles = 3;
       }
       break;
@@ -1300,6 +1319,7 @@ uint32_t Sh2::execute_step()
         discard_fetch(m_pc + 2);
         m_pc += 2 + sign_extend<8>(imm) * 2;
         m_fetch_valid = 0;
+        prefetch(m_pc);
         cycles = 3;
       }
       break;
@@ -1395,9 +1415,9 @@ uint32_t Sh2::execute_step()
     }
   }
   const uint8_t accesses = memory_accesses(op);
-  uint32_t contention = m_address_error || accesses == 0
-                            ? 0
-                            : accesses - ((instruction_pc & 2) == 0);
+  const uint32_t next_fetch = was_delayed ? delayed_target : instruction_pc;
+  uint32_t contention =
+      m_address_error || accesses == 0 ? 0 : accesses - ((next_fetch & 2) == 0);
   const bool load_use =
       load_use_conflict(op, m_load_destination, m_load_register);
   if (load_use && contention == 0)

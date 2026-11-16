@@ -898,6 +898,233 @@ TEST_CASE("SH-2 step reports base instruction execution states", "[sh2]")
          cpu.fault() == Sh2::Fault::IllegalOpcode));
 }
 
+TEST_CASE("SH-2 delayed branches fetch destinations during their slots", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  uint16_t op = 0xA006;
+  uint32_t target = 0x110;
+
+  SECTION("BRA to a longword boundary")
+  {
+  }
+  SECTION("BSR to a word boundary")
+  {
+    op = 0xB007;
+    target = 0x112;
+  }
+  SECTION("JMP")
+  {
+    op = 0x442B;
+  }
+  SECTION("JSR to a word boundary")
+  {
+    op = 0x440B;
+    target = 0x112;
+  }
+  SECTION("RTS")
+  {
+    op = 0x000B;
+    target = 0x112;
+  }
+  SECTION("taken BT/S")
+  {
+    op = 0x8D06;
+  }
+  SECTION("RTE to a word boundary")
+  {
+    op = 0x002B;
+    target = 0x112;
+  }
+
+  cpu.reset();
+  if (op == 0x442B || op == 0x440B)
+    cpu.set_r(4, target);
+  if (op == 0x000B) {
+    auto state = cpu.save();
+    state.pr = target;
+    cpu.restore(state);
+  }
+  if (op == 0x8D06)
+    cpu.set_sr(1);
+  if (op == 0x002B) {
+    cpu.set_r(15, 0x1000);
+    put32(bus, 0x1000, target);
+    put32(bus, 0x1004, 0xF0);
+  }
+  put16(bus, 0x100, op);
+  put16(bus, 0x102, 0xE105);
+  put16(bus, target, 0xE107);
+  bus.read_wait = 1;
+  bus.read32_addresses.clear();
+
+  CHECK(cpu.step() == (op == 0x002B ? 7 : 3));
+  CHECK(cpu.step() == 3);
+  CHECK(cpu.pc() == target);
+  CHECK(cpu.r(1) == 5);
+  REQUIRE(bus.read32_addresses.size() == (op == 0x002B ? 5 : 3));
+  CHECK(bus.read32_addresses[0] == 0x100);
+  if (op == 0x002B) {
+    CHECK(bus.read32_addresses[1] == 0x1000);
+    CHECK(bus.read32_addresses[2] == 0x1004);
+  }
+  CHECK(bus.read32_addresses[op == 0x002B ? 3 : 1] == 0x100);
+  CHECK(bus.read32_addresses[op == 0x002B ? 4 : 2] == (target & ~3u));
+  if (op == 0xB007 || op == 0x440B)
+    CHECK(cpu.pr() == 0x104);
+
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.pc() == target + 2);
+  CHECK(cpu.r(1) == 7);
+  CHECK(bus.read32_addresses.size() == (op == 0x002B ? 5 : 3));
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 delay-slot memory contention follows destination alignment",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  uint16_t op = 0xA006;
+  uint32_t target = 0x110;
+
+  SECTION("longword destination has no following fetch split")
+  {
+  }
+  SECTION("word destination splits the following fetch")
+  {
+    op = 0xB007;
+    target = 0x112;
+  }
+
+  put16(bus, 0x100, op);
+  put16(bus, 0x102, 0x6212);
+  put16(bus, target, 0x0009);
+  put32(bus, 0x300, 0x11223344);
+  cpu.set_r(1, 0x300);
+  bus.read_wait = 1;
+  REQUIRE(cpu.step() == 3);
+  bus.read32_addresses.clear();
+
+  CHECK(cpu.step() == (target == 0x110 ? 4 : 5));
+  CHECK(cpu.r(2) == 0x11223344);
+  REQUIRE(bus.read32_addresses.size() == 3);
+  CHECK(bus.read32_addresses[0] == 0x100);
+  CHECK(bus.read32_addresses[1] == 0x110);
+  CHECK(bus.read32_addresses[2] == 0x300);
+  const auto saved = cpu.save();
+  CHECK(saved.fetch_valid == 1);
+  Sh2 restored(bus);
+  restored.restore(saved);
+  bus.read32_addresses.clear();
+  CHECK(cpu.step() == 1);
+  CHECK(restored.step() == 1);
+  CHECK(restored.pc() == cpu.pc());
+  CHECK(bus.read32_addresses.empty());
+}
+
+TEST_CASE("SH-2 conditional branches fetch only taken destinations", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  uint16_t op = 0x8906;
+  uint32_t target = 0x110;
+  bool taken = true;
+
+  SECTION("taken BT to a longword boundary")
+  {
+    cpu.set_sr(1);
+  }
+  SECTION("taken BF to a word boundary")
+  {
+    op = 0x8B07;
+    target = 0x112;
+    cpu.set_sr(0);
+  }
+  SECTION("non-taken BT")
+  {
+    taken = false;
+    cpu.set_sr(0);
+  }
+  SECTION("non-taken BF")
+  {
+    op = 0x8B06;
+    taken = false;
+    cpu.set_sr(1);
+  }
+
+  put16(bus, 0x100, op);
+  put16(bus, 0x102, 0xE105);
+  put16(bus, 0x104, 0x0009);
+  put16(bus, target, 0xE107);
+  bus.read_wait = 1;
+  bus.read32_addresses.clear();
+
+  CHECK(cpu.step() == (taken ? 6 : 2));
+  if (taken) {
+    CHECK(cpu.pc() == target);
+    REQUIRE(bus.read32_addresses.size() == 3);
+    CHECK(bus.read32_addresses[0] == 0x100);
+    CHECK(bus.read32_addresses[1] == 0x104);
+    CHECK(bus.read32_addresses[2] == (target & ~3u));
+    CHECK(cpu.r(1) == 0);
+    CHECK(cpu.step() == 1);
+    CHECK(cpu.r(1) == 7);
+    CHECK(bus.read32_addresses.size() == 3);
+  } else {
+    CHECK(cpu.pc() == 0x102);
+    REQUIRE(bus.read32_addresses.size() == 1);
+    CHECK(bus.read32_addresses[0] == 0x100);
+    CHECK(cpu.step() == 2);
+    CHECK(cpu.r(1) == 5);
+    REQUIRE(bus.read32_addresses.size() == 2);
+    CHECK(bus.read32_addresses[1] == 0x100);
+  }
+}
+
+TEST_CASE("SH-2 cached branch destinations fill during the delay slot", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  REQUIRE(peripheral_write8(cpu, bus, 0xFFFFFE92, 1) == 1);
+  uint16_t op = 0xA005;
+  uint32_t target = 0x110;
+
+  SECTION("longword destination")
+  {
+  }
+  SECTION("word destination")
+  {
+    op = 0xA006;
+    target = 0x112;
+  }
+
+  put16(bus, 0x102, op);
+  put16(bus, 0x104, 0xE105);
+  put16(bus, target, 0xE107);
+  bus.read_wait = 1;
+  bus.read32_addresses.clear();
+
+  CHECK(cpu.step() == 10);
+  CHECK(cpu.step() == 9);
+  CHECK(cpu.r(1) == 5);
+  REQUIRE(bus.read32_addresses.size() == 8);
+  CHECK(bus.read32_addresses[0] == 0x104);
+  CHECK(bus.read32_addresses[1] == 0x108);
+  CHECK(bus.read32_addresses[2] == 0x10C);
+  CHECK(bus.read32_addresses[3] == 0x100);
+  CHECK(bus.read32_addresses[4] == 0x114);
+  CHECK(bus.read32_addresses[5] == 0x118);
+  CHECK(bus.read32_addresses[6] == 0x11C);
+  CHECK(bus.read32_addresses[7] == 0x110);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.r(1) == 7);
+  CHECK(bus.read32_addresses.size() == 8);
+}
+
 TEST_CASE("SH-2 branch and exception overruns fetch and wait in program order",
           "[sh2]")
 {
@@ -913,10 +1140,11 @@ TEST_CASE("SH-2 branch and exception overruns fetch and wait in program order",
     put16(bus, 0x104, 0x0009);
     cpu.set_sr(1);
     bus.read32_addresses.clear();
-    CHECK(cpu.step() == 5);
-    REQUIRE(bus.read32_addresses.size() == 2);
+    CHECK(cpu.step() == 6);
+    REQUIRE(bus.read32_addresses.size() == 3);
     CHECK(bus.read32_addresses[0] == 0x100);
     CHECK(bus.read32_addresses[1] == 0x104);
+    CHECK(bus.read32_addresses[2] == 0x104);
   }
 
   SECTION("TRAPA discards two instructions before its vector fetch")
