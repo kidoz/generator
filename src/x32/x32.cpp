@@ -534,10 +534,15 @@ bool X32::shared_access_allowed(uint32_t addr, bool master) const
   const uint8_t requester = master ? 0 : 1;
   if (m_bus_handoff_cycles == 1)
     return false;
-  if (m_bus_lease_owner == requester ||
-      (m_bus_lease_cycles == 0 && m_bus_lease_owner == 2))
+  if (m_bus_lease_owner == requester)
+    return true;
+  if (!m_scheduler_active && m_bus_handoff_cycles == 0 &&
+      m_bus_lease_cycles == 0 && m_bus_lease_owner == 2)
     return true;
   m_bus_requester = requester;
+  if (m_bus_handoff_cycles == 0 && m_bus_lease_cycles == 0 &&
+      m_bus_lease_owner == 2)
+    m_bus_handoff_cycles = 1;
   return false;
 }
 
@@ -688,8 +693,11 @@ void X32::advance_mclk(uint64_t ticks)
     }
     Sh2 &cpu = m_next_slave ? m_slave : m_master;
     uint32_t &cycles = m_next_slave ? m_slave_cycles : m_master_cycles;
-    if (cycles == 0)
+    if (cycles == 0) {
+      m_scheduler_active = true;
       cycles = std::max(cpu.step(), 1u);
+      m_scheduler_active = false;
+    }
     cycles--;
     m_next_slave = !m_next_slave;
     m_sh2_half = 0;

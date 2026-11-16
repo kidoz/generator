@@ -229,8 +229,9 @@ private:
   uint32_t m_bus_lease_cycles = 0;
   uint8_t m_bus_lease_owner = 2;
   mutable uint8_t m_bus_requester = 2;
-  uint8_t m_bus_handoff_cycles = 0;
+  mutable uint8_t m_bus_handoff_cycles = 0;
   uint8_t m_sh2_half = 0;
+  bool m_scheduler_active = false;
 };
 
 }  // namespace generator

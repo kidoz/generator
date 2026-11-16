@@ -820,13 +820,15 @@ TEST_CASE("X32 PWM DREQ1 fills the FIFO through channel one", "[x32]")
   device.master_bus().write16(0x06000000, 3);
   write_main(device, 0xA15132, 0x1000);
   device.master_bus().write16(0x20004030, 0x0081);
-  device.advance_mclk(10);
+  REQUIRE(advance_until(device, [&] {
+    return device.master().save().dmac.channels[1].tcr == 0;
+  }));
   CHECK(read_main(device, 0xA15134) == 0);
 
   device.master_bus().write16(0x20004030, 0);
   write_main(device, 0xA15132, 4);
   device.master_bus().write16(0x20004030, 0x0081);
-  device.advance_mclk(10);
+  REQUIRE(advance_until(device, [&] { return device.audio_left() == 4096; }));
   CHECK(device.audio_left() == 4096);
 }
 
@@ -1325,9 +1327,8 @@ TEST_CASE("X32 FM wait lets the other SH-2 release VDP ownership", "[x32]")
   CHECK(device.master().pc() == 0x100);
   CHECK(device.slave().pc() == 0x100);
   CHECK(read_main(device, 0xA15200) == 0x1234);
-  device.advance_mclk(2);
+  REQUIRE(advance_until(device, [&] { return device.slave().pc() == 0x102; }));
   CHECK(device.master().pc() == 0x100);
-  CHECK(device.slave().pc() == 0x102);
   CHECK(read_main(device, 0xA15200) == 0);
 
   REQUIRE(advance_until(device, [&] { return device.master().pc() == 0x102; }));
@@ -1402,10 +1403,9 @@ TEST_CASE("X32 shared memory leases delay the peer and restore continuation",
     write_main(device, 0xA15100, 0x83);
     device.master().set_sr(0);
     device.slave().set_sr(0);
-    device.advance_mclk(3);
-    CHECK(device.master().r(1) == 1);
+    REQUIRE(advance_until(device, [&] { return device.master().r(1) == 1; }));
     CHECK(device.slave().r(5) == 0);
-    device.advance_mclk(3);
+    REQUIRE(advance_until(device, [&] { return bus_requester(device) == 1; }));
     CHECK(device.slave().pc() == slave_pc);
     CHECK(device.slave().r(5) == 0);
 
@@ -1481,6 +1481,54 @@ TEST_CASE("X32 shared peripheral leases delay peers and restore continuation",
           serialize_x32_state(save_x32_state(restored)));
   }
 }
+
+TEST_CASE("X32 idle shared-bus requests wait for BACK and drive phases",
+          "[x32]")
+{
+  for (const bool master : {true, false}) {
+    std::vector<uint8_t> cartridge;
+    std::vector<uint8_t> master_boot(0x400, 0);
+    std::vector<uint8_t> slave_boot(0x400, 0);
+    put32(master_boot, 0, 0x06008000);
+    put32(slave_boot, 0, 0x06008000);
+    put32(master_boot, 4, master ? 0x06000000 : 0x100);
+    put32(slave_boot, 4, master ? 0x100 : 0x06000000);
+    put16(master_boot, 0x100, 0x0009);
+    put16(slave_boot, 0x100, 0x0009);
+    X32 device(cartridge, master_boot, slave_boot);
+    device.power_on();
+    auto base = device.base_state();
+    base.sdram[0] = master ? 0xE1 : 0xE5;
+    base.sdram[1] = master ? 1 : 5;
+    base.sdram[2] = 0;
+    base.sdram[3] = 0x09;
+    device.restore_base_state(base);
+    write_main(device, 0xA15100, 0x83);
+    auto &cpu = master ? device.master() : device.slave();
+    auto &bus = master ? device.master_bus() : device.slave_bus();
+    auto &peer = master ? device.slave_bus() : device.master_bus();
+
+    REQUIRE(advance_until(device, [&] { return bus_handoff(device) == 1; }));
+    CHECK(cpu.pc() == 0x06000000);
+    CHECK(bus_owner(device) == 2);
+    CHECK(bus_requester(device) == (master ? 0 : 1));
+    CHECK(bus_lease_cycles(device) == 0);
+    CHECK_FALSE(bus.can_access(0x06000000, false));
+    CHECK_FALSE(peer.can_access(0x06000000, false));
+
+    REQUIRE(advance_until(device, [&] { return bus_handoff(device) == 2; }));
+    CHECK(bus_owner(device) == (master ? 0 : 1));
+    CHECK(bus.can_access(0x06000000, false));
+    CHECK_FALSE(peer.can_access(0x06000000, false));
+    REQUIRE(advance_until(device, [&] { return bus_handoff(device) == 0; }));
+    REQUIRE(advance_until(device, [&] { return cpu.pc() != 0x06000000; }));
+    CHECK(cpu.pc() == 0x06000002);
+    CHECK(cpu.r(master ? 1 : 5) == (master ? 1u : 5u));
+    CHECK(bus_owner(device) == (master ? 0 : 1));
+    CHECK(bus_lease_cycles(device) != 0);
+  }
+}
+
 
 TEST_CASE("X32 BREQ BACK handoff exposes half-clock grant phases",
           "[x32]")
