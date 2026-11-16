@@ -7,8 +7,6 @@ namespace generator {
 
 namespace {
 
-constexpr uint32_t kBusHandoffCycles = 1;
-
 bool shared_bus_address(uint32_t addr)
 {
   addr &= 0xDFFFFFFF;
@@ -61,6 +59,7 @@ void X32::power_on()
   m_bus_lease_owner = 2;
   m_bus_requester = 2;
   m_bus_handoff_cycles = 0;
+  m_sh2_half = 0;
   m_pwm.power_on();
   m_video.power_on();
   fifo_reset();
@@ -128,6 +127,7 @@ X32::BaseState X32::base_state() const
   state.bus_lease_owner = m_bus_lease_owner;
   state.bus_requester = m_bus_requester;
   state.bus_handoff_cycles = m_bus_handoff_cycles;
+  state.sh2_half = m_sh2_half;
   return state;
 }
 
@@ -169,6 +169,7 @@ void X32::restore_base_state(const BaseState &state)
   m_bus_lease_owner = state.bus_lease_owner;
   m_bus_requester = state.bus_requester;
   m_bus_handoff_cycles = state.bus_handoff_cycles;
+  m_sh2_half = state.sh2_half;
 }
 
 void X32::fifo_reset()
@@ -260,6 +261,7 @@ void X32::main_write(uint32_t addr, uint16_t value)
       m_bus_lease_owner = 2;
       m_bus_requester = 2;
       m_bus_handoff_cycles = 0;
+      m_sh2_half = 0;
       m_master.reset();
       m_slave.reset();
     }
@@ -530,7 +532,7 @@ bool X32::shared_access_allowed(uint32_t addr, bool master) const
   if (!shared_bus_address(addr))
     return true;
   const uint8_t requester = master ? 0 : 1;
-  if (m_bus_handoff_cycles != 0)
+  if (m_bus_handoff_cycles == 1)
     return false;
   if (m_bus_lease_owner == requester ||
       (m_bus_lease_cycles == 0 && m_bus_lease_owner == 2))
@@ -660,23 +662,28 @@ void X32::advance_mclk(uint64_t ticks)
   }
   if ((m_adapter_control & 0x83) != 0x83)
     return;
-  m_clock_accumulator += ticks * 3;
+  m_clock_accumulator += ticks * 6;
   while (m_clock_accumulator >= 7) {
     m_clock_accumulator -= 7;
+    if (m_sh2_half == 0) {
+      if (m_bus_handoff_cycles == 1) {
+        m_bus_lease_owner = m_bus_requester;
+        m_bus_requester = 2;
+        m_bus_handoff_cycles = 2;
+      }
+      m_sh2_half = 1;
+      continue;
+    }
+    if (m_bus_handoff_cycles == 2)
+      m_bus_handoff_cycles = 0;
     if (m_bus_lease_cycles != 0) {
       m_bus_lease_cycles--;
       if (m_bus_lease_cycles == 0) {
         if (m_bus_requester < 2 && m_bus_requester != m_bus_lease_owner)
-          m_bus_handoff_cycles = kBusHandoffCycles;
+          m_bus_handoff_cycles = 1;
         else
           m_bus_requester = 2;
         m_bus_lease_owner = 2;
-      }
-    } else if (m_bus_handoff_cycles != 0) {
-      m_bus_handoff_cycles--;
-      if (m_bus_handoff_cycles == 0) {
-        m_bus_lease_owner = m_bus_requester;
-        m_bus_requester = 2;
       }
     }
     Sh2 &cpu = m_next_slave ? m_slave : m_master;
@@ -685,6 +692,7 @@ void X32::advance_mclk(uint64_t ticks)
       cycles = std::max(cpu.step(), 1u);
     cycles--;
     m_next_slave = !m_next_slave;
+    m_sh2_half = 0;
   }
 }
 

@@ -239,6 +239,24 @@ void read_bus_pipeline(ChunkReader &r, Sh2::SavedState &state)
   state.write_buffer = r.u32();
 }
 
+void write_fetch_ahead(ChunkWriter &w, const Sh2::SavedState &state)
+{
+  for (const auto &entry : state.fetch_ahead) {
+    w.u8(entry.valid);
+    w.u32(entry.address);
+    w.u32(entry.data);
+  }
+}
+
+void read_fetch_ahead(ChunkReader &r, Sh2::SavedState &state)
+{
+  for (auto &entry : state.fetch_ahead) {
+    entry.valid = r.u8();
+    entry.address = r.u32();
+    entry.data = r.u32();
+  }
+}
+
 void write_sh2(ChunkWriter &w, const Sh2::SavedState &state)
 {
   write_cache(w, state.cache);
@@ -500,11 +518,14 @@ bool valid_x32_state(const X32 &device, const X32State &state)
          state.base.dreq_length <= 0x10000 &&
          state.base.bus_lease_cycles <= 13 && state.base.bus_lease_owner <= 2 &&
          (state.base.bus_lease_cycles == 0 || state.base.bus_lease_owner < 2) &&
-         state.base.bus_requester <= 2 && state.base.bus_handoff_cycles <= 1 &&
+         state.base.bus_requester <= 2 && state.base.bus_handoff_cycles <= 2 &&
          (state.base.bus_handoff_cycles == 0 ||
           (state.base.bus_lease_cycles == 0 &&
-           state.base.bus_lease_owner == 2 && state.base.bus_requester < 2)) &&
-         state.base.interrupt_masks[0] <= 0xF &&
+           ((state.base.bus_handoff_cycles == 1 &&
+             state.base.bus_lease_owner == 2 && state.base.bus_requester < 2) ||
+            (state.base.bus_handoff_cycles == 2 &&
+             state.base.bus_lease_owner < 2)))) &&
+         state.base.sh2_half <= 1 && state.base.interrupt_masks[0] <= 0xF &&
          state.base.interrupt_masks[1] <= 0xF &&
          X32Video::valid_saved_state(state.base.video) &&
          X32Pwm::valid_saved_state(state.base.pwm) && valid_sh2(state.master) &&
@@ -544,6 +565,9 @@ std::vector<uint8_t> serialize_x32_state(const X32State &state)
   w.u8(state.base.bus_lease_owner);
   w.u8(state.base.bus_requester);
   w.u8(state.base.bus_handoff_cycles);
+  write_fetch_ahead(w, state.master);
+  write_fetch_ahead(w, state.slave);
+  w.u8(state.base.sh2_half);
   return w.take_payload();
 }
 
@@ -552,6 +576,7 @@ parse_x32_state(std::span<const uint8_t> payload)
 {
   ChunkReader r{payload};
   X32State state;
+  bool legacy_clock = true;
   state.master_boot_hash = r.u64();
   state.slave_boot_hash = r.u64();
   state.master_boot_size = r.u32();
@@ -602,11 +627,44 @@ parse_x32_state(std::span<const uint8_t> payload)
     state.base.bus_lease_owner = r.u8();
     state.base.bus_requester = r.u8();
     state.base.bus_handoff_cycles = r.u8();
+  } else if (r.remaining() == 2 * 4 * 64 * 16 + 6 + 28 + 7 + 36) {
+    read_cache_data(r, state.master.cache);
+    read_cache_data(r, state.slave.cache);
+    read_pipeline(r, state.master);
+    read_pipeline(r, state.slave);
+    read_bus_pipeline(r, state.master);
+    read_bus_pipeline(r, state.slave);
+    state.base.bus_lease_cycles = r.u32();
+    state.base.bus_lease_owner = r.u8();
+    state.base.bus_requester = r.u8();
+    state.base.bus_handoff_cycles = r.u8();
+    read_fetch_ahead(r, state.master);
+    read_fetch_ahead(r, state.slave);
+  } else if (r.remaining() == 2 * 4 * 64 * 16 + 6 + 28 + 7 + 36 + 1) {
+    read_cache_data(r, state.master.cache);
+    read_cache_data(r, state.slave.cache);
+    read_pipeline(r, state.master);
+    read_pipeline(r, state.slave);
+    read_bus_pipeline(r, state.master);
+    read_bus_pipeline(r, state.slave);
+    state.base.bus_lease_cycles = r.u32();
+    state.base.bus_lease_owner = r.u8();
+    state.base.bus_requester = r.u8();
+    state.base.bus_handoff_cycles = r.u8();
+    read_fetch_ahead(r, state.master);
+    read_fetch_ahead(r, state.slave);
+    state.base.sh2_half = r.u8();
+    legacy_clock = false;
   } else if (r.remaining() != 0) {
     return std::unexpected("invalid X32 cache data tail");
   }
   if (!r.ok() || r.remaining() != 0)
     return std::unexpected("invalid X32 state payload");
+  if (legacy_clock) {
+    const uint8_t doubled = state.base.clock_accumulator * 2;
+    state.base.sh2_half = doubled >= 7 ? 1 : 0;
+    state.base.clock_accumulator = doubled >= 7 ? doubled - 7 : doubled;
+  }
   return state;
 }
 
