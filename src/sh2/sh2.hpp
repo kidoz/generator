@@ -52,6 +52,11 @@ public:
     None,
     IllegalOpcode,
   };
+  struct FetchAheadState {
+    uint8_t valid = 0;
+    uint32_t address = 0;
+    uint32_t data = 0;
+  };
   struct SavedState {
     Sh2Cache::SavedState cache{};
     Sh2Dmac::SavedState dmac{};
@@ -80,6 +85,7 @@ public:
     uint32_t fetch_address = 0;
     uint32_t fetch_data = 0;
     uint32_t write_buffer = 0;
+    std::array<FetchAheadState, 2> fetch_ahead{};
   };
 
   explicit Sh2(Sh2BusInterface &bus);
@@ -103,6 +109,7 @@ public:
   void invalidate_fetch()
   {
     m_fetch_valid = 0;
+    clear_fetch_ahead();
   }
   void set_irl_level(uint8_t level, uint8_t vector = 0)
   {
@@ -185,7 +192,8 @@ public:
             m_fetch_valid,
             m_fetch_address,
             m_fetch_data,
-            m_write_buffer};
+            m_write_buffer,
+            m_fetch_ahead};
   }
   void restore(const SavedState &state)
   {
@@ -216,6 +224,7 @@ public:
     m_fetch_address = state.fetch_address;
     m_fetch_data = state.fetch_data;
     m_write_buffer = state.write_buffer;
+    m_fetch_ahead = state.fetch_ahead;
   }
   static bool valid_saved_state(const SavedState &state)
   {
@@ -224,6 +233,9 @@ public:
            state.multiplier <= 4 && state.delay_slots <= 1 &&
            state.multiplier_gap <= 15 && state.fetch_valid <= 1 &&
            (state.fetch_address & 3) == 0 && state.write_buffer <= 0xFFFF &&
+           state.fetch_ahead[0].valid <= 1 && state.fetch_ahead[1].valid <= 1 &&
+           (state.fetch_ahead[0].address & 3) == 0 &&
+           (state.fetch_ahead[1].address & 3) == 0 &&
            state.pending_level <= 17 &&
            (state.pending_level < 16 ||
             (state.pending_level == 16 && state.pending_vector == 11) ||
@@ -261,6 +273,7 @@ private:
     uint32_t fetch_address = 0;
     uint32_t fetch_data = 0;
     uint32_t write_buffer = 0;
+    std::array<FetchAheadState, 2> fetch_ahead{};
     bool write_fresh = false;
   };
 
@@ -269,6 +282,8 @@ private:
   uint32_t execute_step();
   uint16_t fetch16();
   void prefetch(uint32_t address);
+  void prefetch_ahead(uint32_t address);
+  void clear_fetch_ahead();
   void discard_fetch(uint32_t address);
   void branch(uint32_t target, bool link);
   uint32_t enter_exception(uint8_t vector, uint32_t return_pc, uint8_t level);
@@ -317,6 +332,7 @@ private:
   uint8_t m_fetch_valid = 0;
   uint32_t m_fetch_address = 0;
   uint32_t m_fetch_data = 0;
+  std::array<FetchAheadState, 2> m_fetch_ahead{};
   uint32_t m_write_buffer = 0;
   bool m_write_fresh = false;
 };

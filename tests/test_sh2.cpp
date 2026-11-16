@@ -17,12 +17,17 @@ public:
     bool asserted;
     bool active_high;
   };
+  struct BusEvent {
+    uint32_t address;
+    bool write;
+  };
   uint32_t device_read_value = 0;
   uint32_t device_width = 0;
   uint32_t device_written_value = 0;
   size_t device_reads = 0;
   size_t device_writes = 0;
   std::vector<DackEvent> dack_events;
+  std::vector<BusEvent> bus_events;
   std::vector<uint32_t> read32_addresses;
   uint32_t read_wait = 0;
   uint32_t write_wait = 0;
@@ -37,6 +42,7 @@ public:
   }
   uint32_t read32(uint32_t addr) override
   {
+    bus_events.push_back({addr, false});
     read32_addresses.push_back(addr);
     return (uint32_t)read16(addr) << 16 | read16(addr + 2);
   }
@@ -51,6 +57,7 @@ public:
   }
   void write32(uint32_t addr, uint32_t value) override
   {
+    bus_events.push_back({addr, true});
     write16(addr, value >> 16);
     write16(addr + 2, (uint16_t)value);
   }
@@ -327,6 +334,7 @@ TEST_CASE("SH-2 displacement and PC-relative addressing use scaled offsets",
   bus.memory[0x401] = 0x80;
   put16(bus, 0x106, 0x8411);
   put16(bus, 0x108, 0x5213);
+  cpu.invalidate_fetch();
   run(cpu, 1);
   CHECK(cpu.r(0) == 0xFFFFFF80);
   cpu.set_r(2, 0);
@@ -338,6 +346,7 @@ TEST_CASE("SH-2 displacement and PC-relative addressing use scaled offsets",
   CHECK(cpu.r(4) == 0xFFFF8001);
   put16(bus, 0x10C, 0xD500);
   put32(bus, 0x110, 0x89ABCDEF);
+  cpu.invalidate_fetch();
   run(cpu, 1);
   CHECK(cpu.r(5) == 0x89ABCDEF);
   put16(bus, 0x10E, 0xC701);
@@ -1007,12 +1016,14 @@ TEST_CASE("SH-2 delay-slot memory contention follows destination alignment",
   REQUIRE(cpu.step() == 3);
   bus.read32_addresses.clear();
 
-  CHECK(cpu.step() == (target == 0x110 ? 4 : 5));
+  CHECK(cpu.step() == (target == 0x110 ? 4 : 6));
   CHECK(cpu.r(2) == 0x11223344);
-  REQUIRE(bus.read32_addresses.size() == 3);
+  REQUIRE(bus.read32_addresses.size() == (target == 0x110 ? 3 : 4));
   CHECK(bus.read32_addresses[0] == 0x100);
   CHECK(bus.read32_addresses[1] == 0x110);
   CHECK(bus.read32_addresses[2] == 0x300);
+  if (target != 0x110)
+    CHECK(bus.read32_addresses[3] == 0x114);
   const auto saved = cpu.save();
   CHECK(saved.fetch_valid == 1);
   Sh2 restored(bus);
@@ -1022,6 +1033,11 @@ TEST_CASE("SH-2 delay-slot memory contention follows destination alignment",
   CHECK(restored.step() == 1);
   CHECK(restored.pc() == cpu.pc());
   CHECK(bus.read32_addresses.empty());
+  if (target != 0x110) {
+    CHECK(cpu.step() == 1);
+    CHECK(restored.step() == 1);
+    CHECK(bus.read32_addresses.empty());
+  }
 }
 
 TEST_CASE("SH-2 conditional branches fetch only taken destinations", "[sh2]")
@@ -1105,6 +1121,7 @@ TEST_CASE("SH-2 cached branch destinations fill during the delay slot", "[sh2]")
   put16(bus, 0x102, op);
   put16(bus, 0x104, 0xE105);
   put16(bus, target, 0xE107);
+  cpu.invalidate_fetch();
   bus.read_wait = 1;
   bus.read32_addresses.clear();
 
@@ -1190,11 +1207,12 @@ TEST_CASE("SH-2 branch and exception overruns fetch and wait in program order",
     cpu.set_r(15, 0x1000);
     REQUIRE(cpu.step() == 2);
     bus.read32_addresses.clear();
-    CHECK(cpu.step() == 12);
-    REQUIRE(bus.read32_addresses.size() == 3);
+    CHECK(cpu.step() == 13);
+    REQUIRE(bus.read32_addresses.size() == 4);
     CHECK(bus.read32_addresses[0] == 0x100);
     CHECK(bus.read32_addresses[1] == 0x104);
-    CHECK(bus.read32_addresses[2] == 0x1024);
+    CHECK(bus.read32_addresses[2] == 0x104);
+    CHECK(bus.read32_addresses[3] == 0x1024);
   }
 }
 
@@ -1531,6 +1549,7 @@ TEST_CASE("SH-2 INTC dispatches a pending DIVU overflow after unmasking",
   CHECK(cpu.pc() == 0x300);
   CHECK(cpu.sr() == 0x40);
   peripheral_write32(cpu, bus, 0xFFFFFF08, 0);
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
   put16(bus, cpu.pc(), 0x0009);
@@ -1568,6 +1587,7 @@ TEST_CASE("SH-2 INTC dispatches FRT compare interrupts through VCRC", "[sh2]")
   peripheral_read8(cpu, bus, 0xFFFFFE11);
   CHECK((cpu.r(2) & 8) != 0);
   peripheral_write8(cpu, bus, 0xFFFFFE11, 0);
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
   put16(bus, cpu.pc(), 0x0009);
@@ -1600,6 +1620,7 @@ TEST_CASE("SH-2 INTC dispatches FRT overflow interrupts through VCRD", "[sh2]")
   peripheral_read8(cpu, bus, 0xFFFFFE11);
   CHECK((cpu.r(2) & 2) != 0);
   peripheral_write8(cpu, bus, 0xFFFFFE11, 0);
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
   put16(bus, cpu.pc(), 0x0009);
@@ -1642,6 +1663,7 @@ TEST_CASE("SH-2 DMAC transfers longwords and reports completion", "[sh2]")
   peripheral_read32(cpu, bus, 0xFFFFFF8C);
   CHECK((cpu.r(3) & 2) != 0);
   peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5A04);
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
   put16(bus, cpu.pc(), 0x0009);
@@ -1713,6 +1735,7 @@ TEST_CASE("SH-2 DMAC channel 1 transfers 16-byte units", "[sh2]")
   peripheral_read32(cpu, bus, 0xFFFFFF9C);
   CHECK((cpu.r(3) & 2) != 0);
   peripheral_write32(cpu, bus, 0xFFFFFF9C, 0x5E04);
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
   put16(bus, cpu.pc(), 0x0009);
@@ -1756,6 +1779,7 @@ TEST_CASE("SH-2 DMAC fixed priority completes channel 0 before channel 1",
   peripheral_read32(cpu, bus, 0xFFFFFF8C);
   CHECK((cpu.r(3) & 2) != 0);
   peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5A04);
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
   CHECK((cpu.save().dmac.channels[1].chcr & 6) == 6);
@@ -1839,6 +1863,7 @@ TEST_CASE("SH-2 DMAC level DREQ starts only while asserted", "[sh2]")
   peripheral_read32(cpu, bus, 0xFFFFFF8C);
   CHECK((cpu.r(3) & 2) != 0);
   peripheral_write32(cpu, bus, 0xFFFFFF8C, 0x5824);
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
   put16(bus, cpu.pc(), 0x0009);
@@ -2022,6 +2047,7 @@ TEST_CASE("SH-2 DMA address errors preserve registers and use vector 10",
   CHECK((cpu.r(3) & 4) != 0);
   peripheral_write32(cpu, bus, 0xFFFFFFB0, 0);
   CHECK((cpu.save().dmac.dmaor & 6) == 0);
+  cpu.invalidate_fetch();
   put16(bus, cpu.pc(), 0x002B);
   CHECK(cpu.step() == 4);
   put16(bus, cpu.pc(), 0x0009);
@@ -2378,6 +2404,194 @@ TEST_CASE("SH-2 memory accesses split contending instruction fetch slots", "[sh2
   CHECK(cpu.fault() == Sh2::Fault::None);
 }
 
+TEST_CASE("SH-2 memory instructions order future fetches around MA", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  uint16_t op = 0x6212;
+  uint32_t instruction_pc = 0x100;
+  bool split = false;
+
+  SECTION("longword load has no split fetch")
+  {
+  }
+  SECTION("word load fetches after its memory read")
+  {
+    instruction_pc = 0x102;
+    split = true;
+  }
+  SECTION("word store fetches after its memory write")
+  {
+    op = 0x2122;
+    instruction_pc = 0x102;
+    split = true;
+  }
+
+  put16(bus, 0x100, 0x0009);
+  put16(bus, instruction_pc, op);
+  for (uint32_t address = 0x104; address <= 0x108; address += 2)
+    put16(bus, address, 0x0009);
+  put32(bus, 0x300, 0x11223344);
+  cpu.set_r(1, 0x300);
+  cpu.set_r(2, 0x55667788);
+  bus.read_wait = 1;
+  if (split)
+    REQUIRE(cpu.step() == 2);
+  bus.bus_events.clear();
+
+  CHECK(cpu.step() == (split ? (op == 0x2122 ? 5 : 6) : 4));
+  REQUIRE(bus.bus_events.size() == (split ? 4 : 3));
+  CHECK(bus.bus_events[0].address == 0x100);
+  CHECK_FALSE(bus.bus_events[0].write);
+  CHECK(bus.bus_events[1].address == 0x104);
+  CHECK_FALSE(bus.bus_events[1].write);
+  CHECK(bus.bus_events[2].address == 0x300);
+  CHECK(bus.bus_events[2].write == (op == 0x2122));
+  if (split) {
+    CHECK(bus.bus_events[3].address == 0x108);
+    CHECK_FALSE(bus.bus_events[3].write);
+    CHECK(cpu.step() == 1);
+    CHECK(cpu.step() == 2);
+    const size_t reads = bus.read32_addresses.size();
+    CHECK(cpu.step() == 1);
+    CHECK(bus.read32_addresses.size() == reads);
+  }
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 post-MA fetch state survives save and restore", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  put16(bus, 0x100, 0x0009);
+  put16(bus, 0x102, 0x6212);
+  for (uint32_t address = 0x104; address <= 0x108; address += 2)
+    put16(bus, address, 0x0009);
+  put32(bus, 0x300, 0x11223344);
+  cpu.set_r(1, 0x300);
+  bus.read_wait = 1;
+  REQUIRE(cpu.step() == 2);
+  REQUIRE(cpu.step() == 6);
+
+  const auto saved = cpu.save();
+  Sh2 restored(bus);
+  restored.restore(saved);
+  CHECK(cpu.step() == 1);
+  CHECK(restored.step() == 1);
+  CHECK(cpu.step() == 2);
+  CHECK(restored.step() == 2);
+  bus.read32_addresses.clear();
+  CHECK(cpu.step() == 1);
+  CHECK(restored.step() == 1);
+  CHECK(restored.pc() == cpu.pc());
+  CHECK(bus.read32_addresses.empty());
+}
+
+TEST_CASE("SH-2 consecutive memory instructions retain both split fetches",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  put16(bus, 0x100, 0x0009);
+  for (uint32_t address = 0x102; address <= 0x10C; address += 2)
+    put16(bus, address, 0x6212);
+  put16(bus, 0x10E, 0x0009);
+  put16(bus, 0x110, 0x0009);
+  put32(bus, 0x300, 0x11223344);
+  cpu.set_r(1, 0x300);
+  bus.read_wait = 1;
+
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.step() == 6);
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.step() == 5);
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.step() == 5);
+  CHECK(cpu.step() == 2);
+  CHECK(cpu.step() == 2);
+  const size_t reads = bus.read32_addresses.size();
+  CHECK(cpu.step() == 1);
+  CHECK(bus.read32_addresses.size() == reads);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 cached post-MA fetch fills during the memory instruction",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  REQUIRE(peripheral_write8(cpu, bus, 0xFFFFFE92, 5) == 1);
+  for (uint32_t address = 0x102; address <= 0x108; address += 2)
+    put16(bus, address, 0x0009);
+  put16(bus, 0x10A, 0x6212);
+  put16(bus, 0x10C, 0x0009);
+  put16(bus, 0x10E, 0x0009);
+  put16(bus, 0x110, 0x0009);
+  cpu.invalidate_fetch();
+  put32(bus, 0x300, 0x11223344);
+  cpu.set_r(1, 0x300);
+  bus.read_wait = 1;
+  CHECK(cpu.step() == 9);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  bus.bus_events.clear();
+
+  CHECK(cpu.step() == 11);
+  REQUIRE(bus.bus_events.size() == 5);
+  CHECK(bus.bus_events[0].address == 0x300);
+  CHECK(bus.bus_events[1].address == 0x114);
+  CHECK(bus.bus_events[2].address == 0x118);
+  CHECK(bus.bus_events[3].address == 0x11C);
+  CHECK(bus.bus_events[4].address == 0x110);
+  CHECK(cpu.step() == 1);
+  CHECK(cpu.step() == 1);
+  const size_t reads = bus.read32_addresses.size();
+  CHECK(cpu.step() == 1);
+  CHECK(bus.read32_addresses.size() == reads);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 cached non-contending IF fills before the memory access",
+          "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  REQUIRE(peripheral_write8(cpu, bus, 0xFFFFFE92, 5) == 1);
+  for (uint32_t address = 0x102; address <= 0x10A; address += 2)
+    put16(bus, address, 0x0009);
+  put16(bus, 0x10C, 0x6212);
+  put16(bus, 0x10E, 0x0009);
+  put16(bus, 0x110, 0x0009);
+  cpu.invalidate_fetch();
+  put32(bus, 0x300, 0x11223344);
+  cpu.set_r(1, 0x300);
+  bus.read_wait = 1;
+  CHECK(cpu.step() == 9);
+  for (int i = 0; i < 4; i++)
+    CHECK(cpu.step() == 1);
+  bus.bus_events.clear();
+
+  CHECK(cpu.step() == 10);
+  REQUIRE(bus.bus_events.size() == 5);
+  CHECK(bus.bus_events[0].address == 0x114);
+  CHECK(bus.bus_events[1].address == 0x118);
+  CHECK(bus.bus_events[2].address == 0x11C);
+  CHECK(bus.bus_events[3].address == 0x110);
+  CHECK(bus.bus_events[4].address == 0x300);
+  CHECK(cpu.step() == 1);
+  const size_t reads = bus.read32_addresses.size();
+  CHECK(cpu.step() == 1);
+  CHECK(bus.read32_addresses.size() == reads);
+  CHECK(cpu.r(2) == 0x11223344);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
 TEST_CASE("SH-2 immediate consumers pay the memory load pipeline penalty", "[sh2]")
 {
   auto bus = make_bus();
@@ -2484,20 +2698,18 @@ TEST_CASE("SH-2 write buffer drains across cached fetches and restore", "[sh2]")
   auto bus = make_bus();
   Sh2 cpu(bus);
   cpu.reset();
-  peripheral_write8(cpu, bus, 0xFFFFFE92, 1);
-  for (uint32_t address = 0x102; address <= 0x10E; address += 2)
-    put16(bus, address, 0x0009);
-  put16(bus, 0x10C, 0x2122);
-  put16(bus, 0x110, 0x0009);
+  peripheral_write8(cpu, bus, 0xFFFFFE92, 5);
+  put16(bus, 0x102, 0x0009);
+  put16(bus, 0x104, 0x2122);
+  put16(bus, 0x106, 0x0009);
+  put16(bus, 0x108, 0x6312);
+  cpu.invalidate_fetch();
   cpu.set_r(1, 0x300);
   cpu.set_r(2, 0x400);
   bus.write_wait = 4;
   CHECK(cpu.step() == 5);
-  for (size_t i = 0; i < 4; i++)
-    CHECK(cpu.step() == 1);
-  CHECK(cpu.pc() == 0x10C);
   CHECK(cpu.step() == 1);
-  CHECK(cpu.pc() == 0x10E);
+  CHECK(cpu.pc() == 0x106);
   CHECK(bus.read32(0x300) == 0x400);
   const auto saved = cpu.save();
   CHECK(saved.write_buffer == 4);
@@ -2508,10 +2720,12 @@ TEST_CASE("SH-2 write buffer drains across cached fetches and restore", "[sh2]")
   CHECK(restored.step() == 1);
   CHECK(cpu.save().write_buffer == 3);
   CHECK(restored.save().write_buffer == 3);
-  CHECK(cpu.step() == 8);
-  CHECK(restored.step() == 8);
+  CHECK(cpu.step() == 4);
+  CHECK(restored.step() == 4);
   CHECK(cpu.save().write_buffer == 0);
   CHECK(restored.save().write_buffer == 0);
+  CHECK(cpu.r(3) == 0x400);
+  CHECK(restored.r(3) == 0x400);
   CHECK(cpu.fault() == Sh2::Fault::None);
   CHECK(restored.fault() == Sh2::Fault::None);
 }

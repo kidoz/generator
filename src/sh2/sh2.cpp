@@ -593,6 +593,7 @@ void Sh2::reset()
   m_fetch_valid = 0;
   m_fetch_address = 0;
   m_fetch_data = 0;
+  m_fetch_ahead = {};
   m_write_buffer = 0;
   m_write_fresh = false;
 }
@@ -600,6 +601,17 @@ void Sh2::reset()
 uint16_t Sh2::fetch16()
 {
   const uint32_t address = m_pc & ~3u;
+  if (!m_fetch_valid || m_fetch_address != address) {
+    for (auto &entry : m_fetch_ahead) {
+      if (entry.valid && entry.address == address) {
+        m_fetch_data = entry.data;
+        m_fetch_address = address;
+        m_fetch_valid = 1;
+        entry = {};
+        break;
+      }
+    }
+  }
   if (m_cache.enabled() && (!m_fetch_valid || m_fetch_address != address)) {
     m_fetch_data = read32(address, false, true);
     m_fetch_address = address;
@@ -620,6 +632,7 @@ uint16_t Sh2::fetch16()
 
 void Sh2::prefetch(uint32_t address)
 {
+  clear_fetch_ahead();
   if ((address & 1) != 0 || address >= 0xFFFFFE00) {
     m_fetch_valid = 0;
     return;
@@ -628,6 +641,30 @@ void Sh2::prefetch(uint32_t address)
   m_fetch_data = read32(aligned, false, true);
   m_fetch_address = aligned;
   m_fetch_valid = !m_address_error;
+}
+
+void Sh2::prefetch_ahead(uint32_t address)
+{
+  if ((address & 1) != 0 || address >= 0xFFFFFE00)
+    return;
+  const uint32_t aligned = address & ~3u;
+  for (const auto &entry : m_fetch_ahead) {
+    if (entry.valid && entry.address == aligned)
+      return;
+  }
+  auto slot = std::find_if(m_fetch_ahead.begin(), m_fetch_ahead.end(),
+                           [](const auto &entry) { return !entry.valid; });
+  if (slot == m_fetch_ahead.end())
+    return;
+  const uint32_t data = read32(aligned, false, true);
+  if (!m_address_error)
+    *slot = {1, aligned, data};
+}
+
+void Sh2::clear_fetch_ahead()
+{
+  for (auto &entry : m_fetch_ahead)
+    entry = {};
 }
 
 void Sh2::discard_fetch(uint32_t address)
@@ -650,6 +687,7 @@ void Sh2::branch(uint32_t target, bool link)
 uint32_t Sh2::enter_exception(uint8_t vector, uint32_t return_pc, uint8_t level)
 {
   m_fetch_valid = 0;
+  clear_fetch_ahead();
   m_address_error = false;
   m_r[15] -= 4;
   write32(m_r[15], m_sr);
@@ -723,6 +761,7 @@ Sh2::RetryState Sh2::retry_state() const
           m_fetch_address,
           m_fetch_data,
           m_write_buffer,
+          m_fetch_ahead,
           m_write_fresh};
 }
 
@@ -751,6 +790,7 @@ void Sh2::restore_retry_state(const RetryState &state)
   m_fetch_address = state.fetch_address;
   m_fetch_data = state.fetch_data;
   m_write_buffer = state.write_buffer;
+  m_fetch_ahead = state.fetch_ahead;
   m_write_fresh = state.write_fresh;
 }
 
@@ -792,6 +832,9 @@ uint32_t Sh2::execute_step()
   if (was_delayed)
     prefetch(delayed_target);
   const uint32_t instruction_pc = m_pc - 2;
+  const uint8_t accesses = memory_accesses(op);
+  if (!was_delayed && accesses != 0)
+    prefetch_ahead(instruction_pc + ((instruction_pc & 2) != 0 ? 2 : 4));
   const uint32_t n = (op >> 8) & 0xF;
   const uint32_t m = (op >> 4) & 0xF;
   const uint32_t size = op & 3;
@@ -1414,8 +1457,9 @@ uint32_t Sh2::execute_step()
       m_pc = delayed_target;
     }
   }
-  const uint8_t accesses = memory_accesses(op);
   const uint32_t next_fetch = was_delayed ? delayed_target : instruction_pc;
+  if (!m_address_error && accesses != 0 && (next_fetch & 2) != 0)
+    prefetch_ahead(was_delayed ? delayed_target + 2 : instruction_pc + 6);
   uint32_t contention =
       m_address_error || accesses == 0 ? 0 : accesses - ((next_fetch & 2) == 0);
   const bool load_use =
