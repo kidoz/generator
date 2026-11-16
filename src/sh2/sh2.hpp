@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "sh2_cache.hpp"
+#include "sh2_bsc.hpp"
 #include "sh2_divu.hpp"
 #include "sh2_dmac.hpp"
 #include "sh2_frt.hpp"
@@ -86,6 +87,7 @@ public:
     uint32_t fetch_data = 0;
     uint32_t write_buffer = 0;
     std::array<FetchAheadState, 2> fetch_ahead{};
+    Sh2Bsc::SavedState bsc{};
   };
 
   explicit Sh2(Sh2BusInterface &bus);
@@ -193,7 +195,8 @@ public:
             m_fetch_address,
             m_fetch_data,
             m_write_buffer,
-            m_fetch_ahead};
+            m_fetch_ahead,
+            m_bsc.save()};
   }
   void restore(const SavedState &state)
   {
@@ -225,6 +228,7 @@ public:
     m_fetch_data = state.fetch_data;
     m_write_buffer = state.write_buffer;
     m_fetch_ahead = state.fetch_ahead;
+    m_bsc.restore(state.bsc);
   }
   static bool valid_saved_state(const SavedState &state)
   {
@@ -242,7 +246,7 @@ public:
             (state.pending_level == 17 && state.pending_vector == 10)) &&
            state.intc.irl_level <= 15 && (state.intc.icr & 0x7EFE) == 0 &&
            state.dmac.drcr[0] <= 3 && state.dmac.drcr[1] <= 3 &&
-           state.dmac.next_channel <= 1;
+           state.dmac.next_channel <= 1 && Sh2Bsc::valid_saved_state(state.bsc);
   }
 
 private:
@@ -306,6 +310,7 @@ private:
 
   Sh2BusInterface &m_bus;
   Sh2Cache m_cache;
+  Sh2Bsc m_bsc;
   Sh2Dmac m_dmac;
   Sh2Divu m_divu;
   Sh2Frt m_frt;

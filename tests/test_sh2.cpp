@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "sh2/sh2.hpp"
+#include "sh2/sh2_bsc.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -1795,6 +1796,90 @@ TEST_CASE("SH-2 DMAC fixed priority completes channel 0 before channel 1",
   CHECK((cpu.r(3) & 2) != 0);
   peripheral_write32(cpu, bus, 0xFFFFFF9C, 0x5A04);
   CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+
+TEST_CASE("SH-2 BSC registers honor masks and longword write keys", "[sh2]")
+{
+  auto bus = make_bus();
+  Sh2 cpu(bus);
+  cpu.reset();
+  const auto read16 = [&](uint32_t address) {
+    peripheral_read16(cpu, bus, address);
+    return (uint16_t)cpu.r(3);
+  };
+  const auto read32 = [&](uint32_t address) {
+    peripheral_read32(cpu, bus, address);
+    return cpu.r(3);
+  };
+
+  CHECK(read16(0xFFFFFFE2) == 0x03F0);
+  CHECK(read16(0xFFFFFFE6) == 0x00FC);
+  CHECK(read16(0xFFFFFFEA) == 0xAAFF);
+  CHECK(read16(0xFFFFFFEE) == 0);
+  CHECK(read16(0xFFFFFFF2) == 0);
+  CHECK(read16(0xFFFFFFF6) == 0);
+  CHECK(read16(0xFFFFFFFA) == 0);
+
+  peripheral_write16(cpu, bus, 0xFFFFFFE2, 0xFFFF);
+  CHECK(read16(0xFFFFFFE2) == 0x1FF7);
+  peripheral_write16(cpu, bus, 0xFFFFFFEE, 0xFFFF);
+  CHECK(read16(0xFFFFFFEE) == 0xFEFC);
+
+  peripheral_write32(cpu, bus, 0xFFFFFFE0, 0x12340001);
+  CHECK(read16(0xFFFFFFE2) == 0x1FF7);
+  peripheral_write32(cpu, bus, 0xFFFFFFE0, 0xA55A0001);
+  CHECK(read32(0xFFFFFFE0) == 1);
+  CHECK(cpu.fault() == Sh2::Fault::None);
+}
+
+TEST_CASE("SH-2 BSC refresh timer preserves requests across CMF clear", "[sh2]")
+{
+  Sh2Bsc bsc;
+  bsc.reset();
+  bsc.advance(100);
+  CHECK(bsc.read16(0xFFFFFFF6) == 0);
+
+  bsc.write16(0xFFFFFFFA, 2);
+  bsc.write16(0xFFFFFFF2, 0x08);
+  bsc.advance(3);
+  CHECK(bsc.read16(0xFFFFFFF6) == 0);
+  bsc.advance(1);
+  CHECK(bsc.read16(0xFFFFFFF6) == 1);
+  bsc.advance(3);
+  const auto saved = bsc.save();
+  Sh2Bsc restored;
+  restored.restore(saved);
+  bsc.advance(1);
+  restored.advance(1);
+  CHECK(bsc.read16(0xFFFFFFF6) == 0);
+  CHECK(restored.read16(0xFFFFFFF6) == 0);
+  CHECK(bsc.read16(0xFFFFFFF2) == 0x88);
+  CHECK(restored.read16(0xFFFFFFF2) == 0x88);
+  CHECK_FALSE(bsc.refresh_pending());
+
+  bsc.write16(0xFFFFFFF2, 0x08);
+  CHECK(bsc.read16(0xFFFFFFF2) == 0x08);
+  bsc.write16(0xFFFFFFEE, 0x08);
+  bsc.write16(0xFFFFFFFA, 1);
+  bsc.write16(0xFFFFFFF6, 0);
+  bsc.write16(0xFFFFFFF2, 0x48);
+  bsc.advance(4);
+  CHECK(bsc.refresh_pending());
+  CHECK(bsc.compare_interrupt_pending());
+  CHECK(bsc.read16(0xFFFFFFF2) == 0xC8);
+  bsc.write16(0xFFFFFFF2, 0x48);
+  CHECK_FALSE(bsc.compare_interrupt_pending());
+  CHECK(bsc.refresh_pending());
+  CHECK(bsc.take_refresh_request());
+  CHECK_FALSE(bsc.take_refresh_request());
+
+  bsc.write16(0xFFFFFFEE, 0x0C);
+  bsc.write16(0xFFFFFFF2, 0x08);
+  bsc.write16(0xFFFFFFF6, 0);
+  bsc.advance(4);
+  CHECK_FALSE(bsc.refresh_pending());
+  CHECK(Sh2Bsc::valid_saved_state(bsc.save()));
 }
 
 

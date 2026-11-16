@@ -355,7 +355,8 @@ bool Sh2::address_error(uint32_t address, uint32_t size, bool pc_relative)
   bool error = (address & (size - 1)) != 0;
   if (size == 1 && address >= 0xFFFFFF00)
     error = true;
-  if (size == 4 && address >= 0xFFFFFE00 && address <= 0xFFFFFEFF)
+  if (size == 4 && address >= 0xFFFFFE00 && address <= 0xFFFFFEFF &&
+      (address < 0xFFFFFFE0 || address > 0xFFFFFFF8))
     error = true;
   if (pc_relative && ((address >= 0x40000000 && address < 0x60000000) ||
                       (address >= 0x60000000 && address <= 0x600003FF) ||
@@ -388,6 +389,8 @@ uint16_t Sh2::read16(uint32_t address, bool pc_relative, bool instruction)
 {
   if (address_error(address, 2, pc_relative))
     return 0;
+  if (address >= 0xFFFFFFE2 && address <= 0xFFFFFFFA)
+    return m_bsc.read16(address);
   if (address >= 0xFFFFFF00 && address <= 0xFFFFFF14) {
     stall_divu();
     return m_divu.read16(address);
@@ -416,6 +419,8 @@ uint32_t Sh2::read32(uint32_t address, bool pc_relative, bool instruction)
 {
   if (address_error(address, 4, pc_relative))
     return 0;
+  if (address >= 0xFFFFFFE0 && address <= 0xFFFFFFF8)
+    return m_bsc.read32(address);
   if (address >= 0xFFFFFF00 && address <= 0xFFFFFF14) {
     stall_divu();
     return m_divu.read32(address);
@@ -457,6 +462,10 @@ void Sh2::write16(uint32_t address, uint16_t value)
 {
   if (address_error(address, 2))
     return;
+  if (address >= 0xFFFFFFE2 && address <= 0xFFFFFFFA) {
+    m_bsc.write16(address, value);
+    return;
+  }
   if (address >= 0xFFFFFF00 && address <= 0xFFFFFF14) {
     stall_divu();
     m_divu.write16(address, value);
@@ -486,6 +495,10 @@ void Sh2::write32(uint32_t address, uint32_t value)
 {
   if (address_error(address, 4))
     return;
+  if (address >= 0xFFFFFFE0 && address <= 0xFFFFFFF8) {
+    m_bsc.write32(address, value);
+    return;
+  }
   if (address >= 0xFFFFFF00 && address <= 0xFFFFFF14) {
     stall_divu();
     m_divu.write32(address, value);
@@ -533,6 +546,7 @@ uint32_t Sh2::advance_cycles(uint32_t cycles)
 {
   m_stall_cycles = 0;
   m_frt.advance(cycles);
+  m_bsc.advance(cycles);
   m_divu.advance(cycles);
   m_dmac.advance(cycles);
   if (m_dmac.completion_pending(0))
@@ -584,6 +598,7 @@ void Sh2::reset()
   m_intc.reset();
   m_dmac.reset();
   m_cache.reset();
+  m_bsc.reset();
   m_fault = Fault::None;
   m_address_error = false;
   m_load_destination = LoadNone;
