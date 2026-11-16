@@ -79,3 +79,35 @@ TEST_CASE("CDC keeps decoder status clocked while the drive is paused",
   CHECK(cdc.read_register() == 0);
   CHECK_FALSE(cdc.irq_pending());
 }
+
+TEST_CASE("CDC reset keeps the gate-array destination mode", "[sega_cd][cdc]")
+{
+  SegaCdCdc cdc(7500);
+  cdc.write_mode(0x0300, true, true);
+  cdc.set_dma_address(0x1234);
+  cdc.write_mode(1, false, true);
+  cdc.write_register(0x3a);
+  cdc.write_mode(10, false, true);
+  cdc.write_register(0xa7);
+  cdc.write_register(0xf0);
+
+  cdc.write_mode(15, false, true);
+  cdc.write_register(0x00);
+
+  CHECK(cdc.read_mode() == 0x0300);
+  CHECK(cdc.dma_address() == 0x1234);
+  CHECK_FALSE(cdc.irq_pending());
+
+  cdc.write_mode(6, false, true);
+  cdc.write_register(0x00);
+  CHECK((cdc.read_mode() >> 8) == 3);
+
+  cdc.write_mode(1, false, true);
+  cdc.write_register(0x02);
+  cdc.write_register(0x03);
+  cdc.write_register(0x08);
+  cdc.write_register(0xc0);
+  cdc.write_register(0x24);
+  cdc.write_register(0x00);
+  CHECK((cdc.read_mode() >> 8) == 0x43);
+}

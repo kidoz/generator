@@ -304,10 +304,17 @@ void SegaCdCdc::write_register(uint8_t data)
   case 13:
     high(r.pointer, data);
     break;
-  case 15:
+  case 15: {
+    // LC8951 reset. Destination mode and the DMA address are gate-array
+    // state at $FF8004/$FF800A, so a register 15 write leaves them alone.
+    const uint8_t mode = r.mode;
+    const uint32_t destination = r.destination;
     r = {};
     r.enabled = true;
+    r.mode = mode;
+    r.destination = destination;
     break;
+  }
   default:
     break;
   }
