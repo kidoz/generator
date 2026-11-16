@@ -257,6 +257,34 @@ void read_fetch_ahead(ChunkReader &r, Sh2::SavedState &state)
   }
 }
 
+void write_bsc(ChunkWriter &w, const Sh2Bsc::SavedState &state)
+{
+  w.u16(state.bcr1);
+  w.u16(state.bcr2);
+  w.u16(state.wcr);
+  w.u16(state.mcr);
+  w.u8(state.rtcsr);
+  w.u8(state.rtcnt);
+  w.u8(state.rtcor);
+  w.u8(state.read_cmf);
+  w.u16(state.clock_accumulator);
+  w.u8(state.refresh_pending ? 1 : 0);
+}
+
+void read_bsc(ChunkReader &r, Sh2Bsc::SavedState &state)
+{
+  state.bcr1 = r.u16();
+  state.bcr2 = r.u16();
+  state.wcr = r.u16();
+  state.mcr = r.u16();
+  state.rtcsr = r.u8();
+  state.rtcnt = r.u8();
+  state.rtcor = r.u8();
+  state.read_cmf = r.u8();
+  state.clock_accumulator = r.u16();
+  state.refresh_pending = r.u8() != 0;
+}
+
 void write_sh2(ChunkWriter &w, const Sh2::SavedState &state)
 {
   write_cache(w, state.cache);
@@ -281,9 +309,8 @@ void write_sh2(ChunkWriter &w, const Sh2::SavedState &state)
   w.u8(state.fault);
 }
 
-Sh2::SavedState read_sh2(ChunkReader &r)
+void read_sh2(ChunkReader &r, Sh2::SavedState &state)
 {
-  Sh2::SavedState state;
   state.cache = read_cache(r);
   state.dmac = read_dmac(r);
   state.divu = read_divu(r);
@@ -304,7 +331,6 @@ Sh2::SavedState read_sh2(ChunkReader &r)
   state.pending_vector = r.u8();
   state.pending_level = r.u8();
   state.fault = r.u8();
-  return state;
 }
 
 void write_video(ChunkWriter &w, const X32Video::SavedState &state)
@@ -568,6 +594,8 @@ std::vector<uint8_t> serialize_x32_state(const X32State &state)
   write_fetch_ahead(w, state.master);
   write_fetch_ahead(w, state.slave);
   w.u8(state.base.sh2_half);
+  write_bsc(w, state.master.bsc);
+  write_bsc(w, state.slave.bsc);
   return w.take_payload();
 }
 
@@ -582,8 +610,8 @@ parse_x32_state(std::span<const uint8_t> payload)
   state.master_boot_size = r.u32();
   state.slave_boot_size = r.u32();
   state.base = read_base(r);
-  state.master = read_sh2(r);
-  state.slave = read_sh2(r);
+  read_sh2(r, state.master);
+  read_sh2(r, state.slave);
   if (r.has(1))
     state.base.video.bitmap_latched = r.u8() != 0;
   if (r.remaining() >= 12) {
@@ -654,6 +682,23 @@ parse_x32_state(std::span<const uint8_t> payload)
     read_fetch_ahead(r, state.master);
     read_fetch_ahead(r, state.slave);
     state.base.sh2_half = r.u8();
+    legacy_clock = false;
+  } else if (r.remaining() == 2 * 4 * 64 * 16 + 6 + 28 + 7 + 36 + 1 + 30) {
+    read_cache_data(r, state.master.cache);
+    read_cache_data(r, state.slave.cache);
+    read_pipeline(r, state.master);
+    read_pipeline(r, state.slave);
+    read_bus_pipeline(r, state.master);
+    read_bus_pipeline(r, state.slave);
+    state.base.bus_lease_cycles = r.u32();
+    state.base.bus_lease_owner = r.u8();
+    state.base.bus_requester = r.u8();
+    state.base.bus_handoff_cycles = r.u8();
+    read_fetch_ahead(r, state.master);
+    read_fetch_ahead(r, state.slave);
+    state.base.sh2_half = r.u8();
+    read_bsc(r, state.master.bsc);
+    read_bsc(r, state.slave.bsc);
     legacy_clock = false;
   } else if (r.remaining() != 0) {
     return std::unexpected("invalid X32 cache data tail");

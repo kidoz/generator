@@ -1100,7 +1100,7 @@ TEST_CASE("X32 bitmap registers latch once at HBlank clock 668", "[x32]")
   CHECK(state->video.bitmap_mode == 0x8002);
   CHECK(state->video.shift == 1);
 
-  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 8283);
+  std::vector<uint8_t> legacy(saved.begin(), saved.end() - 8313);
   const auto legacy_parsed = parse_x32_state(legacy);
   REQUIRE(legacy_parsed);
   CHECK_FALSE(legacy_parsed->base.video.bitmap_latched);
@@ -1664,6 +1664,16 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   configured.write_buffer = 4;
   configured.fetch_ahead[0] = {1, 0x108, 0x00090009};
   configured.fetch_ahead[1] = {1, 0x10C, 0x00090009};
+  configured.bsc.bcr1 = 0x0123;
+  configured.bsc.bcr2 = 0x00A8;
+  configured.bsc.wcr = 0x1234;
+  configured.bsc.mcr = 0x8008;
+  configured.bsc.rtcsr = 0x48;
+  configured.bsc.rtcnt = 3;
+  configured.bsc.rtcor = 4;
+  configured.bsc.read_cmf = 1;
+  configured.bsc.clock_accumulator = 15;
+  configured.bsc.refresh_pending = true;
   device.master().restore(configured);
   auto base = device.base_state();
   base.clock_accumulator = 5;
@@ -1683,13 +1693,17 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(parsed->master.fetch_ahead[1].data == 0x00090009);
   CHECK(parsed->base.clock_accumulator == 5);
   CHECK(parsed->base.sh2_half == 0);
+  CHECK(parsed->master.bsc.bcr1 == 0x0123);
+  CHECK(parsed->master.bsc.wcr == 0x1234);
+  CHECK(parsed->master.bsc.rtcsr == 0x48);
+  CHECK(parsed->master.bsc.refresh_pending);
   X32 restored(cartridge, master, slave);
   restored.power_on();
   REQUIRE(restore_x32_state(restored, *parsed));
   CHECK(serialize_x32_state(save_x32_state(restored)) == saved);
 
   auto legacy = saved;
-  legacy.resize(legacy.size() - 8283);
+  legacy.resize(legacy.size() - 8313);
   const auto legacy_parsed = parse_x32_state(legacy);
   REQUIRE(legacy_parsed);
   CHECK(legacy_parsed->master.intc.icr == 0x8000);
@@ -1705,6 +1719,10 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(legacy_parsed->master.write_buffer == 0);
   CHECK_FALSE(legacy_parsed->master.fetch_ahead[0].valid);
   CHECK_FALSE(legacy_parsed->master.fetch_ahead[1].valid);
+  CHECK(legacy_parsed->master.bsc.bcr1 == 0x03F0);
+  CHECK(legacy_parsed->master.bsc.bcr2 == 0x00FC);
+  CHECK(legacy_parsed->master.bsc.wcr == 0xAAFF);
+  CHECK_FALSE(legacy_parsed->master.bsc.refresh_pending);
   CHECK(legacy_parsed->base.bus_lease_cycles == 0);
   CHECK(legacy_parsed->base.bus_lease_owner == 2);
   CHECK(legacy_parsed->base.bus_requester == 2);
@@ -1716,7 +1734,7 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK_FALSE(legacy_device.master().save().dmac.module_pending[0]);
 
   auto without_cache_data = saved;
-  without_cache_data.resize(without_cache_data.size() - 8270);
+  without_cache_data.resize(without_cache_data.size() - 8300);
   const auto cache_legacy = parse_x32_state(without_cache_data);
   REQUIRE(cache_legacy);
   CHECK(cache_legacy->master.intc.irl_vector == 0x55);
@@ -1727,8 +1745,17 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(cache_legacy->master.fetch_valid == 0);
   CHECK(cache_legacy->master.write_buffer == 0);
 
+  auto without_bsc = saved;
+  without_bsc.resize(without_bsc.size() - 30);
+  const auto bsc_legacy = parse_x32_state(without_bsc);
+  REQUIRE(bsc_legacy);
+  CHECK(bsc_legacy->master.bsc.bcr1 == 0x03F0);
+  CHECK(bsc_legacy->master.bsc.wcr == 0xAAFF);
+  CHECK_FALSE(bsc_legacy->master.bsc.refresh_pending);
+  CHECK(bsc_legacy->base.clock_accumulator == 5);
+
   auto without_subclock = saved;
-  without_subclock.resize(without_subclock.size() - 1);
+  without_subclock.resize(without_subclock.size() - 31);
   const auto subclock_legacy = parse_x32_state(without_subclock);
   REQUIRE(subclock_legacy);
   CHECK(subclock_legacy->base.clock_accumulator == 3);
@@ -1736,7 +1763,7 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(subclock_legacy->master.fetch_ahead[0].valid == 1);
 
   auto without_split_fetches = saved;
-  without_split_fetches.resize(without_split_fetches.size() - 37);
+  without_split_fetches.resize(without_split_fetches.size() - 67);
   const auto split_fetch_legacy = parse_x32_state(without_split_fetches);
   REQUIRE(split_fetch_legacy);
   CHECK_FALSE(split_fetch_legacy->master.fetch_ahead[0].valid);
@@ -1744,7 +1771,7 @@ TEST_CASE("X32 interrupt and SCI state tails load legacy payloads", "[x32]")
   CHECK(split_fetch_legacy->base.bus_handoff_cycles == 0);
 
   auto without_handshake = saved;
-  without_handshake.resize(without_handshake.size() - 39);
+  without_handshake.resize(without_handshake.size() - 69);
   const auto handshake_legacy = parse_x32_state(without_handshake);
   REQUIRE(handshake_legacy);
   CHECK(handshake_legacy->base.bus_lease_cycles == 13);
